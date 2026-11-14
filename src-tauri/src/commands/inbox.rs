@@ -19,7 +19,7 @@ use crate::db;
 use crate::gmail_read::{self, InboxMessage};
 use crate::triage::{self, Category, Verdict};
 use crate::{anthropic, gmail_auth, google_gmail, openai, AppState};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
 /// Resolve how Gmail calls should authenticate this run. In `gcloud` mode the
@@ -67,13 +67,42 @@ const DEFAULT_LOCAL_LLM_BASE_URL: &str = "http://localhost:11434/v1";
 /// backlog bounded (and a local model's latency sane).
 const MAX_PER_RUN: u32 = 25;
 
+/// One to-do on a card. Stored in the `action_items` JSON column. Back-compat:
+/// the reader accepts BOTH the legacy shape (a bare JSON string) and this
+/// object shape, so cards triaged before editable to-dos keep working.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ActionItem {
+    pub text: String,
+    #[serde(default)]
+    pub done: bool,
+}
+
+/// Parse the `action_items` JSON column tolerantly. Handles:
+///   - new form:  [{"text":"do X","done":false}, ...]
+///   - old form:  ["do X", "do Y"]
+/// Anything unparseable yields an empty list rather than erroring.
+fn parse_action_items(json: &str) -> Vec<ActionItem> {
+    // Try the new object array first.
+    if let Ok(items) = serde_json::from_str::<Vec<ActionItem>>(json) {
+        return items;
+    }
+    // Fall back to the legacy string array.
+    if let Ok(strings) = serde_json::from_str::<Vec<String>>(json) {
+        return strings
+            .into_iter()
+            .map(|text| ActionItem { text, done: false })
+            .collect();
+    }
+    Vec::new()
+}
+
 /// A triaged card for the board: the email plus its verdict.
 #[derive(Serialize)]
 pub struct TriageCard {
     pub message: InboxMessage,
     pub category: String,
     pub reason: String,
-    pub action_items: Vec<String>,
+    pub action_items: Vec<ActionItem>,
     pub suggested_reply: String,
     /// Set once the user has approved and a Gmail draft exists for this card.
     pub draft_id: Option<String>,
@@ -362,8 +391,7 @@ pub fn inbox_list(
     let rows = stmt
         .query_map([], |r| {
             let action_items_json: String = r.get(7)?;
-            let action_items: Vec<String> =
-                serde_json::from_str(&action_items_json).unwrap_or_default();
+            let action_items = parse_action_items(&action_items_json);
             Ok(TriageCard {
                 message: InboxMessage {
                     id: r.get(0)?,
@@ -442,6 +470,29 @@ pub fn inbox_set_provider(state: State<AppState>, provider: String) -> Result<St
     let conn = state.db.lock();
     db::set_setting(&conn, "triage_provider", &normalized).map_err(err)?;
     Ok(normalized)
+}
+
+/// Replace a card's action items (add / edit / check off / delete). The
+/// frontend sends the full edited list; this writes it back as JSON.
+#[tauri::command]
+pub fn inbox_set_action_items(
+    state: State<AppState>,
+    message_id: String,
+    items: Vec<ActionItem>,
+) -> Result<(), String> {
+    let json = serde_json::to_string(&items).map_err(err)?;
+    let conn = state.db.lock();
+    ensure_table(&conn).map_err(err)?;
+    let affected = conn
+        .execute(
+            "UPDATE inbox_triage SET action_items = ?1 WHERE message_id = ?2",
+            rusqlite::params![json, message_id],
+        )
+        .map_err(err)?;
+    if affected == 0 {
+        return Err("no such card".to_string());
+    }
+    Ok(())
 }
 
 /// Set how Gmail authenticates: "oauth" (Humla's own Google connection) or

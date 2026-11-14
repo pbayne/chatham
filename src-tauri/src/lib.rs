@@ -380,6 +380,7 @@ where
             commands::inbox_triage_now,
             commands::inbox_list,
             commands::inbox_approve_draft,
+            commands::inbox_set_action_items,
             commands::inbox_set_provider,
             commands::inbox_set_auth_mode,
             commands::inbox_clear,

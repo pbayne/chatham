@@ -11,11 +11,13 @@ import {
   CheckCircle2,
   Inbox as InboxIcon,
   Loader2,
+  Plus,
   RefreshCw,
   Trash2,
 } from "lucide-react";
 import {
   ipc,
+  type ActionItem,
   type InboxStatus,
   type TriageCard,
   type TriageCategory,
@@ -248,6 +250,35 @@ function Card({ card, onChange }: { card: TriageCard; onChange: () => void }) {
   const [staged, setStaged] = useState<string | null>(card.draft_id ? "done" : null);
   const [err, setErr] = useState<string | null>(null);
 
+  // Editable to-do list. Seeded from the card; every mutation persists the
+  // full list to the backend, then refreshes the board.
+  const [items, setItems] = useState<ActionItem[]>(card.action_items);
+  const [newItem, setNewItem] = useState("");
+
+  async function persist(next: ActionItem[]) {
+    setItems(next);
+    try {
+      await ipc.inboxSetActionItems(card.message.id, next);
+    } catch (e) {
+      setErr(String(e));
+    }
+  }
+  function toggle(i: number) {
+    persist(items.map((it, idx) => (idx === i ? { ...it, done: !it.done } : it)));
+  }
+  function editText(i: number, text: string) {
+    setItems(items.map((it, idx) => (idx === i ? { ...it, text } : it)));
+  }
+  function remove(i: number) {
+    persist(items.filter((_, idx) => idx !== i));
+  }
+  function addItem() {
+    const text = newItem.trim();
+    if (!text) return;
+    persist([...items, { text, done: false }]);
+    setNewItem("");
+  }
+
   async function approve() {
     setStaging(true);
     setErr(null);
@@ -298,21 +329,68 @@ function Card({ card, onChange }: { card: TriageCard; onChange: () => void }) {
 
       {expanded && (
         <div className="px-3.5 pb-3.5 pt-1 border-t border-[var(--color-line)]">
-          {card.action_items.length > 0 && (
-            <div className="mt-2">
-              <div className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1">
-                To do
-              </div>
-              <ul className="space-y-1">
-                {card.action_items.map((item, i) => (
-                  <li key={i} className="text-[12px] text-[var(--color-text)] flex gap-1.5">
-                    <span className="text-[var(--color-text-disabled)]">•</span>
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
+          <div className="mt-2">
+            <div className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-1">
+              To do
             </div>
-          )}
+            <ul className="space-y-1">
+              {items.map((item, i) => (
+                <li key={i} className="group flex items-start gap-1.5 text-[12px]">
+                  <input
+                    type="checkbox"
+                    checked={item.done}
+                    onChange={() => toggle(i)}
+                    className="mt-[3px] shrink-0 accent-[var(--color-interactive,#2563eb)]"
+                  />
+                  <input
+                    value={item.text}
+                    onChange={(e) => editText(i, e.target.value)}
+                    onBlur={() => persist(items)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    }}
+                    className={cn(
+                      "flex-1 min-w-0 bg-transparent border-none outline-none text-[var(--color-text)]",
+                      item.done && "line-through text-[var(--color-text-disabled)]",
+                    )}
+                  />
+                  <button
+                    onClick={() => remove(i)}
+                    title="Delete"
+                    className="shrink-0 opacity-0 group-hover:opacity-100 text-[var(--color-text-disabled)] hover:text-[var(--color-danger,#c0392b)] transition-opacity"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </li>
+              ))}
+              {items.length === 0 && (
+                <li className="text-[11px] text-[var(--color-text-disabled)] italic">
+                  No action items — add one below.
+                </li>
+              )}
+            </ul>
+            <div className="flex items-center gap-1.5 mt-1.5">
+              <input
+                value={newItem}
+                onChange={(e) => setNewItem(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") addItem();
+                }}
+                placeholder="Add an action item…"
+                className="flex-1 text-[12px] bg-[var(--color-canvas)] border border-[var(--color-line-visible)] rounded px-2 py-1"
+              />
+              <button
+                onClick={addItem}
+                disabled={!newItem.trim()}
+                className={cn(
+                  "no-drag nd-navrow px-2 text-[12px]",
+                  !newItem.trim() && "opacity-50 cursor-not-allowed",
+                )}
+              >
+                <Plus size={13} /> Add
+              </button>
+            </div>
+          </div>
 
           {card.message.snippet && (
             <div className="text-[12px] text-[var(--color-text-muted)] mt-2 line-clamp-3">

@@ -408,11 +408,16 @@ export type InboxMessage = {
   body: string;
 };
 
+export type ActionItem = {
+  text: string;
+  done: boolean;
+};
+
 export type TriageCard = {
   message: InboxMessage;
   category: TriageCategory;
   reason: string;
-  action_items: string[];
+  action_items: ActionItem[];
   suggested_reply: string;
   draft_id: string | null;
 };
@@ -518,6 +523,9 @@ export const ipc = {
   // Stage a (possibly edited) reply as a Gmail draft. Returns a Gmail link.
   inboxApproveDraft: (messageId: string, to: string, subject: string, body: string) =>
     invoke<string>("inbox_approve_draft", { messageId, to, subject, body }),
+  // Replace a card's action items (add / edit / check off / delete).
+  inboxSetActionItems: (messageId: string, items: ActionItem[]) =>
+    invoke<void>("inbox_set_action_items", { messageId, items }),
   inboxSetProvider: (provider: "local" | "openai" | "anthropic") =>
     invoke<string>("inbox_set_provider", { provider }),
   // Switch Gmail auth: "oauth" (Humla's own) or "gcloud" (machine ADC — works
