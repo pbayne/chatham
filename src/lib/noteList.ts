@@ -202,3 +202,42 @@ export function matchesFilter(n: Note, f: NoteFilter, ctx: FilterContext = {}): 
 export function indexById<T extends { id: string }>(items: T[]): Map<string, T> {
   return new Map(items.map((item) => [item.id, item]));
 }
+
+// ─── Facets: what a note HAS, shown as independent color-coded chips ─────────
+//
+// The state dot above says the furthest rung a note reached (one answer). The
+// facets say, independently, which artifacts the note holds — so at a glance
+// you can tell a note that has audio + transcript but no summary yet from one
+// that's fully done. Each facet is its own chip with its own brand color.
+
+export type NoteFacet = "notes" | "audio" | "transcribed" | "summarized";
+
+export const NOTE_FACET_LABEL: Record<NoteFacet, string> = {
+  notes: "Notes",
+  audio: "Audio",
+  transcribed: "Transcript",
+  summarized: "Summary",
+};
+
+// Colors mirror the state-dot palette so the two readings agree: summary =
+// accent, transcript = interactive blue, audio = warning gold, notes = muted.
+export const NOTE_FACET_COLOR: Record<NoteFacet, string> = {
+  notes: "var(--color-text-muted)",
+  audio: "var(--color-warning)",
+  transcribed: "var(--color-interactive)",
+  summarized: "var(--color-accent-text)",
+};
+
+// Fixed display order: the pipeline order a note moves through.
+export const NOTE_FACET_ORDER: NoteFacet[] = ["notes", "audio", "transcribed", "summarized"];
+
+// Which facets a note currently holds. `recorded` (audio on *this* device)
+// can't be read off the note row, same as noteState — it comes from the store.
+export function noteFacets(n: Note, recorded = false): Set<NoteFacet> {
+  const facets = new Set<NoteFacet>();
+  if (htmlToText(n.body).trim()) facets.add("notes");
+  if (recorded) facets.add("audio");
+  if (n.transcript.trim()) facets.add("transcribed");
+  if (n.summary.trim()) facets.add("summarized");
+  return facets;
+}
