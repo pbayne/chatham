@@ -57,13 +57,12 @@ pub fn encode_raw(mime: &str) -> String {
 /// Create the draft. Returns the Gmail draft id and a deep link to it.
 pub async fn create_draft(
     http: &reqwest::Client,
-    access_token: &str,
+    auth: &crate::gmail_auth::GmailAuth,
     spec: &DraftSpec,
 ) -> Result<(String, String)> {
     let raw = encode_raw(&build_mime(spec));
-    let resp = http
-        .post(DRAFTS_CREATE)
-        .bearer_auth(access_token)
+    let resp = auth
+        .apply(http.post(DRAFTS_CREATE))
         .json(&json!({ "message": { "raw": raw } }))
         .send()
         .await

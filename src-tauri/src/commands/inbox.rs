@@ -18,9 +18,47 @@ use super::read_provider_api_key;
 use crate::db;
 use crate::gmail_read::{self, InboxMessage};
 use crate::triage::{self, Category, Verdict};
-use crate::{anthropic, google_gmail, openai, AppState};
+use crate::{anthropic, gmail_auth, google_gmail, openai, AppState};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
+
+/// Resolve how Gmail calls should authenticate this run. In `gcloud` mode the
+/// bearer token is minted from the machine's Application Default Credentials
+/// (the route that works on a corp account that blocks third-party OAuth but
+/// has an authorized gcloud ADC); in `oauth` mode it's Humla's own refresh
+/// token on Autopilot. Returns the auth plus whether Google is reachable.
+async fn resolve_gmail_auth(state: &AppState) -> Result<gmail_auth::GmailAuth, String> {
+    let mode = {
+        let conn = state.db.lock();
+        gmail_auth::mode(&conn)
+    };
+    match mode {
+        gmail_auth::GmailAuthMode::Gcloud => {
+            // Mint off the CLI; blocking call, so keep it off the async reactor.
+            let token = tauri::async_runtime::spawn_blocking(gmail_auth::gcloud_access_token)
+                .await
+                .map_err(|e| format!("token task failed: {e}"))?
+                .map_err(|e| e.to_string())?;
+            Ok(gmail_auth::GmailAuth {
+                access_token: token,
+                extra_headers: vec![(
+                    "x-goog-user-project",
+                    gmail_auth::QUOTA_PROJECT.to_string(),
+                )],
+            })
+        }
+        gmail_auth::GmailAuthMode::Oauth => {
+            if !state.autopilot.is_connected() {
+                return Err("Not connected to Google — connect in Settings, or switch Gmail auth to gcloud.".to_string());
+            }
+            let token = state.autopilot.access_token().await.map_err(|e| e.to_string())?;
+            Ok(gmail_auth::GmailAuth {
+                access_token: token,
+                extra_headers: vec![],
+            })
+        }
+    }
+}
 
 /// Ollama's default OpenAI-compat endpoint — same constant the summary path
 /// uses. A user on LM Studio / llama-server / vLLM overrides it in Settings.
@@ -46,6 +84,7 @@ pub struct TriageCard {
 pub struct InboxStatus {
     pub connected: bool,
     pub provider: String,
+    pub auth_mode: String,
     pub triaged_count: i64,
 }
 
@@ -229,9 +268,20 @@ pub fn inbox_status(state: State<AppState>) -> Result<InboxStatus, String> {
         .ok()
         .flatten()
         .unwrap_or_else(|| "local".into());
+    // In gcloud mode, connectivity is "is there an auth mode that can mint a
+    // token" — the OAuth Autopilot link is irrelevant. We report connected in
+    // gcloud mode optimistically (the actual gcloud call is checked at run
+    // time, where a missing ADC produces a clear error); in oauth mode it's
+    // the real Autopilot connection state.
+    let auth_mode = gmail_auth::mode(&conn);
+    let connected = match auth_mode {
+        gmail_auth::GmailAuthMode::Gcloud => true,
+        gmail_auth::GmailAuthMode::Oauth => state.autopilot.is_connected(),
+    };
     Ok(InboxStatus {
-        connected: state.autopilot.is_connected(),
+        connected,
         provider,
+        auth_mode: auth_mode.as_str().to_string(),
         triaged_count,
     })
 }
@@ -245,19 +295,14 @@ pub async fn inbox_triage_now(app: AppHandle) -> Result<usize, String> {
         let conn = state.db.lock();
         ensure_table(&conn).map_err(err)?;
     }
-    if !state.autopilot.is_connected() {
-        return Err("Not connected to Google — connect in Settings first.".to_string());
-    }
 
     let (provider, base_url, model, think, api_key) = resolve_triage_provider(&state)?;
 
-    let (http, token) = {
-        let http = state.autopilot.http();
-        let token = state.autopilot.access_token().await.map_err(err)?;
-        (http, token)
-    };
+    // Resolve Gmail auth (gcloud ADC or Humla OAuth) — also our connectivity gate.
+    let auth = resolve_gmail_auth(&state).await?;
+    let http = state.autopilot.http();
 
-    let ids = gmail_read::list_unread(&http, &token, MAX_PER_RUN)
+    let ids = gmail_read::list_unread(&http, &auth, MAX_PER_RUN)
         .await
         .map_err(err)?;
 
@@ -269,7 +314,7 @@ pub async fn inbox_triage_now(app: AppHandle) -> Result<usize, String> {
                 continue;
             }
         }
-        let msg = match gmail_read::fetch_message(&http, &token, &id).await {
+        let msg = match gmail_read::fetch_message(&http, &auth, &id).await {
             Ok(m) => m,
             Err(e) => {
                 eprintln!("[inbox] fetch {id} failed: {e}");
@@ -370,12 +415,9 @@ pub async fn inbox_approve_draft(
         subject,
         body,
     };
-    let (http, token) = {
-        let http = state.autopilot.http();
-        let token = state.autopilot.access_token().await.map_err(err)?;
-        (http, token)
-    };
-    let (draft_id, gmail_url) = google_gmail::create_draft(&http, &token, &spec)
+    let auth = resolve_gmail_auth(&state).await?;
+    let http = state.autopilot.http();
+    let (draft_id, gmail_url) = google_gmail::create_draft(&http, &auth, &spec)
         .await
         .map_err(err)?;
     {
@@ -399,6 +441,17 @@ pub fn inbox_set_provider(state: State<AppState>, provider: String) -> Result<St
     .to_string();
     let conn = state.db.lock();
     db::set_setting(&conn, "triage_provider", &normalized).map_err(err)?;
+    Ok(normalized)
+}
+
+/// Set how Gmail authenticates: "oauth" (Humla's own Google connection) or
+/// "gcloud" (the machine's Application Default Credentials — the route that
+/// works on a corp account that blocks third-party OAuth consents).
+#[tauri::command]
+pub fn inbox_set_auth_mode(state: State<AppState>, mode: String) -> Result<String, String> {
+    let normalized = gmail_auth::GmailAuthMode::parse(&mode).as_str().to_string();
+    let conn = state.db.lock();
+    db::set_setting(&conn, "gmail_auth_mode", &normalized).map_err(err)?;
     Ok(normalized)
 }
 

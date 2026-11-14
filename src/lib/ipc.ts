@@ -420,6 +420,7 @@ export type TriageCard = {
 export type InboxStatus = {
   connected: boolean;
   provider: string;
+  auth_mode: string;
   triaged_count: number;
 };
 
@@ -519,6 +520,10 @@ export const ipc = {
     invoke<string>("inbox_approve_draft", { messageId, to, subject, body }),
   inboxSetProvider: (provider: "local" | "openai" | "anthropic") =>
     invoke<string>("inbox_set_provider", { provider }),
+  // Switch Gmail auth: "oauth" (Humla's own) or "gcloud" (machine ADC — works
+  // on corp accounts that block third-party OAuth consents).
+  inboxSetAuthMode: (mode: "oauth" | "gcloud") =>
+    invoke<string>("inbox_set_auth_mode", { mode }),
   inboxClear: (messageId?: string) =>
     invoke<void>("inbox_clear", { messageId: messageId ?? null }),
   /** Report one anonymous milestone. Fire-and-forget: the backend gates on the

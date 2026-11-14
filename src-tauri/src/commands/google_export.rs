@@ -168,7 +168,11 @@ pub async fn generate_followup_email(
         let token = state.autopilot.access_token().await.map_err(err)?;
         (http, token)
     };
-    let (draft_id, gmail_url) = google_gmail::create_draft(&http, &token, &spec)
+    let auth = crate::gmail_auth::GmailAuth {
+        access_token: token,
+        extra_headers: vec![],
+    };
+    let (draft_id, gmail_url) = google_gmail::create_draft(&http, &auth, &spec)
         .await
         .map_err(err)?;
 

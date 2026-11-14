@@ -34,12 +34,11 @@ pub struct InboxMessage {
 /// List unread INBOX message ids, newest first, capped at `max`.
 pub async fn list_unread(
     http: &reqwest::Client,
-    access_token: &str,
+    auth: &crate::gmail_auth::GmailAuth,
     max: u32,
 ) -> Result<Vec<String>> {
-    let resp = http
-        .get(LIST_URL)
-        .bearer_auth(access_token)
+    let resp = auth
+        .apply(http.get(LIST_URL))
         .query(&[
             ("q", "in:inbox is:unread"),
             ("maxResults", &max.to_string()),
@@ -66,13 +65,12 @@ pub async fn list_unread(
 /// Fetch one message in `full` format and flatten it to an `InboxMessage`.
 pub async fn fetch_message(
     http: &reqwest::Client,
-    access_token: &str,
+    auth: &crate::gmail_auth::GmailAuth,
     id: &str,
 ) -> Result<InboxMessage> {
     let url = format!("{GET_URL}/{id}");
-    let resp = http
-        .get(&url)
-        .bearer_auth(access_token)
+    let resp = auth
+        .apply(http.get(&url))
         .query(&[("format", "full")])
         .send()
         .await

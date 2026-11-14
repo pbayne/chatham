@@ -25,6 +25,7 @@ mod autopilot;
 mod google_docs;
 mod google_gmail;
 mod gmail_read;
+mod gmail_auth;
 mod triage;
 // Public so the `humla-mcp` binary (#172) can drive it. Everything below it —
 // `db`, `html_text` — stays private to the crate.
@@ -380,6 +381,7 @@ where
             commands::inbox_list,
             commands::inbox_approve_draft,
             commands::inbox_set_provider,
+            commands::inbox_set_auth_mode,
             commands::inbox_clear,
             commands::webhook_get_endpoint,
             commands::webhook_set_endpoint,

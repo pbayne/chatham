@@ -93,6 +93,13 @@ export function Inbox() {
                 await refresh();
               }}
             />
+            <AuthModePill
+              mode={status?.auth_mode ?? "oauth"}
+              onChange={async (m) => {
+                await ipc.inboxSetAuthMode(m);
+                await refresh();
+              }}
+            />
             {cards.length > 0 && (
               <button
                 onClick={clearAll}
@@ -189,6 +196,26 @@ function ProviderPill({
       <option value="local">Local (free)</option>
       <option value="openai">OpenAI</option>
       <option value="anthropic">Anthropic</option>
+    </select>
+  );
+}
+
+function AuthModePill({
+  mode,
+  onChange,
+}: {
+  mode: string;
+  onChange: (m: "oauth" | "gcloud") => void;
+}) {
+  return (
+    <select
+      value={mode}
+      onChange={(e) => onChange(e.target.value as "oauth" | "gcloud")}
+      title="How Humla reaches Gmail. gcloud uses your machine's authorized Google Cloud credentials — works on corp accounts that block third-party OAuth apps."
+      className="no-drag text-[12px] bg-[var(--color-surface)] border border-[var(--color-line-visible)] rounded-[var(--radius)] px-2 py-1 text-[var(--color-text-muted)] mr-2"
+    >
+      <option value="oauth">Auth: OAuth</option>
+      <option value="gcloud">Auth: gcloud</option>
     </select>
   );
 }
