@@ -392,6 +392,37 @@ export type FollowupResult = {
   recipients: string[];
 };
 
+// ─── Inbox Triage ───────────────────────────────────────────────────────────
+// Mirrors the structs in src-tauri/src/commands/inbox.rs. A triaged email is a
+// card on the board; the user approves one to stage a Gmail draft reply.
+export type TriageCategory = "action_needed" | "follow_up" | "fyi" | "noise";
+
+export type InboxMessage = {
+  id: string;
+  thread_id: string;
+  from: string;
+  to: string;
+  subject: string;
+  date: string;
+  snippet: string;
+  body: string;
+};
+
+export type TriageCard = {
+  message: InboxMessage;
+  category: TriageCategory;
+  reason: string;
+  action_items: string[];
+  suggested_reply: string;
+  draft_id: string | null;
+};
+
+export type InboxStatus = {
+  connected: boolean;
+  provider: string;
+  triaged_count: number;
+};
+
 export const ipc = {
   listNotes: () => invoke<Note[]>("notes_list"),
   getNote: (id: string) => invoke<Note>("notes_get", { id }),
@@ -476,6 +507,20 @@ export const ipc = {
   // local LLM and stage it as a Gmail draft. Returns the draft + a Gmail link.
   generateFollowupEmail: (noteId: string) =>
     invoke<FollowupResult>("generate_followup_email", { noteId }),
+
+  // Inbox Triage. See src-tauri/src/commands/inbox.rs.
+  inboxStatus: () => invoke<InboxStatus>("inbox_status"),
+  // Fetch unread, classify the new ones; returns how many were triaged.
+  inboxTriageNow: () => invoke<number>("inbox_triage_now"),
+  inboxList: (category?: TriageCategory) =>
+    invoke<TriageCard[]>("inbox_list", { category: category ?? null }),
+  // Stage a (possibly edited) reply as a Gmail draft. Returns a Gmail link.
+  inboxApproveDraft: (messageId: string, to: string, subject: string, body: string) =>
+    invoke<string>("inbox_approve_draft", { messageId, to, subject, body }),
+  inboxSetProvider: (provider: "local" | "openai" | "anthropic") =>
+    invoke<string>("inbox_set_provider", { provider }),
+  inboxClear: (messageId?: string) =>
+    invoke<void>("inbox_clear", { messageId: messageId ?? null }),
   /** Report one anonymous milestone. Fire-and-forget: the backend gates on the
    *  setting and on a once-per-install marker, so callers may call it freely and
    *  never need to know whether anything was sent. */

@@ -39,12 +39,17 @@ pub const CLIENT_ID: &str = match option_env!("GOOGLE_OAUTH_CLIENT_ID") {
 ///   - calendar.events.readonly — Autopilot reads meetings (read-only)
 ///   - drive.file — create/own Docs Humla makes (NOT read existing Drive);
 ///     a non-sensitive scope, so no Google verification wall
-///   - gmail.compose — create Gmail drafts for after-call follow-ups; drafts
-///     are never auto-sent, so the user always reviews before sending
+///   - gmail.compose — create Gmail drafts for after-call follow-ups and inbox
+///     triage replies; drafts are never auto-sent, so the user always reviews
+///   - gmail.readonly — read inbox messages for triage (classify + extract
+///     action items); read-only, Humla never sends or deletes mail. A
+///     restricted scope: fine in OAuth "Testing" mode (bounded ≤100 users, no
+///     verification); a public launch would need Google verification + CASA.
 pub const SCOPES: &[&str] = &[
     "https://www.googleapis.com/auth/calendar.events.readonly",
     "https://www.googleapis.com/auth/drive.file",
     "https://www.googleapis.com/auth/gmail.compose",
+    "https://www.googleapis.com/auth/gmail.readonly",
 ];
 
 /// The space-joined scope string for the auth URL.

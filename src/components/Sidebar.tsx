@@ -7,6 +7,7 @@ import {
   Folder as FolderIcon,
   FolderPlus,
   Home as HomeIcon,
+  Inbox,
   MessageCircle,
   Plus,
   Search,
@@ -236,6 +237,12 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
             icon={MessageCircle}
             label="Chat"
             active={location.pathname === "/chat"}
+          />
+          <NavItem
+            to="/inbox"
+            icon={Inbox}
+            label="Inbox"
+            active={location.pathname === "/inbox"}
           />
           <button
             type="button"
