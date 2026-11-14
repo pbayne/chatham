@@ -20,6 +20,8 @@ mod chat;
 mod embed;
 mod import_date;
 mod google_calendar;
+mod oauth_loopback;
+mod autopilot;
 // Public so the `humla-mcp` binary (#172) can drive it. Everything below it —
 // `db`, `html_text` — stays private to the crate.
 pub mod mcp;
@@ -82,6 +84,8 @@ pub struct AppState {
     /// on this note or another. Its only job is to keep a second Transcribe
     /// press on the *same* note from replaying the same take twice.
     pub transcribing: Arc<Mutex<std::collections::HashSet<String>>>,
+    /// Calendar auto-record: Google connection + scheduler state (autopilot.rs).
+    pub autopilot: autopilot::Autopilot,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -212,6 +216,7 @@ where
                 unify_locks: Arc::new(Mutex::new(std::collections::HashMap::new())),
                 chat_cancels: Arc::new(Mutex::new(std::collections::HashMap::new())),
                 transcribing: Arc::new(Mutex::new(std::collections::HashSet::new())),
+                autopilot: autopilot::Autopilot::default(),
             });
             let menu = build_menu(app.handle())?;
             app.set_menu(menu)?;
@@ -310,6 +315,11 @@ where
                     commands::embed_backfill(app_handle).await;
                 });
             }
+            // Calendar auto-record scheduler. Restores any saved Google
+            // connection and polls the calendar on a timer. A no-op while the
+            // mode is Off or no Google account is connected, so it's safe to
+            // always spawn.
+            autopilot::spawn(app.handle().clone());
             // Tray + global hotkey. Last in setup so a failure here can't stop
             // the app from coming up — the menu bar is an extra surface, not a
             // precondition for using Humla.
@@ -352,6 +362,13 @@ where
             commands::notes_set_client,
             commands::settings_get,
             commands::settings_set,
+            commands::autopilot_status,
+            commands::autopilot_set_mode,
+            commands::autopilot_set_stop_tail,
+            commands::autopilot_connect_google,
+            commands::autopilot_disconnect_google,
+            commands::autopilot_upcoming,
+            commands::autopilot_tick,
             commands::webhook_get_endpoint,
             commands::webhook_set_endpoint,
             commands::webhook_destination,

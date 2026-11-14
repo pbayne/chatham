@@ -7,6 +7,7 @@ import { RecordingSection } from "./settings/tabs/Recording";
 import { TranscriptionTab } from "./settings/tabs/Transcription";
 import { SummaryTab } from "./settings/tabs/Summary";
 import { ChatTab } from "./settings/tabs/Chat";
+import { AutopilotTab } from "./settings/tabs/Autopilot";
 import { AboutTab } from "./settings/tabs/About";
 import { AccountTab } from "./settings/tabs/Account";
 import { OrganizationTab } from "./settings/tabs/Organization";
@@ -41,6 +42,7 @@ export function Settings() {
     ),
     summaries: <SummaryTab s={settings.s} update={settings.update} />,
     chat: <ChatTab s={settings.s} update={settings.update} />,
+    autopilot: <AutopilotTab />,
     account: (
       <>
         <AccountTab s={settings.s} update={settings.update} />

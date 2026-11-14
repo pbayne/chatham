@@ -362,6 +362,29 @@ pub fn open(path: &Path) -> Result<Connection> {
         "UPDATE note_chunks SET chunker_version = 2 WHERE speakers != '' AND chunker_version < 2",
         [],
     );
+    // Calendar auto-record ("Autopilot", docs/prd-calendar-autorecord.md §6a).
+    // A note that Autopilot created for a calendar meeting carries the event's
+    // metadata here, in a sidecar table keyed by note_id rather than as columns
+    // on `notes`. Sidecar and not inline for two reasons: it keeps Google
+    // calendar data off the heavily-synced `notes` schema (this is local-only,
+    // like `speakers` — the server derives nothing from it), and it isolates an
+    // experimental feature so a later redesign drops one table instead of
+    // migrating live note columns. Absent row = a manually-started note.
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS note_calendar_meta (
+            note_id          TEXT PRIMARY KEY,
+            source_event_id  TEXT NOT NULL DEFAULT '',
+            source_calendar_id TEXT NOT NULL DEFAULT '',
+            organizer_email  TEXT NOT NULL DEFAULT '',
+            attendees_json   TEXT NOT NULL DEFAULT '[]',
+            meeting_url      TEXT NOT NULL DEFAULT '',
+            event_html_link  TEXT NOT NULL DEFAULT '',
+            scheduled_start  TEXT NOT NULL DEFAULT '',
+            scheduled_end    TEXT NOT NULL DEFAULT '',
+            created_at       INTEGER NOT NULL DEFAULT 0
+        )",
+        [],
+    );
     // Workspace (Teams) chat (issue #50). A workspace conversation is
     // server-authoritative: the local row is just a (tenant, scope, scope_id)
     // handle whose `remote_id` maps to the humla-cloud conversation record id.
@@ -1050,6 +1073,98 @@ pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
     )?;
     stmt.execute(params![key, value])?;
     Ok(())
+}
+
+/// Calendar-meta row attached to an Autopilot-created note (see the
+/// `note_calendar_meta` migration). Serialized straight to the frontend so the
+/// note view can show "from: Weekly Sync · 3 attendees · [open in Calendar]".
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct NoteCalendarMeta {
+    pub note_id: String,
+    pub source_event_id: String,
+    pub source_calendar_id: String,
+    pub organizer_email: String,
+    /// JSON array of attendee objects, stored verbatim from the Calendar API map.
+    pub attendees_json: String,
+    pub meeting_url: String,
+    pub event_html_link: String,
+    pub scheduled_start: String,
+    pub scheduled_end: String,
+}
+
+/// Attach (or replace) calendar metadata for a note.
+pub fn set_note_calendar_meta(conn: &Connection, m: &NoteCalendarMeta) -> Result<()> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    conn.execute(
+        "INSERT INTO note_calendar_meta
+            (note_id, source_event_id, source_calendar_id, organizer_email,
+             attendees_json, meeting_url, event_html_link, scheduled_start,
+             scheduled_end, created_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
+         ON CONFLICT(note_id) DO UPDATE SET
+            source_event_id = excluded.source_event_id,
+            source_calendar_id = excluded.source_calendar_id,
+            organizer_email = excluded.organizer_email,
+            attendees_json = excluded.attendees_json,
+            meeting_url = excluded.meeting_url,
+            event_html_link = excluded.event_html_link,
+            scheduled_start = excluded.scheduled_start,
+            scheduled_end = excluded.scheduled_end",
+        params![
+            m.note_id,
+            m.source_event_id,
+            m.source_calendar_id,
+            m.organizer_email,
+            m.attendees_json,
+            m.meeting_url,
+            m.event_html_link,
+            m.scheduled_start,
+            m.scheduled_end,
+            now
+        ],
+    )?;
+    Ok(())
+}
+
+/// Read a note's calendar metadata, if it was created by Autopilot.
+pub fn get_note_calendar_meta(conn: &Connection, note_id: &str) -> Result<Option<NoteCalendarMeta>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT note_id, source_event_id, source_calendar_id, organizer_email,
+                attendees_json, meeting_url, event_html_link, scheduled_start,
+                scheduled_end
+         FROM note_calendar_meta WHERE note_id = ?1",
+    )?;
+    let row = stmt
+        .query_row(params![note_id], |r| {
+            Ok(NoteCalendarMeta {
+                note_id: r.get(0)?,
+                source_event_id: r.get(1)?,
+                source_calendar_id: r.get(2)?,
+                organizer_email: r.get(3)?,
+                attendees_json: r.get(4)?,
+                meeting_url: r.get(5)?,
+                event_html_link: r.get(6)?,
+                scheduled_start: r.get(7)?,
+                scheduled_end: r.get(8)?,
+            })
+        })
+        .optional()?;
+    Ok(row)
+}
+
+/// Whether we've already created a note for this calendar event — the
+/// idempotency guard that stops the scheduler double-recording one meeting
+/// across polls/restarts.
+pub fn note_exists_for_event(conn: &Connection, event_id: &str) -> Result<bool> {
+    let mut stmt =
+        conn.prepare_cached("SELECT 1 FROM note_calendar_meta WHERE source_event_id = ?1")?;
+    Ok(stmt
+        .query_row(params![event_id], |_| Ok(()))
+        .optional()?
+        .is_some())
 }
 
 pub fn delete_setting(conn: &Connection, key: &str) -> Result<()> {

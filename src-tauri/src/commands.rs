@@ -21,6 +21,7 @@ use tokio::sync::Semaphore;
 // submodules via `super::` / `crate::`.
 mod api_keys;
 mod assets;
+mod autopilot;
 mod chat;
 mod clients;
 // `pub(crate)` so `crate::menubar` can resolve the active workspace when it
@@ -49,6 +50,7 @@ mod transcription_config;
 mod webhook;
 pub use api_keys::*;
 pub use assets::*;
+pub use autopilot::*;
 pub use chat::*;
 pub use clients::*;
 pub use cloud::*;

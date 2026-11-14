@@ -349,6 +349,35 @@ export type StoredAudioStats = {
   noteIds: string[];
 };
 
+// Calendar auto-record ("Autopilot"). Mirrors the structs in
+// src-tauri/src/commands/autopilot.rs.
+export type AutopilotMode = "off" | "ask" | "auto";
+
+export type AutopilotStatus = {
+  mode: AutopilotMode;
+  connected: boolean;
+  stop_tail_secs: number;
+};
+
+export type UpcomingMeeting = {
+  id: string;
+  title: string;
+  start: string | null;
+  end: string | null;
+  meeting_url: string | null;
+  attendee_count: number;
+  recordable: boolean;
+};
+
+// Payload of the `autopilot://prompt-record` event emitted in Ask mode.
+export type AutopilotPrompt = {
+  event_id: string;
+  title: string;
+  meeting_url: string | null;
+  start: string | null;
+  end: string | null;
+};
+
 export const ipc = {
   listNotes: () => invoke<Note[]>("notes_list"),
   getNote: (id: string) => invoke<Note>("notes_get", { id }),
@@ -406,6 +435,17 @@ export const ipc = {
    *  first (`flushEdits`), or the receiver gets an older copy. */
   webhookSendNote: (noteId: string) => invoke<void>("webhook_send_note", { noteId }),
   setSetting: (key: SettingsKey, value: string) => invoke<void>("settings_set", { key, value }),
+
+  // Calendar auto-record ("Autopilot"). See src-tauri/src/autopilot.rs.
+  autopilotStatus: () => invoke<AutopilotStatus>("autopilot_status"),
+  autopilotSetMode: (mode: AutopilotMode) =>
+    invoke<AutopilotMode>("autopilot_set_mode", { mode }),
+  autopilotSetStopTail: (secs: number) =>
+    invoke<void>("autopilot_set_stop_tail", { secs }),
+  autopilotConnectGoogle: () => invoke<void>("autopilot_connect_google"),
+  autopilotDisconnectGoogle: () => invoke<void>("autopilot_disconnect_google"),
+  autopilotUpcoming: () => invoke<UpcomingMeeting[]>("autopilot_upcoming"),
+  autopilotTick: () => invoke<void>("autopilot_tick"),
   /** Report one anonymous milestone. Fire-and-forget: the backend gates on the
    *  setting and on a once-per-install marker, so callers may call it freely and
    *  never need to know whether anything was sent. */
@@ -1055,6 +1095,23 @@ export function onNotesChanged(cb: () => void): Promise<UnlistenFn> {
 // fires.) See `resolveHotkeyAction` and `src-tauri/src/menubar.rs`.
 export function onToggleRecord(cb: () => void): Promise<UnlistenFn> {
   return listen("menubar://toggle-record", () => cb());
+}
+
+// Ask-mode Autopilot: a recordable meeting is starting. The payload carries the
+// title + meeting URL so the UI can offer Record / Skip. The user acting on it
+// drives the normal recording path (create note, recording_start) itself.
+export function onAutopilotPrompt(
+  cb: (prompt: AutopilotPrompt) => void,
+): Promise<UnlistenFn> {
+  return listen<AutopilotPrompt>("autopilot://prompt-record", (e) => cb(e.payload));
+}
+
+// Auto-mode: Autopilot just started a recording for a calendar meeting, so the
+// UI can refresh / navigate to the new note if it wants.
+export function onAutopilotRecordingStarted(
+  cb: (noteId: string) => void,
+): Promise<UnlistenFn> {
+  return listen<string>("autopilot://recording-started", (e) => cb(e.payload));
 }
 
 // Coarse sync state from the cloud worker, for the sidebar indicator.
