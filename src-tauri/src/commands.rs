@@ -35,6 +35,7 @@ mod export;
 #[cfg(feature = "cloud")]
 pub mod cloud_worker;
 mod folders;
+mod google_export;
 mod local_llm;
 mod mcp;
 mod menubar;
@@ -57,6 +58,7 @@ pub use cloud::*;
 pub use cloud_auth::*;
 pub use export::*;
 pub use folders::*;
+pub use google_export::*;
 pub use local_llm::*;
 pub use mcp::*;
 pub use menubar::*;

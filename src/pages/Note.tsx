@@ -75,6 +75,7 @@ import type { LayoutOutletContext } from "../components/Layout";
 import { SkeletonLines } from "../components/Skeleton";
 import { NoteEditor } from "../components/Editor";
 import { ContextMenu, ContextMenuItem } from "../components/ContextMenu";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { ExportModal } from "./ExportModal";
 import { SendToWebhookModal } from "./SendToWebhookModal";
 import { useWebhookSends } from "../lib/webhook";
@@ -1967,6 +1968,42 @@ export function NoteToolbar({
   // note already belongs to and only exists when there is one, while the hint
   // only ever shows on Personal, where there is nothing to rescue.
   const [teamHintOpen, setTeamHintOpen] = useState(false);
+  // Google Docs export + follow-up email draft (both go through the single
+  // Google connection in Settings → Autopilot). Busy flags keep the menu item
+  // from being fired twice; failures surface as the standard error toast.
+  const [docsBusy, setDocsBusy] = useState(false);
+  const [followupBusy, setFollowupBusy] = useState(false);
+
+  const handleSendToDocs = async () => {
+    setDocsBusy(true);
+    try {
+      await flushEdits();
+      const { url } = await ipc.sendToGoogleDocs(noteId, true, true);
+      await openExternal(url);
+    } catch (e) {
+      useRecordingStore
+        .getState()
+        .pushError({ noteId, message: String(e), kind: "summary" });
+    } finally {
+      setDocsBusy(false);
+    }
+  };
+
+  const handleFollowupEmail = async () => {
+    setFollowupBusy(true);
+    try {
+      await flushEdits();
+      const res = await ipc.generateFollowupEmail(noteId);
+      // The draft is in Gmail; open Drafts so the user reviews and sends.
+      await openExternal(res.gmail_url);
+    } catch (e) {
+      useRecordingStore
+        .getState()
+        .pushError({ noteId, message: String(e), kind: "summary" });
+    } finally {
+      setFollowupBusy(false);
+    }
+  };
 
   async function record() {
     // Pre-flight: don't start a doomed recording when the pipeline isn't
@@ -2117,6 +2154,28 @@ export function NoteToolbar({
               }}
             >
               Export…
+            </ContextMenuItem>
+          )}
+          {note && (
+            <ContextMenuItem
+              disabled={docsBusy}
+              onClick={() => {
+                setMenuPos(null);
+                void handleSendToDocs();
+              }}
+            >
+              {docsBusy ? "Sending to Google Docs…" : "Send to Google Docs"}
+            </ContextMenuItem>
+          )}
+          {note && (
+            <ContextMenuItem
+              disabled={followupBusy}
+              onClick={() => {
+                setMenuPos(null);
+                void handleFollowupEmail();
+              }}
+            >
+              {followupBusy ? "Drafting follow-up…" : "Draft follow-up email"}
             </ContextMenuItem>
           )}
           {note && webhookEnabled && (

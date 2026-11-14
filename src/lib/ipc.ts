@@ -378,6 +378,20 @@ export type AutopilotPrompt = {
   end: string | null;
 };
 
+// Result of send_to_google_docs.
+export type DocsExportResult = {
+  url: string;
+};
+
+// Result of generate_followup_email — the staged Gmail draft + a preview.
+export type FollowupResult = {
+  draft_id: string;
+  gmail_url: string;
+  subject: string;
+  body: string;
+  recipients: string[];
+};
+
 export const ipc = {
   listNotes: () => invoke<Note[]>("notes_list"),
   getNote: (id: string) => invoke<Note>("notes_get", { id }),
@@ -446,6 +460,22 @@ export const ipc = {
   autopilotDisconnectGoogle: () => invoke<void>("autopilot_disconnect_google"),
   autopilotUpcoming: () => invoke<UpcomingMeeting[]>("autopilot_upcoming"),
   autopilotTick: () => invoke<void>("autopilot_tick"),
+
+  // One-click export of a note to a formatted Google Doc. Returns the doc URL.
+  sendToGoogleDocs: (
+    noteId: string,
+    includeSummary: boolean,
+    includeTranscript: boolean,
+  ) =>
+    invoke<DocsExportResult>("send_to_google_docs", {
+      noteId,
+      includeSummary,
+      includeTranscript,
+    }),
+  // Draft an after-call follow-up email (action items / next steps) with the
+  // local LLM and stage it as a Gmail draft. Returns the draft + a Gmail link.
+  generateFollowupEmail: (noteId: string) =>
+    invoke<FollowupResult>("generate_followup_email", { noteId }),
   /** Report one anonymous milestone. Fire-and-forget: the backend gates on the
    *  setting and on a once-per-install marker, so callers may call it freely and
    *  never need to know whether anything was sent. */

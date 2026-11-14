@@ -95,6 +95,11 @@ impl Autopilot {
         self.tokens.lock().is_some()
     }
 
+    /// Shared HTTP client, so Docs/Gmail reuse the connection pool.
+    pub fn http(&self) -> reqwest::Client {
+        self.http.clone()
+    }
+
     /// Seed tokens from a refresh token recovered from the Keychain at startup,
     /// without doing a network round-trip yet (the first `access_token()` call
     /// refreshes). Returns whether a token was present.
@@ -119,8 +124,9 @@ impl Autopilot {
 
     /// Return a valid access token, refreshing if expired. Errors if not
     /// connected or if the refresh token was revoked (caller drops to the
-    /// disconnected state).
-    async fn access_token(&self) -> anyhow::Result<String> {
+    /// disconnected state). Public so the Docs/Gmail features share one
+    /// connection — they call this to get a bearer token.
+    pub async fn access_token(&self) -> anyhow::Result<String> {
         // Fast path: a live token.
         {
             let guard = self.tokens.lock();

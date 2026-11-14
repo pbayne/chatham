@@ -34,8 +34,23 @@ pub const CLIENT_ID: &str = match option_env!("GOOGLE_OAUTH_CLIENT_ID") {
     None => "REPLACE_ME.apps.googleusercontent.com",
 };
 
-/// Read-only, events-only. Narrowest scope that lets Autopilot see meetings.
-pub const SCOPE: &str = "https://www.googleapis.com/auth/calendar.events.readonly";
+/// OAuth scopes Humla requests. One consent screen covers every Google-backed
+/// feature so the user connects once:
+///   - calendar.events.readonly — Autopilot reads meetings (read-only)
+///   - drive.file — create/own Docs Humla makes (NOT read existing Drive);
+///     a non-sensitive scope, so no Google verification wall
+///   - gmail.compose — create Gmail drafts for after-call follow-ups; drafts
+///     are never auto-sent, so the user always reviews before sending
+pub const SCOPES: &[&str] = &[
+    "https://www.googleapis.com/auth/calendar.events.readonly",
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/gmail.compose",
+];
+
+/// The space-joined scope string for the auth URL.
+pub fn scope_param() -> String {
+    SCOPES.join(" ")
+}
 
 const AUTH_ENDPOINT: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
@@ -92,7 +107,7 @@ pub fn auth_url(redirect_uri: &str, pkce: &Pkce, state: &str) -> String {
         .append_pair("client_id", CLIENT_ID)
         .append_pair("redirect_uri", redirect_uri)
         .append_pair("response_type", "code")
-        .append_pair("scope", SCOPE)
+        .append_pair("scope", &scope_param())
         .append_pair("code_challenge", &pkce.challenge)
         .append_pair("code_challenge_method", "S256")
         .append_pair("state", state)
