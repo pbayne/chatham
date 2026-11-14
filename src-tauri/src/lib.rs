@@ -19,6 +19,7 @@ mod providers;
 mod chat;
 mod embed;
 mod import_date;
+mod google_calendar;
 // Public so the `humla-mcp` binary (#172) can drive it. Everything below it —
 // `db`, `html_text` — stays private to the crate.
 pub mod mcp;
