@@ -196,7 +196,14 @@ fn recipients_from_meta(conn: &rusqlite::Connection, note_id: &str) -> Vec<Strin
     let Ok(Some(meta)) = db::get_note_calendar_meta(conn, note_id) else {
         return Vec::new();
     };
-    let Ok(attendees) = serde_json::from_str::<Vec<serde_json::Value>>(&meta.attendees_json) else {
+    recipients_from_attendees_json(&meta.attendees_json)
+}
+
+/// The pure part of `recipients_from_meta`: given the stored attendees JSON
+/// (an array of `google_calendar::Attendee`), return the email addresses to put
+/// on the follow-up, dropping the user themselves and any blank addresses.
+fn recipients_from_attendees_json(attendees_json: &str) -> Vec<String> {
+    let Ok(attendees) = serde_json::from_str::<Vec<serde_json::Value>>(attendees_json) else {
         return Vec::new();
     };
     attendees
@@ -205,4 +212,35 @@ fn recipients_from_meta(conn: &rusqlite::Connection, note_id: &str) -> Vec<Strin
         .filter_map(|a| a.get("email").and_then(|v| v.as_str()).map(str::to_string))
         .filter(|e| !e.trim().is_empty())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recipients_exclude_self_and_blanks() {
+        // Shape matches google_calendar::Attendee serialization.
+        let json = r#"[
+            {"email":"patrick.bayne@databricks.com","display_name":"Patrick","response_status":"accepted","organizer":false,"is_self":true},
+            {"email":"brad@databricks.com","display_name":"Bradley","response_status":"accepted","organizer":true,"is_self":false},
+            {"email":"","display_name":"No Email","response_status":"needsAction","organizer":false,"is_self":false},
+            {"email":"someone@x.com","display_name":"Someone","response_status":"tentative","organizer":false,"is_self":false}
+        ]"#;
+        let got = recipients_from_attendees_json(json);
+        assert_eq!(got, vec!["brad@databricks.com", "someone@x.com"]);
+    }
+
+    #[test]
+    fn recipients_empty_on_bad_json() {
+        assert!(recipients_from_attendees_json("not json").is_empty());
+        assert!(recipients_from_attendees_json("[]").is_empty());
+    }
+
+    #[test]
+    fn recipients_missing_is_self_defaults_to_included() {
+        // An attendee object without is_self is treated as not-self (included).
+        let json = r#"[{"email":"a@b.com","display_name":"A"}]"#;
+        assert_eq!(recipients_from_attendees_json(json), vec!["a@b.com"]);
+    }
 }
