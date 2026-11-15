@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Building2, Circle, ListTodo } from "lucide-react";
+import { Building2, Check, Circle, Copy, ListTodo } from "lucide-react";
 import { ipc, type OpenActionItem } from "../lib/ipc";
 import { byDue, dueColorVar, dueLabel, dueState } from "../lib/due";
 import { useNotesStore } from "../lib/store";
@@ -41,6 +41,26 @@ export function Customer() {
     void ipc.actionItemsUpdate(itemId, { done: true }).catch(() => {});
   };
 
+  const [copied, setCopied] = useState(false);
+  const copyFollowups = () => {
+    // Plain-text list for a status email: "- <task> (<owner>) [due <label>]".
+    const lines = open.map((it) => {
+      const bits = [it.text.trim()];
+      const meta: string[] = [];
+      if (it.owner.trim()) meta.push(it.owner.trim());
+      if (it.due) meta.push(`due ${dueLabel(it.due)}`);
+      return `- ${bits[0]}${meta.length ? ` (${meta.join(", ")})` : ""}`;
+    });
+    const text = `${client?.name ?? "Customer"} — open follow-ups\n${lines.join("\n")}`;
+    navigator.clipboard?.writeText(text).then(
+      () => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1500);
+      },
+      () => {},
+    );
+  };
+
   if (!client) {
     return (
       <div className="h-full flex items-center justify-center text-sm text-[var(--color-text-muted)]">
@@ -67,6 +87,15 @@ export function Customer() {
               <ListTodo size={14} strokeWidth={1.7} />
               Open follow-ups
               <span className="font-normal">{open.length}</span>
+              <button
+                type="button"
+                onClick={copyFollowups}
+                className="ml-auto inline-flex items-center gap-1 normal-case font-normal text-[var(--color-text-muted)] hover:text-[var(--color-interactive)] transition-colors"
+                title="Copy follow-ups for a status email"
+              >
+                {copied ? <Check size={13} strokeWidth={1.8} /> : <Copy size={13} strokeWidth={1.7} />}
+                {copied ? "Copied" : "Copy"}
+              </button>
             </h2>
             <ul className="flex flex-col max-w-2xl">
               {open.map((it) => (
