@@ -380,6 +380,17 @@ export type SilenceStatus = {
   minutes: number;
 };
 
+// Multiple reports per note (#reports). Each is a template-tagged summary.
+export type NoteReport = {
+  id: string;
+  note_id: string;
+  preset: string;
+  title: string;
+  content: string;
+  created_at: number;
+  updated_at: number;
+};
+
 export type UpcomingMeeting = {
   id: string;
   title: string;
@@ -535,6 +546,10 @@ export const ipc = {
   // Auto customer tagging (customer.rs). Learns the account from each meeting.
   autoCustomerTaggingStatus: () => invoke<boolean>("auto_customer_tagging_status"),
   autoCustomerTaggingSet: (enabled: boolean) => invoke<void>("auto_customer_tagging_set", { enabled }),
+  // Multiple reports per note (#reports). Template-tagged summaries.
+  noteReportsList: (noteId: string) => invoke<NoteReport[]>("note_reports_list", { noteId }),
+  noteReportsDelete: (id: string) => invoke<void>("note_reports_delete", { id }),
+  noteReportsSetActive: (id: string) => invoke<void>("note_reports_set_active", { id }),
 
   // One-click export of a note to a formatted Google Doc. Returns the doc URL.
   sendToGoogleDocs: (

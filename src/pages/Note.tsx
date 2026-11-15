@@ -31,7 +31,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { ipc, onSummaryThinkingDelta, onSummaryContentDelta, type Note as TNote, type NoteRevision, type NoteSession, type SummaryPrompt, type TimelineEntry } from "../lib/ipc";
+import { ipc, onSummary, onSummaryThinkingDelta, onSummaryContentDelta, type Note as TNote, type NoteReport, type NoteRevision, type NoteSession, type SummaryPrompt, type TimelineEntry } from "../lib/ipc";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { SUMMARY_CAPABLE, type SummaryProvider } from "../lib/providers";
 import { useLiveSetting } from "../lib/settingsBus";
@@ -1526,6 +1526,23 @@ export function Note() {
                   </div>
                 </div>
 
+                {/* Report switcher (#reports): the template-tagged summaries
+                    this note has accumulated. Switching sets the active summary;
+                    generating a new template adds a report. Only shown when the
+                    note has more than one report — a single report needs no
+                    chooser. */}
+                <ReportTabs
+                  noteId={draft.id}
+                  activePreset={draft.summary_preset || "meeting"}
+                  readOnly={readOnly}
+                  onPick={(r) => {
+                    void ipc.noteReportsSetActive(r.id).then(() => {
+                      patch("summary_preset", r.preset);
+                    });
+                  }}
+                />
+
+
                 {/* Live reasoning trace (local LLM only). Cloud OpenAI keeps
                     its chain-of-thought server-side, so the panel there would
                     be a permanent "waiting…" placeholder. */}
@@ -2655,6 +2672,90 @@ function WorkspacePicker({
       onSelect={(id) => onChange(id ?? "")}
       noneLabel="Personal (this device)"
     />
+  );
+}
+
+// Report switcher (#reports): tabs for each template-tagged summary a note has.
+// Self-loads on mount + on `summary_ready` (a new/updated report). Hidden when
+// the note has 0–1 reports — a lone report needs no chooser. The active tab is
+// the one whose preset matches the note's current `summary_preset`.
+function ReportTabs({
+  noteId,
+  activePreset,
+  readOnly,
+  onPick,
+}: {
+  noteId: string;
+  activePreset: string;
+  readOnly: boolean;
+  onPick: (r: NoteReport) => void;
+}) {
+  const [reports, setReports] = useState<NoteReport[]>([]);
+
+  const load = useCallback(() => {
+    ipc.noteReportsList(noteId)
+      .then((rs) => setReports(Array.isArray(rs) ? rs : []))
+      .catch(() => setReports([]));
+  }, [noteId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // A finished summary adds or refreshes a report for this note — reload so the
+  // new tab appears. `onSummary` fires for every note, so filter by id.
+  useEffect(() => {
+    const un = onSummary((e) => {
+      if (e.noteId === noteId) load();
+    });
+    return () => {
+      void un.then((f) => f());
+    };
+  }, [noteId, load]);
+
+  if (reports.length < 2) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 mb-4" role="tablist" aria-label="Reports">
+      {reports.map((r) => {
+        const active = r.preset === activePreset;
+        return (
+          <div
+            key={r.id}
+            className={
+              "group inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors " +
+              (active
+                ? "border-[var(--color-interactive)] text-[var(--color-interactive)] bg-[var(--color-surface-hover)]"
+                : "border-[var(--color-line-visible)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]")
+            }
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => onPick(r)}
+              className="truncate max-w-[14rem]"
+              title={r.title || r.preset}
+            >
+              {r.title || r.preset}
+            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                aria-label={`Delete ${r.title || r.preset} report`}
+                title="Delete this report"
+                onClick={() => {
+                  void ipc.noteReportsDelete(r.id).then(load);
+                }}
+                className="opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity"
+              >
+                <X size={12} strokeWidth={2} />
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

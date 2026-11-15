@@ -37,6 +37,51 @@ struct Preset {
     en: &'static str,
 }
 
+/// English display label for a preset value — the report's title in the
+/// switcher. Mirrors the `label_en` values in `src/lib/presets.ts`. Falls back
+/// to a title-cased form of the value for a custom/unknown preset.
+pub fn label_for(preset: &str) -> String {
+    match preset {
+        "meeting" => "Meeting",
+        "one_on_one" => "1:1 conversation",
+        "lecture" => "Lecture",
+        "interview" => "Interview",
+        "brainstorm" => "Brainstorm",
+        "voice_memo" => "Voice memo",
+        "sales_call" => "Sales call",
+        "discovery_call" => "Discovery call",
+        "technical_review" => "Technical review",
+        "qbr" => "Quarterly business review",
+        "standup" => "Standup",
+        other => {
+            // custom:<id> or an unknown value → a readable fallback.
+            let base = other.strip_prefix("custom:").unwrap_or(other);
+            return title_case(base);
+        }
+    }
+    .to_string()
+}
+
+fn title_case(s: &str) -> String {
+    let cleaned = s.replace(['_', '-'], " ");
+    let mut out = String::new();
+    for (i, word) in cleaned.split_whitespace().enumerate() {
+        if i > 0 {
+            out.push(' ');
+        }
+        let mut chars = word.chars();
+        if let Some(first) = chars.next() {
+            out.extend(first.to_uppercase());
+            out.push_str(chars.as_str());
+        }
+    }
+    if out.is_empty() {
+        "Report".to_string()
+    } else {
+        out
+    }
+}
+
 // Minimal presets — kind of summary + language, plus at most one extra
 // constraint where it earns its place. Source labels stay because the user
 // message uses them; the parenthetical "(brukerens)" / "(automatisk)"

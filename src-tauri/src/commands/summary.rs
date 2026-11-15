@@ -346,6 +346,20 @@ async fn run_summary(app: AppHandle, note_id: String) -> anyhow::Result<()> {
             summary: Some(summary.clone()),
             ..Default::default()
         })?;
+        // Also store this as a template-tagged report (#reports). The note's
+        // `summary` column stays the "active/latest" copy for back-compat with
+        // exports + the old UI; `note_reports` lets the user keep a Meeting
+        // report AND a Sales Call report on the same recording and switch
+        // between them. Keyed by preset, so re-running a template refreshes its
+        // report in place. Best-effort — a report-store hiccup must not fail the
+        // summary that already wrote.
+        let report_preset = if note.summary_preset.trim().is_empty() {
+            crate::presets::DEFAULT_SUMMARY_PRESET.to_string()
+        } else {
+            note.summary_preset.clone()
+        };
+        let report_title = crate::presets::label_for(&report_preset);
+        let _ = db::upsert_note_report(&conn, &note_id, &report_preset, &report_title, &summary);
         // Content-settled checkpoint (issue #47): a fresh summary is new
         // searchable material — refresh the Note's retrieval chunks.
         super::chat::reindex_note_content(&conn, &note_id);

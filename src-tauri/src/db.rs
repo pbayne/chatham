@@ -385,6 +385,29 @@ pub fn open(path: &Path) -> Result<Connection> {
         )",
         [],
     );
+    // Multiple reports per note (#reports). A note can carry several
+    // template-based summaries — a Meeting report AND a Sales Call report AND a
+    // custom one — switchable in the UI, each regenerable/deletable. Sidecar
+    // table keyed by note_id, LOCAL-ONLY like note_calendar_meta: reports are
+    // regenerable derivatives of the transcript, so they stay off the synced
+    // `notes` schema and out of the cloud entity set. `preset` records which
+    // template produced the report; `title` is its display label.
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS note_reports (
+            id           TEXT PRIMARY KEY,
+            note_id      TEXT NOT NULL,
+            preset       TEXT NOT NULL DEFAULT 'meeting',
+            title        TEXT NOT NULL DEFAULT '',
+            content      TEXT NOT NULL DEFAULT '',
+            created_at   INTEGER NOT NULL,
+            updated_at   INTEGER NOT NULL
+        )",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_note_reports_note ON note_reports(note_id, updated_at DESC)",
+        [],
+    );
     // Workspace (Teams) chat (issue #50). A workspace conversation is
     // server-authoritative: the local row is just a (tenant, scope, scope_id)
     // handle whose `remote_id` maps to the humla-cloud conversation record id.
@@ -1265,6 +1288,121 @@ fn map_summary_prompt(row: &rusqlite::Row) -> rusqlite::Result<SummaryPrompt> {
         workspace_id: row.get(5)?,
     })
 }
+
+// ── Multiple reports per note (#reports) ───────────────────────────────────
+// A note's generated summaries, each produced by a template (`preset`). The
+// first report a note gets also back-fills the legacy `notes.summary` column so
+// existing UI and exports keep working. Local-only (see the table comment).
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NoteReport {
+    pub id: String,
+    pub note_id: String,
+    pub preset: String,
+    pub title: String,
+    pub content: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+fn map_note_report(row: &rusqlite::Row) -> rusqlite::Result<NoteReport> {
+    Ok(NoteReport {
+        id: row.get(0)?,
+        note_id: row.get(1)?,
+        preset: row.get(2)?,
+        title: row.get(3)?,
+        content: row.get(4)?,
+        created_at: row.get(5)?,
+        updated_at: row.get(6)?,
+    })
+}
+
+/// All reports for a note, newest first.
+pub fn list_note_reports(conn: &Connection, note_id: &str) -> Result<Vec<NoteReport>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT id, note_id, preset, title, content, created_at, updated_at
+         FROM note_reports WHERE note_id = ?1 ORDER BY updated_at DESC",
+    )?;
+    let rows = stmt
+        .query_map(params![note_id], map_note_report)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+pub fn get_note_report(conn: &Connection, id: &str) -> Result<NoteReport> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT id, note_id, preset, title, content, created_at, updated_at
+         FROM note_reports WHERE id = ?1",
+    )?;
+    Ok(stmt.query_row(params![id], map_note_report)?)
+}
+
+/// Find a note's report for a given preset, if one exists. Used so regenerating
+/// the same template updates its report in place instead of piling up dupes.
+pub fn find_note_report_by_preset(
+    conn: &Connection,
+    note_id: &str,
+    preset: &str,
+) -> Result<Option<NoteReport>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT id, note_id, preset, title, content, created_at, updated_at
+         FROM note_reports WHERE note_id = ?1 AND preset = ?2 ORDER BY updated_at DESC LIMIT 1",
+    )?;
+    match stmt.query_row(params![note_id, preset], map_note_report) {
+        Ok(r) => Ok(Some(r)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+pub fn create_note_report(
+    conn: &Connection,
+    note_id: &str,
+    preset: &str,
+    title: &str,
+    content: &str,
+) -> Result<NoteReport> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = now_ms();
+    conn.execute(
+        "INSERT INTO note_reports (id, note_id, preset, title, content, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+        params![id, note_id, preset, title, content, now],
+    )?;
+    get_note_report(conn, &id)
+}
+
+pub fn update_note_report_content(conn: &Connection, id: &str, content: &str) -> Result<NoteReport> {
+    let now = now_ms();
+    conn.execute(
+        "UPDATE note_reports SET content = ?1, updated_at = ?2 WHERE id = ?3",
+        params![content, now, id],
+    )?;
+    get_note_report(conn, id)
+}
+
+pub fn delete_note_report(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("DELETE FROM note_reports WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+/// Upsert a report for (note, preset): update the existing one's content in
+/// place if present, else create it. Returns the report. This is what the
+/// summarize write-back calls so re-running a template refreshes its report.
+pub fn upsert_note_report(
+    conn: &Connection,
+    note_id: &str,
+    preset: &str,
+    title: &str,
+    content: &str,
+) -> Result<NoteReport> {
+    if let Some(existing) = find_note_report_by_preset(conn, note_id, preset)? {
+        update_note_report_content(conn, &existing.id, content)
+    } else {
+        create_note_report(conn, note_id, preset, title, content)
+    }
+}
+
 
 // ── AI chat (issue #46) ────────────────────────────────────────────────────
 // Persistence for the chat skeleton: conversations + messages. See the schema
