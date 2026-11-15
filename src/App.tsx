@@ -12,6 +12,7 @@ import { Home } from "./pages/Home";
 import { AllNotes } from "./pages/AllNotes";
 import { FollowUps } from "./pages/FollowUps";
 import { Customer } from "./pages/Customer";
+import { People, Person } from "./pages/People";
 import { Chat, FolderChat } from "./pages/Chat";
 import { Inbox } from "./pages/Inbox";
 import { Note } from "./pages/Note";
@@ -129,6 +130,8 @@ function AppRoutes() {
           <Route path="/all-notes" element={<AllNotes />} />
           <Route path="/follow-ups" element={<FollowUps />} />
           <Route path="/client/:id" element={<Customer />} />
+          <Route path="/people" element={<People />} />
+          <Route path="/person/:label" element={<Person />} />
           {/* Library-level destination, same tier as "All notes" (#95). */}
           <Route path="/chat" element={<Chat />} />
           <Route path="/inbox" element={<Inbox />} />

@@ -12,6 +12,7 @@ import {
   MessageCircle,
   Plus,
   Search,
+  Users,
   Settings as SettingsIcon,
   Trash2,
 } from "lucide-react";
@@ -251,6 +252,12 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
             icon={ListTodo}
             label="Follow-ups"
             active={location.pathname === "/follow-ups"}
+          />
+          <NavItem
+            to="/people"
+            icon={Users}
+            label="People"
+            active={location.pathname === "/people" || location.pathname.startsWith("/person/")}
           />
           <button
             type="button"
