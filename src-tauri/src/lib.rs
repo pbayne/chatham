@@ -27,6 +27,7 @@ mod google_gmail;
 mod gmail_read;
 mod gmail_auth;
 mod mic_detect;
+mod obsidian;
 mod triage;
 // Public so the `humla-mcp` binary (#172) can drive it. Everything below it —
 // `db`, `html_text` — stays private to the crate.
@@ -396,6 +397,10 @@ where
             commands::autopilot_tick,
             commands::mic_detect_status,
             commands::mic_detect_set_enabled,
+            commands::obsidian_status,
+            commands::obsidian_set_vault,
+            commands::obsidian_set_enabled,
+            commands::obsidian_backfill,
             commands::send_to_google_docs,
             commands::generate_followup_email,
             commands::inbox_status,

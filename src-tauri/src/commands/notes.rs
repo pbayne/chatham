@@ -95,6 +95,8 @@ pub fn notes_update(state: State<AppState>, id: String, patch: NotePatch) -> Res
     {
         let conn = state.db.lock();
         db::update_note(&conn, &id, &patch).map_err(err)?;
+        // Best-effort mirror to an Obsidian vault (no-op unless sync is on).
+        super::obsidian::sync_one_best_effort(&conn, &id);
     }
     state.sync.note_upserted(&id);
     Ok(())
@@ -105,6 +107,8 @@ pub fn notes_delete(state: State<AppState>, id: String) -> Result<(), String> {
     {
         let conn = state.db.lock();
         db::delete_note(&conn, &id).map_err(err)?;
+        // Best-effort removal of the vault copy (no-op unless sync is on).
+        super::obsidian::remove_one_best_effort(&conn, &id);
     }
     // Soft-delete (Trash): the row stays for restore, but the sync layer records
     // a tombstone so the deletion still propagates to other devices.

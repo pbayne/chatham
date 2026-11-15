@@ -366,6 +366,14 @@ export type MicDetectStatus = {
   supported: boolean;
 };
 
+// Obsidian vault sync (obsidian.rs). One-way mirror of notes to a vault folder.
+export type ObsidianStatus = {
+  enabled: boolean;
+  vault_path: string;
+  synced_count: number;
+  conflict_count: number;
+};
+
 export type UpcomingMeeting = {
   id: string;
   title: string;
@@ -508,6 +516,12 @@ export const ipc = {
   micDetectStatus: () => invoke<MicDetectStatus>("mic_detect_status"),
   micDetectSetEnabled: (enabled: boolean) =>
     invoke<boolean>("mic_detect_set_enabled", { enabled }),
+  // Obsidian vault sync (obsidian.rs). One-way mirror of notes to a vault folder.
+  obsidianStatus: () => invoke<ObsidianStatus>("obsidian_status"),
+  obsidianSetVault: (path: string) => invoke<number>("obsidian_set_vault", { path }),
+  obsidianSetEnabled: (enabled: boolean) =>
+    invoke<number>("obsidian_set_enabled", { enabled }),
+  obsidianBackfill: () => invoke<number>("obsidian_backfill"),
 
   // One-click export of a note to a formatted Google Doc. Returns the doc URL.
   sendToGoogleDocs: (

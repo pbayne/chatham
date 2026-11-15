@@ -349,6 +349,8 @@ async fn run_summary(app: AppHandle, note_id: String) -> anyhow::Result<()> {
         // Content-settled checkpoint (issue #47): a fresh summary is new
         // searchable material — refresh the Note's retrieval chunks.
         super::chat::reindex_note_content(&conn, &note_id);
+        // Mirror to an Obsidian vault if the user turned that on (no-op otherwise).
+        super::obsidian::sync_one_best_effort(&conn, &note_id);
     }
     // Embed the refreshed chunks off the request path (issue #48).
     tauri::async_runtime::spawn(super::chat::embed_note_bg(app.clone(), note_id.clone()));
