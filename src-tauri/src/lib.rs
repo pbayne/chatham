@@ -33,6 +33,7 @@ mod gmail_auth;
 mod mic_detect;
 mod obsidian;
 mod silence;
+mod voiceprints;
 mod triage;
 // Public so the `humla-mcp` binary (#172) can drive it. Everything below it —
 // `db`, `html_text` — stays private to the crate.

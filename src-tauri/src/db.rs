@@ -442,6 +442,27 @@ pub fn open(path: &Path) -> Result<Connection> {
         "CREATE INDEX IF NOT EXISTS idx_note_action_items_note ON note_action_items(note_id, sort_order)",
         [],
     );
+    // Speaker voiceprints (#voiceprints Phase B). An enrolled speaker: a name
+    // plus one or more acoustic embedding vectors (JSON-encoded Vec<f32>, one
+    // row per enrollment so repeat encounters refine the match). `workspace_id`
+    // scopes them like notes; `source_note_id` records where each print came
+    // from. Local-only and derived (a model can re-embed audio at any time), so
+    // like note_reports it stays off the sync wire.
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS voiceprints (
+            id             TEXT PRIMARY KEY,
+            name           TEXT NOT NULL,
+            embedding      TEXT NOT NULL,
+            workspace_id   TEXT NOT NULL DEFAULT '',
+            source_note_id TEXT NOT NULL DEFAULT '',
+            created_at     INTEGER NOT NULL
+        )",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_voiceprints_ws ON voiceprints(workspace_id, name)",
+        [],
+    );
     // Workspace (Teams) chat (issue #50). A workspace conversation is
     // server-authoritative: the local row is just a (tenant, scope, scope_id)
     // handle whose `remote_id` maps to the humla-cloud conversation record id.
