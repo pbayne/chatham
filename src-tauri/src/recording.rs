@@ -682,6 +682,12 @@ pub struct LiveCapture {
     // unlocked — a flaky network shouldn't block capture).
     pub lock_id: Option<String>,
     pub lock_heartbeat: Option<JoinHandle<()>>,
+    // Silence auto-stop (silence.rs): unix-seconds timestamp of the last speech
+    // chunk. Bumped on every chunk the sidecar emits (VAD-bounded, so a chunk
+    // means real speech); the watchdog spawned at recording_start reads it to
+    // decide when the room has been quiet long enough to stop. Shared so the
+    // stdout reader can bump it and the watchdog can read it concurrently.
+    pub last_activity: Arc<Mutex<i64>>,
     // Where the capture slot is in its stop sequence. See [`StopState`].
     pub stop: StopState,
     // A start has claimed the slot and is still running its checks; `note_id`

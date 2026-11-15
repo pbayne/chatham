@@ -40,3 +40,22 @@ export function renameSpeakerInTranscript(transcript: string, oldLabel: string, 
   const re = new RegExp(`^(\\s*)${escaped}: `, "gm");
   return transcript.replace(re, `$1${newLabel}: `);
 }
+
+// Whether a speaker label is a real, named person worth tracking in the People
+// directory — as opposed to a generic diarizer placeholder ("Speaker 1",
+// "Speaker 2"), the user themselves ("You", "Me"), or a system label. Named
+// people are what the directory organizes; placeholders are noise until the
+// user renames them.
+export function isNamedPerson(label: string): boolean {
+  const l = label.trim();
+  if (!l) return false;
+  // Generic diarizer placeholders: "Speaker 1", "Speaker", "Talker 2", etc.
+  if (/^(speaker|talker|unknown|participant|person)\b/i.test(l)) return false;
+  // The user's own first-person labels.
+  if (/^(you|me|myself)$/i.test(l)) return false;
+  // Pure numbers / single chars aren't names.
+  if (l.length < 2) return false;
+  if (/^\d+$/.test(l)) return false;
+  return true;
+}
+

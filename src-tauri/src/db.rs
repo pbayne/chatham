@@ -372,6 +372,76 @@ pub fn open(path: &Path) -> Result<Connection> {
         "UPDATE note_chunks SET chunker_version = 2 WHERE speakers != '' AND chunker_version < 2",
         [],
     );
+    // Calendar auto-record ("Autopilot", docs/prd-calendar-autorecord.md §6a).
+    // A note that Autopilot created for a calendar meeting carries the event's
+    // metadata here, in a sidecar table keyed by note_id rather than as columns
+    // on `notes`. Sidecar and not inline for two reasons: it keeps Google
+    // calendar data off the heavily-synced `notes` schema (this is local-only,
+    // like `speakers` — the server derives nothing from it), and it isolates an
+    // experimental feature so a later redesign drops one table instead of
+    // migrating live note columns. Absent row = a manually-started note.
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS note_calendar_meta (
+            note_id          TEXT PRIMARY KEY,
+            source_event_id  TEXT NOT NULL DEFAULT '',
+            source_calendar_id TEXT NOT NULL DEFAULT '',
+            organizer_email  TEXT NOT NULL DEFAULT '',
+            attendees_json   TEXT NOT NULL DEFAULT '[]',
+            meeting_url      TEXT NOT NULL DEFAULT '',
+            event_html_link  TEXT NOT NULL DEFAULT '',
+            scheduled_start  TEXT NOT NULL DEFAULT '',
+            scheduled_end    TEXT NOT NULL DEFAULT '',
+            created_at       INTEGER NOT NULL DEFAULT 0
+        )",
+        [],
+    );
+    // Multiple reports per note (#reports). A note can carry several
+    // template-based summaries — a Meeting report AND a Sales Call report AND a
+    // custom one — switchable in the UI, each regenerable/deletable. Sidecar
+    // table keyed by note_id, LOCAL-ONLY like note_calendar_meta: reports are
+    // regenerable derivatives of the transcript, so they stay off the synced
+    // `notes` schema and out of the cloud entity set. `preset` records which
+    // template produced the report; `title` is its display label.
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS note_reports (
+            id           TEXT PRIMARY KEY,
+            note_id      TEXT NOT NULL,
+            preset       TEXT NOT NULL DEFAULT 'meeting',
+            title        TEXT NOT NULL DEFAULT '',
+            content      TEXT NOT NULL DEFAULT '',
+            created_at   INTEGER NOT NULL,
+            updated_at   INTEGER NOT NULL
+        )",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_note_reports_note ON note_reports(note_id, updated_at DESC)",
+        [],
+    );
+    // Action items / follow-ups (#followups). Extracted from each meeting so the
+    // user has one running list of what they owe and what they're owed, across
+    // every note. Keyed by note_id; `owner` is who's on the hook (free text, ""
+    // = unassigned), `done` tracks completion, `due` is an optional ISO date.
+    // Local-only like note_reports — derived from the transcript, regenerable.
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS note_action_items (
+            id           TEXT PRIMARY KEY,
+            note_id      TEXT NOT NULL,
+            text         TEXT NOT NULL DEFAULT '',
+            owner        TEXT NOT NULL DEFAULT '',
+            due          TEXT NOT NULL DEFAULT '',
+            done         INTEGER NOT NULL DEFAULT 0,
+            source       TEXT NOT NULL DEFAULT 'auto',
+            sort_order   INTEGER NOT NULL DEFAULT 0,
+            created_at   INTEGER NOT NULL,
+            updated_at   INTEGER NOT NULL
+        )",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_note_action_items_note ON note_action_items(note_id, sort_order)",
+        [],
+    );
     // Workspace (Teams) chat (issue #50). A workspace conversation is
     // server-authoritative: the local row is just a (tenant, scope, scope_id)
     // handle whose `remote_id` maps to the humla-cloud conversation record id.
@@ -1072,6 +1142,98 @@ pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
+/// Calendar-meta row attached to an Autopilot-created note (see the
+/// `note_calendar_meta` migration). Serialized straight to the frontend so the
+/// note view can show "from: Weekly Sync · 3 attendees · [open in Calendar]".
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct NoteCalendarMeta {
+    pub note_id: String,
+    pub source_event_id: String,
+    pub source_calendar_id: String,
+    pub organizer_email: String,
+    /// JSON array of attendee objects, stored verbatim from the Calendar API map.
+    pub attendees_json: String,
+    pub meeting_url: String,
+    pub event_html_link: String,
+    pub scheduled_start: String,
+    pub scheduled_end: String,
+}
+
+/// Attach (or replace) calendar metadata for a note.
+pub fn set_note_calendar_meta(conn: &Connection, m: &NoteCalendarMeta) -> Result<()> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    conn.execute(
+        "INSERT INTO note_calendar_meta
+            (note_id, source_event_id, source_calendar_id, organizer_email,
+             attendees_json, meeting_url, event_html_link, scheduled_start,
+             scheduled_end, created_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
+         ON CONFLICT(note_id) DO UPDATE SET
+            source_event_id = excluded.source_event_id,
+            source_calendar_id = excluded.source_calendar_id,
+            organizer_email = excluded.organizer_email,
+            attendees_json = excluded.attendees_json,
+            meeting_url = excluded.meeting_url,
+            event_html_link = excluded.event_html_link,
+            scheduled_start = excluded.scheduled_start,
+            scheduled_end = excluded.scheduled_end",
+        params![
+            m.note_id,
+            m.source_event_id,
+            m.source_calendar_id,
+            m.organizer_email,
+            m.attendees_json,
+            m.meeting_url,
+            m.event_html_link,
+            m.scheduled_start,
+            m.scheduled_end,
+            now
+        ],
+    )?;
+    Ok(())
+}
+
+/// Read a note's calendar metadata, if it was created by Autopilot.
+pub fn get_note_calendar_meta(conn: &Connection, note_id: &str) -> Result<Option<NoteCalendarMeta>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT note_id, source_event_id, source_calendar_id, organizer_email,
+                attendees_json, meeting_url, event_html_link, scheduled_start,
+                scheduled_end
+         FROM note_calendar_meta WHERE note_id = ?1",
+    )?;
+    let row = stmt
+        .query_row(params![note_id], |r| {
+            Ok(NoteCalendarMeta {
+                note_id: r.get(0)?,
+                source_event_id: r.get(1)?,
+                source_calendar_id: r.get(2)?,
+                organizer_email: r.get(3)?,
+                attendees_json: r.get(4)?,
+                meeting_url: r.get(5)?,
+                event_html_link: r.get(6)?,
+                scheduled_start: r.get(7)?,
+                scheduled_end: r.get(8)?,
+            })
+        })
+        .optional()?;
+    Ok(row)
+}
+
+/// Whether we've already created a note for this calendar event — the
+/// idempotency guard that stops the scheduler double-recording one meeting
+/// across polls/restarts.
+pub fn note_exists_for_event(conn: &Connection, event_id: &str) -> Result<bool> {
+    let mut stmt =
+        conn.prepare_cached("SELECT 1 FROM note_calendar_meta WHERE source_event_id = ?1")?;
+    Ok(stmt
+        .query_row(params![event_id], |_| Ok(()))
+        .optional()?
+        .is_some())
+}
+
 pub fn delete_setting(conn: &Connection, key: &str) -> Result<()> {
     let mut stmt = conn.prepare_cached("DELETE FROM settings WHERE key = ?1")?;
     stmt.execute(params![key])?;
@@ -1170,6 +1332,276 @@ fn map_summary_prompt(row: &rusqlite::Row) -> rusqlite::Result<SummaryPrompt> {
         workspace_id: row.get(5)?,
     })
 }
+
+// ── Multiple reports per note (#reports) ───────────────────────────────────
+// A note's generated summaries, each produced by a template (`preset`). The
+// first report a note gets also back-fills the legacy `notes.summary` column so
+// existing UI and exports keep working. Local-only (see the table comment).
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NoteReport {
+    pub id: String,
+    pub note_id: String,
+    pub preset: String,
+    pub title: String,
+    pub content: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+fn map_note_report(row: &rusqlite::Row) -> rusqlite::Result<NoteReport> {
+    Ok(NoteReport {
+        id: row.get(0)?,
+        note_id: row.get(1)?,
+        preset: row.get(2)?,
+        title: row.get(3)?,
+        content: row.get(4)?,
+        created_at: row.get(5)?,
+        updated_at: row.get(6)?,
+    })
+}
+
+/// All reports for a note, newest first.
+pub fn list_note_reports(conn: &Connection, note_id: &str) -> Result<Vec<NoteReport>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT id, note_id, preset, title, content, created_at, updated_at
+         FROM note_reports WHERE note_id = ?1 ORDER BY updated_at DESC",
+    )?;
+    let rows = stmt
+        .query_map(params![note_id], map_note_report)?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+pub fn get_note_report(conn: &Connection, id: &str) -> Result<NoteReport> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT id, note_id, preset, title, content, created_at, updated_at
+         FROM note_reports WHERE id = ?1",
+    )?;
+    Ok(stmt.query_row(params![id], map_note_report)?)
+}
+
+/// Find a note's report for a given preset, if one exists. Used so regenerating
+/// the same template updates its report in place instead of piling up dupes.
+pub fn find_note_report_by_preset(
+    conn: &Connection,
+    note_id: &str,
+    preset: &str,
+) -> Result<Option<NoteReport>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT id, note_id, preset, title, content, created_at, updated_at
+         FROM note_reports WHERE note_id = ?1 AND preset = ?2 ORDER BY updated_at DESC LIMIT 1",
+    )?;
+    match stmt.query_row(params![note_id, preset], map_note_report) {
+        Ok(r) => Ok(Some(r)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+pub fn create_note_report(
+    conn: &Connection,
+    note_id: &str,
+    preset: &str,
+    title: &str,
+    content: &str,
+) -> Result<NoteReport> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = now_ms();
+    conn.execute(
+        "INSERT INTO note_reports (id, note_id, preset, title, content, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+        params![id, note_id, preset, title, content, now],
+    )?;
+    get_note_report(conn, &id)
+}
+
+pub fn update_note_report_content(conn: &Connection, id: &str, content: &str) -> Result<NoteReport> {
+    let now = now_ms();
+    conn.execute(
+        "UPDATE note_reports SET content = ?1, updated_at = ?2 WHERE id = ?3",
+        params![content, now, id],
+    )?;
+    get_note_report(conn, id)
+}
+
+pub fn delete_note_report(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("DELETE FROM note_reports WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+/// Upsert a report for (note, preset): update the existing one's content in
+/// place if present, else create it. Returns the report. This is what the
+/// summarize write-back calls so re-running a template refreshes its report.
+pub fn upsert_note_report(
+    conn: &Connection,
+    note_id: &str,
+    preset: &str,
+    title: &str,
+    content: &str,
+) -> Result<NoteReport> {
+    if let Some(existing) = find_note_report_by_preset(conn, note_id, preset)? {
+        update_note_report_content(conn, &existing.id, content)
+    } else {
+        create_note_report(conn, note_id, preset, title, content)
+    }
+}
+
+// ── Action items / follow-ups (#followups) ─────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionItem {
+    pub id: String,
+    pub note_id: String,
+    pub text: String,
+    pub owner: String,
+    pub due: String,
+    pub done: bool,
+    /// "auto" (LLM-extracted) or "user" (typed by hand).
+    pub source: String,
+    pub sort_order: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+/// One open action item joined with its note's title + client, for the
+/// cross-note Follow-ups view. `done` items are excluded by the query.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenActionItem {
+    #[serde(flatten)]
+    pub item: ActionItem,
+    pub note_title: String,
+    pub client_id: Option<String>,
+    pub client_name: Option<String>,
+    pub note_created_at: i64,
+}
+
+fn map_action_item(row: &rusqlite::Row) -> rusqlite::Result<ActionItem> {
+    Ok(ActionItem {
+        id: row.get(0)?,
+        note_id: row.get(1)?,
+        text: row.get(2)?,
+        owner: row.get(3)?,
+        due: row.get(4)?,
+        done: row.get::<_, i64>(5)? != 0,
+        source: row.get(6)?,
+        sort_order: row.get(7)?,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
+    })
+}
+
+const ACTION_COLS: &str = "id, note_id, text, owner, due, done, source, sort_order, created_at, updated_at";
+
+/// All action items for one note, in sort order.
+pub fn list_action_items(conn: &Connection, note_id: &str) -> Result<Vec<ActionItem>> {
+    let sql = format!("SELECT {ACTION_COLS} FROM note_action_items WHERE note_id = ?1 ORDER BY done, sort_order, created_at");
+    let mut stmt = conn.prepare_cached(&sql)?;
+    let rows = stmt.query_map(params![note_id], map_action_item)?.collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+pub fn get_action_item(conn: &Connection, id: &str) -> Result<ActionItem> {
+    let sql = format!("SELECT {ACTION_COLS} FROM note_action_items WHERE id = ?1");
+    let mut stmt = conn.prepare_cached(&sql)?;
+    Ok(stmt.query_row(params![id], map_action_item)?)
+}
+
+pub fn create_action_item(
+    conn: &Connection,
+    note_id: &str,
+    text: &str,
+    owner: &str,
+    due: &str,
+    source: &str,
+) -> Result<ActionItem> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = now_ms();
+    // Append at the end: max existing sort_order + 1.
+    let next_order: i64 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM note_action_items WHERE note_id = ?1",
+            params![note_id],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    conn.execute(
+        "INSERT INTO note_action_items (id, note_id, text, owner, due, done, source, sort_order, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7, ?8, ?8)",
+        params![id, note_id, text, owner, due, source, next_order, now],
+    )?;
+    get_action_item(conn, &id)
+}
+
+/// Update the editable fields of an action item. Any `None` is left unchanged.
+pub fn update_action_item(
+    conn: &Connection,
+    id: &str,
+    text: Option<&str>,
+    owner: Option<&str>,
+    due: Option<&str>,
+    done: Option<bool>,
+) -> Result<ActionItem> {
+    let now = now_ms();
+    if let Some(t) = text {
+        conn.execute("UPDATE note_action_items SET text = ?1, updated_at = ?2 WHERE id = ?3", params![t, now, id])?;
+    }
+    if let Some(o) = owner {
+        conn.execute("UPDATE note_action_items SET owner = ?1, updated_at = ?2 WHERE id = ?3", params![o, now, id])?;
+    }
+    if let Some(d) = due {
+        conn.execute("UPDATE note_action_items SET due = ?1, updated_at = ?2 WHERE id = ?3", params![d, now, id])?;
+    }
+    if let Some(dn) = done {
+        conn.execute("UPDATE note_action_items SET done = ?1, updated_at = ?2 WHERE id = ?3", params![dn as i64, now, id])?;
+    }
+    get_action_item(conn, id)
+}
+
+pub fn delete_action_item(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("DELETE FROM note_action_items WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+/// Whether a note already has auto-extracted action items (so a re-summarize
+/// doesn't duplicate them — we only auto-extract once, then the user owns them).
+pub fn note_has_auto_action_items(conn: &Connection, note_id: &str) -> Result<bool> {
+    let n: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM note_action_items WHERE note_id = ?1 AND source = 'auto'",
+        params![note_id],
+        |r| r.get(0),
+    )?;
+    Ok(n > 0)
+}
+
+/// Every open (not-done) action item across all notes in a workspace, joined
+/// with note title + client. Newest notes first. Powers the Follow-ups view.
+pub fn list_open_action_items(conn: &Connection, workspace: &str) -> Result<Vec<OpenActionItem>> {
+    let sql = format!(
+        "SELECT {} , n.title, n.client_id, c.name, n.created_at
+         FROM note_action_items a
+         JOIN notes n ON n.id = a.note_id
+         LEFT JOIN clients c ON c.id = n.client_id
+         WHERE a.done = 0 AND n.deleted_at IS NULL AND n.workspace_id = ?1
+         ORDER BY n.created_at DESC, a.sort_order",
+        ACTION_COLS.split(", ").map(|c| format!("a.{c}")).collect::<Vec<_>>().join(", ")
+    );
+    let mut stmt = conn.prepare_cached(&sql)?;
+    let rows = stmt
+        .query_map(params![workspace], |row| {
+            let item = map_action_item(row)?;
+            Ok(OpenActionItem {
+                item,
+                note_title: row.get(10)?,
+                client_id: row.get(11)?,
+                client_name: row.get(12)?,
+                note_created_at: row.get(13)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
 
 // ── AI chat (issue #46) ────────────────────────────────────────────────────
 // Persistence for the chat skeleton: conversations + messages. See the schema

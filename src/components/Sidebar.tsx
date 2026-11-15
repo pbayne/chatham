@@ -7,9 +7,12 @@ import {
   Folder as FolderIcon,
   FolderPlus,
   Home as HomeIcon,
+  Inbox,
+  ListTodo,
   MessageCircle,
   Plus,
   Search,
+  Users,
   Settings as SettingsIcon,
   Trash2,
 } from "lucide-react";
@@ -129,7 +132,8 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
   const noteMatches = (n: Note) =>
     n.title.toLowerCase().includes(needle) ||
     n.body.toLowerCase().includes(needle) ||
-    n.transcript.toLowerCase().includes(needle);
+    n.transcript.toLowerCase().includes(needle) ||
+    n.summary.toLowerCase().includes(needle);
 
   // When searching, surface a flat list of all matching notes regardless
   // of folder — folder context shows as a small chip on each row. When
@@ -236,6 +240,24 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
             icon={MessageCircle}
             label="Chat"
             active={location.pathname === "/chat"}
+          />
+          <NavItem
+            to="/inbox"
+            icon={Inbox}
+            label="Inbox"
+            active={location.pathname === "/inbox"}
+          />
+          <NavItem
+            to="/follow-ups"
+            icon={ListTodo}
+            label="Follow-ups"
+            active={location.pathname === "/follow-ups"}
+          />
+          <NavItem
+            to="/people"
+            icon={Users}
+            label="People"
+            active={location.pathname === "/people" || location.pathname.startsWith("/person/")}
           />
           <button
             type="button"

@@ -1,5 +1,29 @@
 import { describe, it, expect } from "vitest";
-import { extractSpeakerLabels, renameSpeakerInTranscript, stripSpeakerLabels } from "./speakers";
+import { extractSpeakerLabels, renameSpeakerInTranscript, stripSpeakerLabels, isNamedPerson } from "./speakers";
+
+describe("isNamedPerson", () => {
+  it("accepts real names", () => {
+    expect(isNamedPerson("Hege")).toBe(true);
+    expect(isNamedPerson("Michael Wilhelmsen")).toBe(true);
+    expect(isNamedPerson("Dr. Ng")).toBe(true);
+  });
+  it("rejects diarizer placeholders and self-labels", () => {
+    expect(isNamedPerson("Speaker 1")).toBe(false);
+    expect(isNamedPerson("speaker 2")).toBe(false);
+    expect(isNamedPerson("Talker 3")).toBe(false);
+    expect(isNamedPerson("Unknown")).toBe(false);
+    expect(isNamedPerson("Participant 4")).toBe(false);
+    expect(isNamedPerson("You")).toBe(false);
+    expect(isNamedPerson("me")).toBe(false);
+  });
+  it("rejects empties, single chars, and pure numbers", () => {
+    expect(isNamedPerson("")).toBe(false);
+    expect(isNamedPerson("  ")).toBe(false);
+    expect(isNamedPerson("A")).toBe(false);
+    expect(isNamedPerson("42")).toBe(false);
+  });
+});
+
 
 describe("extractSpeakerLabels", () => {
   it("returns [] for an empty transcript", () => {

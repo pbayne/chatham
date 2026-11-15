@@ -18,7 +18,11 @@ cd "$(dirname "$0")/.."
 if [[ -f .env.notarise ]]; then
   # shellcheck disable=SC1091
   source .env.notarise
-  if [[ ! -f "${APPLE_API_KEY_PATH:-}" ]]; then
+  # Apple notarisation is OPTIONAL — only validate the key path when the user
+  # actually configured notarisation. Updater signing (TAURI_SIGNING_*) works
+  # on its own, producing a signed build + updater artifacts without an Apple
+  # key (recipients just need right-click → Open on first launch).
+  if [[ -n "${APPLE_API_KEY_PATH:-}" && ! -f "${APPLE_API_KEY_PATH}" ]]; then
     echo "error: APPLE_API_KEY_PATH=$APPLE_API_KEY_PATH does not exist" >&2
     exit 1
   fi
@@ -26,8 +30,16 @@ if [[ -f .env.notarise ]]; then
     echo "error: TAURI_SIGNING_PRIVATE_KEY=$TAURI_SIGNING_PRIVATE_KEY does not exist" >&2
     exit 1
   fi
-  echo "notarisation: enabled (key $APPLE_API_KEY)"
-  echo "updater signing: enabled"
+  if [[ -n "${APPLE_API_KEY:-}" ]]; then
+    echo "notarisation: enabled (key $APPLE_API_KEY)"
+  else
+    echo "notarisation: skipped (no APPLE_API_KEY in .env.notarise)"
+  fi
+  if [[ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+    echo "updater signing: enabled"
+  else
+    echo "updater signing: skipped (no TAURI_SIGNING_PRIVATE_KEY)"
+  fi
 else
   echo "notarisation: skipped (no .env.notarise)"
   echo "updater signing: skipped"

@@ -21,6 +21,7 @@ use tokio::sync::Semaphore;
 // submodules via `super::` / `crate::`.
 mod api_keys;
 mod assets;
+mod autopilot;
 mod chat;
 mod clients;
 mod copilot;
@@ -28,6 +29,9 @@ mod copilot;
 // creates a note for a headless recording.
 pub(crate) mod cloud;
 pub(crate) mod cloud_auth;
+mod customer;
+mod reports;
+mod action_items;
 mod export;
 // Live cloud-sync worker glue. Behind the `cloud` feature; `pub` so `run()` can
 // reach `cloud_worker::install`. Not a #[tauri::command] group, so no glob
@@ -35,10 +39,14 @@ mod export;
 #[cfg(feature = "cloud")]
 pub mod cloud_worker;
 mod folders;
+mod google_export;
+mod inbox;
 mod local_llm;
 mod mcp;
 mod menubar;
 mod models;
+mod obsidian;
+mod silence;
 pub(crate) mod notes;
 mod permissions;
 mod settings;
@@ -50,6 +58,7 @@ mod transcription_config;
 mod webhook;
 pub use api_keys::*;
 pub use assets::*;
+pub use autopilot::*;
 pub use chat::*;
 pub use clients::*;
 pub use copilot::*;
@@ -57,10 +66,17 @@ pub use cloud::*;
 pub use cloud_auth::*;
 pub use export::*;
 pub use folders::*;
+pub use google_export::*;
+pub use inbox::*;
 pub use local_llm::*;
 pub use mcp::*;
 pub use menubar::*;
 pub use models::*;
+pub use obsidian::*;
+pub use silence::*;
+pub use customer::*;
+pub use reports::*;
+pub use action_items::*;
 pub use notes::*;
 pub use permissions::*;
 pub use settings::*;
@@ -2729,7 +2745,19 @@ pub async fn recording_start(
         // this one's log. `mode` is decided once, here — flipping the setting
         // mid-meeting changes nothing about a recording already running.
         s.sink = Arc::new(CaptureSink::new(sink_mode));
+        // Silence auto-stop: start the activity clock at "now" so the quiet gap
+        // is measured from the recording's start, not from the epoch.
+        *s.last_activity.lock() = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
     }
+
+    // Silence auto-stop watchdog: if enabled, poll the activity clock and press
+    // stop once the room has been quiet past the threshold. Spawned per capture;
+    // it exits on its own when the recording is no longer this note (stop
+    // happened) so it never outlives its session. No-op when the setting is off.
+    crate::silence::spawn_watchdog(app.clone(), note_id.clone());
 
     // Snapshot any existing transcript so diarize_and_apply can prepend it
     // to this session's output. Resuming a recording on a note that already
@@ -7457,6 +7485,16 @@ async fn transcribe_chunk(
         db::append_transcript(&conn, &note_id, &trimmed, " ")?
     };
     sink.trail(source).lock().push(&trimmed);
+    // Silence auto-stop: a VAD-bounded chunk landed = real speech just now.
+    // Bump the activity clock the watchdog reads (best-effort; no lock contention
+    // matters here since it's a single i64 write).
+    {
+        let s = state.recording.lock();
+        *s.last_activity.lock() = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+    }
     let _ = app.emit(
         "transcript_replaced",
         TranscriptPayload {

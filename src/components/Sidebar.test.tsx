@@ -246,3 +246,33 @@ describe("Sidebar folder chat (#110)", () => {
     expect(useNotesStore.getState().folders).toHaveLength(1);
   });
 });
+
+describe("Sidebar search", () => {
+  it("matches a note whose term is only in its summary", async () => {
+    mockTauri();
+    const note = makeNote("n1", "Weekly sync");
+    note.summary = "We agreed to send the Fisher Investments proposal by Friday.";
+    useNotesStore.setState({ notes: [note], folders: [] });
+    renderSidebar();
+
+    const input = screen.getByPlaceholderText("Search notes");
+    fireEvent.change(input, { target: { value: "Fisher" } });
+
+    // The note surfaces by its title even though the match was in the summary.
+    expect(await screen.findByText("Weekly sync")).toBeInTheDocument();
+  });
+
+  it("shows no results when the term is nowhere", async () => {
+    mockTauri();
+    const note = makeNote("n1", "Weekly sync");
+    note.summary = "Nothing relevant here.";
+    useNotesStore.setState({ notes: [note], folders: [] });
+    renderSidebar();
+
+    fireEvent.change(screen.getByPlaceholderText("Search notes"), {
+      target: { value: "zzzznomatch" },
+    });
+    await waitFor(() => expect(screen.queryByText("Weekly sync")).not.toBeInTheDocument());
+  });
+});
+

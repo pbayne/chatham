@@ -5,6 +5,9 @@ import { useNotesStore } from "../lib/store";
 import { indexById, matchesFilter, NO_FILTER, type NoteFilter } from "../lib/noteList";
 import { NoteCard } from "../components/NoteCard";
 import { NoteFilters } from "../components/NoteFilters";
+import { BulkActionBar } from "../components/BulkActionBar";
+import { useNoteSelection } from "../lib/useNoteSelection";
+import { Modal } from "./settings/components/Modal";
 import { useCloudStore } from "../lib/cloud";
 
 export function Folder() {
@@ -16,6 +19,7 @@ export function Folder() {
   const recorded = useNotesStore((s) => s.recordedNoteIds);
   const myId = useCloudStore((s) => s.status.user?.id ?? null);
   const [filter, setFilter] = useState<NoteFilter>(NO_FILTER);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   // A filter narrowing one folder says nothing about the next one, and carried
   // across it reads as an empty folder rather than as a filter.
@@ -37,6 +41,23 @@ export function Folder() {
       ),
     [folderNotes, filter, recorded, myId],
   );
+  const orderedIds = useMemo(() => filtered.map((n) => n.id), [filtered]);
+
+  const {
+    selected,
+    busy,
+    onSelectRow,
+    clearSelection,
+    doDelete,
+    doMove,
+    doTranscribe,
+    doSummarize,
+  } = useNoteSelection(orderedIds, notes);
+
+  async function confirmedDelete() {
+    await doDelete();
+    setConfirmDelete(false);
+  }
 
   if (!folder) {
     return (
@@ -102,12 +123,54 @@ export function Folder() {
                   client={n.client_id ? clientById.get(n.client_id) : undefined}
                   recorded={recorded.has(n.id)}
                   showFolder={false}
+                  selected={selected.has(n.id)}
+                  selectionActive={selected.size > 0}
+                  onSelect={(e) => onSelectRow(n.id, e)}
                 />
               ))}
             </ul>
           </div>
         )}
       </div>
+
+      {selected.size >= 1 && (
+        <BulkActionBar
+          count={selected.size}
+          folders={folders}
+          busy={busy}
+          onDelete={() => setConfirmDelete(true)}
+          onMove={doMove}
+          onTranscribe={doTranscribe}
+          onSummarize={doSummarize}
+          onCancel={clearSelection}
+        />
+      )}
+
+      <Modal
+        open={confirmDelete}
+        onClose={() => {
+          if (!busy) setConfirmDelete(false);
+        }}
+        title="Delete notes"
+      >
+        <p className="text-[14px] text-[var(--color-text)]">
+          Move {selected.size} {selected.size === 1 ? "note" : "notes"} to Trash? You can restore
+          {selected.size === 1 ? " it" : " them"} later.
+        </p>
+        <div className="flex justify-end gap-2 mt-5">
+          <button className="nd-btn" onClick={() => setConfirmDelete(false)} disabled={busy}>
+            Cancel
+          </button>
+          <button
+            className="nd-btn"
+            style={{ color: "var(--color-danger)" }}
+            onClick={confirmedDelete}
+            disabled={busy}
+          >
+            Delete
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

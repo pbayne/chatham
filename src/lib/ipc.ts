@@ -406,6 +406,140 @@ export type StoredAudioStats = {
   noteIds: string[];
 };
 
+// Calendar auto-record ("Autopilot"). Mirrors the structs in
+// src-tauri/src/commands/autopilot.rs.
+export type AutopilotMode = "off" | "ask" | "auto";
+
+export type AutopilotStatus = {
+  mode: AutopilotMode;
+  connected: boolean;
+  stop_tail_secs: number;
+};
+
+// Mic-based meeting detection (mic_detect.rs). `supported` is false below
+// macOS 14, where the reliable per-app mic signal doesn't exist.
+export type MicDetectStatus = {
+  enabled: boolean;
+  supported: boolean;
+};
+
+// Obsidian vault sync (obsidian.rs). One-way mirror of notes to a vault folder.
+export type ObsidianStatus = {
+  enabled: boolean;
+  vault_path: string;
+  synced_count: number;
+  conflict_count: number;
+};
+
+// Silence auto-stop (silence.rs).
+export type SilenceStatus = {
+  enabled: boolean;
+  minutes: number;
+};
+
+// Multiple reports per note (#reports). Each is a template-tagged summary.
+export type NoteReport = {
+  id: string;
+  note_id: string;
+  preset: string;
+  title: string;
+  content: string;
+  created_at: number;
+  updated_at: number;
+};
+
+// Action items / follow-ups (#followups).
+export type NoteActionItem = {
+  id: string;
+  note_id: string;
+  text: string;
+  owner: string;
+  due: string;
+  done: boolean;
+  source: string;
+  sort_order: number;
+  created_at: number;
+  updated_at: number;
+};
+
+// One open action item joined with its note + client (Follow-ups view).
+export type OpenActionItem = NoteActionItem & {
+  note_title: string;
+  client_id: string | null;
+  client_name: string | null;
+  note_created_at: number;
+};
+
+export type UpcomingMeeting = {
+  id: string;
+  title: string;
+  start: string | null;
+  end: string | null;
+  meeting_url: string | null;
+  attendee_count: number;
+  recordable: boolean;
+};
+
+// Payload of the `autopilot://prompt-record` event emitted in Ask mode.
+export type AutopilotPrompt = {
+  event_id: string;
+  title: string;
+  meeting_url: string | null;
+  start: string | null;
+  end: string | null;
+};
+
+// Result of send_to_google_docs.
+export type DocsExportResult = {
+  url: string;
+};
+
+// Result of generate_followup_email — the staged Gmail draft + a preview.
+export type FollowupResult = {
+  draft_id: string;
+  gmail_url: string;
+  subject: string;
+  body: string;
+  recipients: string[];
+};
+
+// ─── Inbox Triage ───────────────────────────────────────────────────────────
+// Mirrors the structs in src-tauri/src/commands/inbox.rs. A triaged email is a
+// card on the board; the user approves one to stage a Gmail draft reply.
+export type TriageCategory = "action_needed" | "follow_up" | "fyi" | "noise";
+
+export type InboxMessage = {
+  id: string;
+  thread_id: string;
+  from: string;
+  to: string;
+  subject: string;
+  date: string;
+  snippet: string;
+  body: string;
+};
+
+export type ActionItem = {
+  text: string;
+  done: boolean;
+};
+
+export type TriageCard = {
+  message: InboxMessage;
+  category: TriageCategory;
+  reason: string;
+  action_items: ActionItem[];
+  suggested_reply: string;
+  draft_id: string | null;
+};
+
+export type InboxStatus = {
+  connected: boolean;
+  provider: string;
+  auth_mode: string;
+  triaged_count: number;
+};
+
 export const ipc = {
   listNotes: () => invoke<Note[]>("notes_list"),
   getNote: (id: string) => invoke<Note>("notes_get", { id }),
@@ -464,6 +598,87 @@ export const ipc = {
    *  first (`flushEdits`), or the receiver gets an older copy. */
   webhookSendNote: (noteId: string) => invoke<void>("webhook_send_note", { noteId }),
   setSetting: (key: SettingsKey, value: string) => invoke<void>("settings_set", { key, value }),
+
+  // Calendar auto-record ("Autopilot"). See src-tauri/src/autopilot.rs.
+  autopilotStatus: () => invoke<AutopilotStatus>("autopilot_status"),
+  autopilotSetMode: (mode: AutopilotMode) =>
+    invoke<AutopilotMode>("autopilot_set_mode", { mode }),
+  autopilotSetStopTail: (secs: number) =>
+    invoke<void>("autopilot_set_stop_tail", { secs }),
+  autopilotConnectGoogle: () => invoke<void>("autopilot_connect_google"),
+  autopilotDisconnectGoogle: () => invoke<void>("autopilot_disconnect_google"),
+  autopilotUpcoming: () => invoke<UpcomingMeeting[]>("autopilot_upcoming"),
+  autopilotTick: () => invoke<void>("autopilot_tick"),
+  // Mic-based meeting detection (mic_detect.rs). Shares the autopilot mode.
+  micDetectStatus: () => invoke<MicDetectStatus>("mic_detect_status"),
+  micDetectSetEnabled: (enabled: boolean) =>
+    invoke<boolean>("mic_detect_set_enabled", { enabled }),
+  // Obsidian vault sync (obsidian.rs). One-way mirror of notes to a vault folder.
+  obsidianStatus: () => invoke<ObsidianStatus>("obsidian_status"),
+  obsidianSetVault: (path: string) => invoke<number>("obsidian_set_vault", { path }),
+  obsidianSetEnabled: (enabled: boolean) =>
+    invoke<number>("obsidian_set_enabled", { enabled }),
+  obsidianBackfill: () => invoke<number>("obsidian_backfill"),
+  // Silence auto-stop (silence.rs). Stop a recording after N minutes of quiet.
+  silenceStatus: () => invoke<SilenceStatus>("silence_status"),
+  silenceSetEnabled: (enabled: boolean) => invoke<void>("silence_set_enabled", { enabled }),
+  silenceSetMinutes: (minutes: number) => invoke<number>("silence_set_minutes", { minutes }),
+  // Auto customer tagging (customer.rs). Learns the account from each meeting.
+  autoCustomerTaggingStatus: () => invoke<boolean>("auto_customer_tagging_status"),
+  autoCustomerTaggingSet: (enabled: boolean) => invoke<void>("auto_customer_tagging_set", { enabled }),
+  // Multiple reports per note (#reports). Template-tagged summaries.
+  noteReportsList: (noteId: string) => invoke<NoteReport[]>("note_reports_list", { noteId }),
+  noteReportsDelete: (id: string) => invoke<void>("note_reports_delete", { id }),
+  noteReportsSetActive: (id: string) => invoke<void>("note_reports_set_active", { id }),
+  // Template suggestion (#reports): model picks the likely call-type preset.
+  suggestTemplate: (noteId: string) => invoke<string | null>("suggest_template", { noteId }),
+  // Action items / follow-ups (#followups).
+  actionItemsList: (noteId: string) => invoke<NoteActionItem[]>("action_items_list", { noteId }),
+  actionItemsOpen: () => invoke<OpenActionItem[]>("action_items_open"),
+  actionItemsCreate: (noteId: string, text: string, owner?: string, due?: string) =>
+    invoke<NoteActionItem>("action_items_create", { noteId, text, owner, due }),
+  actionItemsUpdate: (
+    id: string,
+    patch: { text?: string; owner?: string; due?: string; done?: boolean },
+  ) => invoke<NoteActionItem>("action_items_update", { id, ...patch }),
+  actionItemsDelete: (id: string) => invoke<void>("action_items_delete", { id }),
+
+  // One-click export of a note to a formatted Google Doc. Returns the doc URL.
+  sendToGoogleDocs: (
+    noteId: string,
+    includeSummary: boolean,
+    includeTranscript: boolean,
+  ) =>
+    invoke<DocsExportResult>("send_to_google_docs", {
+      noteId,
+      includeSummary,
+      includeTranscript,
+    }),
+  // Draft an after-call follow-up email (action items / next steps) with the
+  // local LLM and stage it as a Gmail draft. Returns the draft + a Gmail link.
+  generateFollowupEmail: (noteId: string) =>
+    invoke<FollowupResult>("generate_followup_email", { noteId }),
+
+  // Inbox Triage. See src-tauri/src/commands/inbox.rs.
+  inboxStatus: () => invoke<InboxStatus>("inbox_status"),
+  // Fetch unread, classify the new ones; returns how many were triaged.
+  inboxTriageNow: () => invoke<number>("inbox_triage_now"),
+  inboxList: (category?: TriageCategory) =>
+    invoke<TriageCard[]>("inbox_list", { category: category ?? null }),
+  // Stage a (possibly edited) reply as a Gmail draft. Returns a Gmail link.
+  inboxApproveDraft: (messageId: string, to: string, subject: string, body: string) =>
+    invoke<string>("inbox_approve_draft", { messageId, to, subject, body }),
+  // Replace a card's action items (add / edit / check off / delete).
+  inboxSetActionItems: (messageId: string, items: ActionItem[]) =>
+    invoke<void>("inbox_set_action_items", { messageId, items }),
+  inboxSetProvider: (provider: "local" | "openai" | "anthropic") =>
+    invoke<string>("inbox_set_provider", { provider }),
+  // Switch Gmail auth: "oauth" (Humla's own) or "gcloud" (machine ADC — works
+  // on corp accounts that block third-party OAuth consents).
+  inboxSetAuthMode: (mode: "oauth" | "gcloud") =>
+    invoke<string>("inbox_set_auth_mode", { mode }),
+  inboxClear: (messageId?: string) =>
+    invoke<void>("inbox_clear", { messageId: messageId ?? null }),
   /** Report one anonymous milestone. Fire-and-forget: the backend gates on the
    *  setting and on a once-per-install marker, so callers may call it freely and
    *  never need to know whether anything was sent. */
@@ -1148,6 +1363,23 @@ export function onNotesChanged(cb: () => void): Promise<UnlistenFn> {
 // fires.) See `resolveHotkeyAction` and `src-tauri/src/menubar.rs`.
 export function onToggleRecord(cb: () => void): Promise<UnlistenFn> {
   return listen("menubar://toggle-record", () => cb());
+}
+
+// Ask-mode Autopilot: a recordable meeting is starting. The payload carries the
+// title + meeting URL so the UI can offer Record / Skip. The user acting on it
+// drives the normal recording path (create note, recording_start) itself.
+export function onAutopilotPrompt(
+  cb: (prompt: AutopilotPrompt) => void,
+): Promise<UnlistenFn> {
+  return listen<AutopilotPrompt>("autopilot://prompt-record", (e) => cb(e.payload));
+}
+
+// Auto-mode: Autopilot just started a recording for a calendar meeting, so the
+// UI can refresh / navigate to the new note if it wants.
+export function onAutopilotRecordingStarted(
+  cb: (noteId: string) => void,
+): Promise<UnlistenFn> {
+  return listen<string>("autopilot://recording-started", (e) => cb(e.payload));
 }
 
 // Coarse sync state from the cloud worker, for the sidebar indicator.

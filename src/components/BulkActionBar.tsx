@@ -1,4 +1,4 @@
-import { FolderInput, Trash2, X } from "lucide-react";
+import { FileText, FolderInput, Sparkles, Trash2, X } from "lucide-react";
 import { type Folder } from "../lib/ipc";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "./ui/Menu";
 
@@ -12,6 +12,8 @@ export function BulkActionBar({
   busy,
   onDelete,
   onMove,
+  onTranscribe,
+  onSummarize,
   onCancel,
 }: {
   count: number;
@@ -19,6 +21,8 @@ export function BulkActionBar({
   busy: boolean;
   onDelete: () => void;
   onMove: (folderId: string | null) => void;
+  onTranscribe: () => void;
+  onSummarize: () => void;
   onCancel: () => void;
 }) {
   return (
@@ -30,6 +34,26 @@ export function BulkActionBar({
         >
           {count} selected
         </span>
+
+        <button
+          onClick={onTranscribe}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] text-[var(--color-text)] hover:bg-[var(--color-pill-hover)] transition-colors disabled:opacity-50"
+          title="Transcribe recorded audio for the selected notes"
+        >
+          <FileText size={14} strokeWidth={1.7} />
+          Transcribe
+        </button>
+
+        <button
+          onClick={onSummarize}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] text-[var(--color-text)] hover:bg-[var(--color-pill-hover)] transition-colors disabled:opacity-50"
+          title="Summarize the selected notes"
+        >
+          <Sparkles size={14} strokeWidth={1.7} />
+          Summarize
+        </button>
 
         <button
           onClick={onDelete}

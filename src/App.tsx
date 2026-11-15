@@ -10,7 +10,11 @@ import { useEffect, useState } from "react";
 import { Layout } from "./components/Layout";
 import { Home } from "./pages/Home";
 import { AllNotes } from "./pages/AllNotes";
+import { FollowUps } from "./pages/FollowUps";
+import { Customer } from "./pages/Customer";
+import { People, Person } from "./pages/People";
 import { Chat, FolderChat } from "./pages/Chat";
+import { Inbox } from "./pages/Inbox";
 import { Note } from "./pages/Note";
 import { Folder } from "./pages/Folder";
 import { Trash } from "./pages/Trash";
@@ -126,8 +130,13 @@ function AppRoutes() {
         <Route element={<Layout />}>
           <Route path="/" element={<Home key={location.key} />} />
           <Route path="/all-notes" element={<AllNotes />} />
+          <Route path="/follow-ups" element={<FollowUps />} />
+          <Route path="/client/:id" element={<Customer />} />
+          <Route path="/people" element={<People />} />
+          <Route path="/person/:label" element={<Person />} />
           {/* Library-level destination, same tier as "All notes" (#95). */}
           <Route path="/chat" element={<Chat />} />
+          <Route path="/inbox" element={<Inbox />} />
           <Route path="/note/:id" element={<Note />} />
           <Route path="/folder/:id" element={<Folder />} />
           {/* The same front door, narrowed to one folder (#110). Nested under the

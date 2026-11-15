@@ -23,6 +23,17 @@ mod custom_endpoint;
 mod chat;
 mod embed;
 mod import_date;
+mod google_calendar;
+mod oauth_loopback;
+mod autopilot;
+mod google_docs;
+mod google_gmail;
+mod gmail_read;
+mod gmail_auth;
+mod mic_detect;
+mod obsidian;
+mod silence;
+mod triage;
 // Public so the `humla-mcp` binary (#172) can drive it. Everything below it —
 // `db`, `html_text` — stays private to the crate.
 pub mod mcp;
@@ -85,6 +96,11 @@ pub struct AppState {
     /// on this note or another. Its only job is to keep a second Transcribe
     /// press on the *same* note from replaying the same take twice.
     pub transcribing: Arc<Mutex<std::collections::HashSet<String>>>,
+    /// Calendar auto-record: Google connection + scheduler state (autopilot.rs).
+    pub autopilot: autopilot::Autopilot,
+    /// Mic-based meeting detection watcher (mic_detect.rs). Guards against a
+    /// second watcher and lets the settings toggle (re)start it.
+    pub mic_watcher: mic_detect::MicWatcher,
     /// The Copilot CLI while it runs, and where it was found (#227).
     pub copilot: Arc<copilot::Runtime>,
 }
@@ -218,6 +234,8 @@ where
                 unify_locks: Arc::new(Mutex::new(std::collections::HashMap::new())),
                 chat_cancels: Arc::new(Mutex::new(std::collections::HashMap::new())),
                 transcribing: Arc::new(Mutex::new(std::collections::HashSet::new())),
+                autopilot: autopilot::Autopilot::default(),
+                mic_watcher: mic_detect::MicWatcher::default(),
                 copilot: Arc::new(copilot::Runtime::default()),
             });
             let menu = build_menu(app.handle())?;
@@ -317,6 +335,26 @@ where
                     commands::embed_backfill(app_handle).await;
                 });
             }
+            // Calendar auto-record scheduler. Restores any saved Google
+            // connection and polls the calendar on a timer. A no-op while the
+            // mode is Off or no Google account is connected, so it's safe to
+            // always spawn.
+            autopilot::spawn(app.handle().clone());
+            // Mic-based meeting detection. Starts the native mic-monitor watcher
+            // only if the user enabled it (opt-in) and the OS supports it
+            // (macOS 14+). Safe to always call — it self-gates and is a no-op
+            // otherwise. The settings toggle calls start_watcher again on enable.
+            {
+                let app_handle = app.handle().clone();
+                let enabled = {
+                    let state = app_handle.state::<AppState>();
+                    let conn = state.db.lock();
+                    mic_detect::is_enabled(&conn)
+                };
+                if enabled {
+                    mic_detect::start_watcher(app_handle);
+                }
+            }
             notifications::install(app.handle());
             // Tray + global hotkey. Last in setup so a failure here can't stop
             // the app from coming up — the menu bar is an extra surface, not a
@@ -373,6 +411,43 @@ where
             commands::notes_set_client,
             commands::settings_get,
             commands::settings_set,
+            commands::autopilot_status,
+            commands::autopilot_set_mode,
+            commands::autopilot_set_stop_tail,
+            commands::autopilot_connect_google,
+            commands::autopilot_disconnect_google,
+            commands::autopilot_upcoming,
+            commands::autopilot_tick,
+            commands::mic_detect_status,
+            commands::mic_detect_set_enabled,
+            commands::obsidian_status,
+            commands::obsidian_set_vault,
+            commands::obsidian_set_enabled,
+            commands::obsidian_backfill,
+            commands::silence_status,
+            commands::silence_set_enabled,
+            commands::silence_set_minutes,
+            commands::auto_customer_tagging_status,
+            commands::auto_customer_tagging_set,
+            commands::note_reports_list,
+            commands::note_reports_delete,
+            commands::note_reports_set_active,
+            commands::suggest_template,
+            commands::action_items_list,
+            commands::action_items_open,
+            commands::action_items_create,
+            commands::action_items_update,
+            commands::action_items_delete,
+            commands::send_to_google_docs,
+            commands::generate_followup_email,
+            commands::inbox_status,
+            commands::inbox_triage_now,
+            commands::inbox_list,
+            commands::inbox_approve_draft,
+            commands::inbox_set_action_items,
+            commands::inbox_set_provider,
+            commands::inbox_set_auth_mode,
+            commands::inbox_clear,
             commands::webhook_get_endpoint,
             commands::webhook_set_endpoint,
             commands::webhook_destination,

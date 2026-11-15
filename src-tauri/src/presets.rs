@@ -37,6 +37,51 @@ struct Preset {
     en: &'static str,
 }
 
+/// English display label for a preset value — the report's title in the
+/// switcher. Mirrors the `label_en` values in `src/lib/presets.ts`. Falls back
+/// to a title-cased form of the value for a custom/unknown preset.
+pub fn label_for(preset: &str) -> String {
+    match preset {
+        "meeting" => "Meeting",
+        "one_on_one" => "1:1 conversation",
+        "lecture" => "Lecture",
+        "interview" => "Interview",
+        "brainstorm" => "Brainstorm",
+        "voice_memo" => "Voice memo",
+        "sales_call" => "Sales call",
+        "discovery_call" => "Discovery call",
+        "technical_review" => "Technical review",
+        "qbr" => "Quarterly business review",
+        "standup" => "Standup",
+        other => {
+            // custom:<id> or an unknown value → a readable fallback.
+            let base = other.strip_prefix("custom:").unwrap_or(other);
+            return title_case(base);
+        }
+    }
+    .to_string()
+}
+
+fn title_case(s: &str) -> String {
+    let cleaned = s.replace(['_', '-'], " ");
+    let mut out = String::new();
+    for (i, word) in cleaned.split_whitespace().enumerate() {
+        if i > 0 {
+            out.push(' ');
+        }
+        let mut chars = word.chars();
+        if let Some(first) = chars.next() {
+            out.extend(first.to_uppercase());
+            out.push_str(chars.as_str());
+        }
+    }
+    if out.is_empty() {
+        "Report".to_string()
+    } else {
+        out
+    }
+}
+
 // Minimal presets — kind of summary + language, plus at most one extra
 // constraint where it earns its place. Source labels stay because the user
 // message uses them; the parenthetical "(brukerens)" / "(automatisk)"
@@ -78,6 +123,34 @@ const ALL: &[Preset] = &[
         value: "voice_memo",
         no: "Du rydder opp i et stemmenotat fra [Notater] (brukerens) og [Transkripsjon] (automatisk). Behold brukerens stemme. Skriv på norsk i Markdown.",
         en: "You clean up a voice memo from [Notater] (user-written) and [Transkripsjon] (auto). Preserve the user's voice. Reply in {LANGUAGE} using Markdown.",
+    },
+    // Sales / customer call types (added for customer-facing GTM work). Each
+    // asks for the structure that call type actually needs — action items,
+    // next steps, risks — rather than a generic recap.
+    Preset {
+        value: "sales_call",
+        no: "Du lager notater fra en kundesamtale (salg) fra [Notater] (brukerens) og [Transkripsjon] (automatisk). Ta med: kundens situasjon og behov, smertepunkter, innvendinger, konkurrenter nevnt, neste steg og eiere. Skriv på norsk i Markdown.",
+        en: "You produce sales-call notes from [Notater] (user-written) and [Transkripsjon] (auto). Capture: the customer's situation and needs, pain points, objections, any competitors mentioned, and clear next steps with owners. Reply in {LANGUAGE} using Markdown.",
+    },
+    Preset {
+        value: "discovery_call",
+        no: "Du lager notater fra en kartleggingssamtale fra [Notater] (brukerens) og [Transkripsjon] (automatisk). Ta med: mål og ønsket utfall, nåværende tilstand og utfordringer, tekniske krav, beslutningstakere og tidslinje. Skriv på norsk i Markdown.",
+        en: "You produce discovery-call notes from [Notater] (user-written) and [Transkripsjon] (auto). Capture: goals and desired outcomes, current state and challenges, technical requirements, decision-makers, and timeline. Reply in {LANGUAGE} using Markdown.",
+    },
+    Preset {
+        value: "technical_review",
+        no: "Du lager notater fra en teknisk gjennomgang fra [Notater] (brukerens) og [Transkripsjon] (automatisk). Ta med: arkitektur og tekniske beslutninger, åpne spørsmål, risikoer og oppfølgingspunkter med eiere. Skriv på norsk i Markdown.",
+        en: "You produce technical-review notes from [Notater] (user-written) and [Transkripsjon] (auto). Capture: architecture and technical decisions, open questions, risks, and follow-up items with owners. Reply in {LANGUAGE} using Markdown.",
+    },
+    Preset {
+        value: "qbr",
+        no: "Du lager notater fra en kvartalsgjennomgang (QBR) fra [Notater] (brukerens) og [Transkripsjon] (automatisk). Ta med: oppnådd verdi og måltall, status mot mål, risikoer, og avtalte neste steg med eiere. Skriv på norsk i Markdown.",
+        en: "You produce quarterly-business-review (QBR) notes from [Notater] (user-written) and [Transkripsjon] (auto). Capture: value delivered and metrics, status against goals, risks, and agreed next steps with owners. Reply in {LANGUAGE} using Markdown.",
+    },
+    Preset {
+        value: "standup",
+        no: "Du lager notater fra en standup fra [Notater] (brukerens) og [Transkripsjon] (automatisk). Grupper per person: hva som er gjort, hva som er planlagt, og blokkeringer. Skriv på norsk i Markdown.",
+        en: "You produce standup notes from [Notater] (user-written) and [Transkripsjon] (auto). Group per person: done, planned, and blockers. Reply in {LANGUAGE} using Markdown.",
     },
 ];
 

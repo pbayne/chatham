@@ -22,6 +22,8 @@ audio-capture/.build/
 audio-capture/Package.resolved
 speaker-diarize/.build/
 speaker-diarize/Package.resolved
+mic-monitor/.build/
+mic-monitor/Package.resolved
 
 # Icon pipeline staging
 src-tauri/icons/.app-icon-staged.png

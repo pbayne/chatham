@@ -1,4 +1,5 @@
 import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom";
+import { listen as listenTauri } from "@tauri-apps/api/event";
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -14,6 +15,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  ListTodo,
+  Plus,
   Circle,
   Cloud,
   Copy,
@@ -30,8 +33,9 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { ipc, onSummaryThinkingDelta, onSummaryContentDelta, type Note as TNote, type NoteRevision, type NoteSession, type SummaryPrompt, type TimelineEntry } from "../lib/ipc";
+import { ipc, onSummary, onSummaryThinkingDelta, onSummaryContentDelta, type NoteActionItem, type Note as TNote, type NoteReport, type NoteRevision, type NoteSession, type SummaryPrompt, type TimelineEntry } from "../lib/ipc";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { dueState, dueLabel, dueColorVar } from "../lib/due";
 import { SUMMARY_CAPABLE, type SummaryProvider } from "../lib/providers";
 import { useLiveSetting } from "../lib/settingsBus";
 import { useDownloadStore, useNotesStore, useRecordingStore } from "../lib/store";
@@ -74,6 +78,7 @@ import type { LayoutOutletContext } from "../components/Layout";
 import { SkeletonLines } from "../components/Skeleton";
 import { NoteEditor } from "../components/Editor";
 import { ContextMenu, ContextMenuItem } from "../components/ContextMenu";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { ExportModal } from "./ExportModal";
 import { SendToWebhookModal } from "./SendToWebhookModal";
 import { SaveAudioModal } from "./SaveAudioModal";
@@ -1507,6 +1512,12 @@ export function Note() {
                     value={draft.summary_preset || "meeting"}
                     onChange={(v) => patch("summary_preset", v)}
                   />
+                  {!readOnly && (hasTranscript || hasSummary) && (
+                    <SuggestTemplateButton
+                      noteId={draft.id}
+                      onSuggest={(preset) => patch("summary_preset", preset)}
+                    />
+                  )}
                   <SummaryProviderChip
                     value={draft.summary_provider}
                     globalDefault={globalProvider}
@@ -1527,6 +1538,23 @@ export function Note() {
                     )}
                   </div>
                 </div>
+
+                {/* Report switcher (#reports): the template-tagged summaries
+                    this note has accumulated. Switching sets the active summary;
+                    generating a new template adds a report. Only shown when the
+                    note has more than one report — a single report needs no
+                    chooser. */}
+                <ReportTabs
+                  noteId={draft.id}
+                  activePreset={draft.summary_preset || "meeting"}
+                  readOnly={readOnly}
+                  onPick={(r) => {
+                    void ipc.noteReportsSetActive(r.id).then(() => {
+                      patch("summary_preset", r.preset);
+                    });
+                  }}
+                />
+
 
                 {/* Live reasoning trace (local LLM only). Cloud OpenAI keeps
                     its chain-of-thought server-side, so the panel there would
@@ -1573,6 +1601,14 @@ export function Note() {
                         : "No summary yet. Use Summarize in the toolbar to generate one from your notes and transcript."
                     }
                   />
+                )}
+
+                {/* Action items (#followups): this meeting's extracted
+                    follow-ups, editable + checkable, feeding the global
+                    Follow-ups list. Shown once there's a summary/transcript to
+                    have produced them. */}
+                {(hasSummary || hasTranscript) && (
+                  <NoteActionItems noteId={draft.id} readOnly={readOnly} />
                 )}
               </div>
             ) : activeTab === "chat" ? (
@@ -1976,6 +2012,42 @@ export function NoteToolbar({
   // note already belongs to and only exists when there is one, while the hint
   // only ever shows on Personal, where there is nothing to rescue.
   const [teamHintOpen, setTeamHintOpen] = useState(false);
+  // Google Docs export + follow-up email draft (both go through the single
+  // Google connection in Settings → Autopilot). Busy flags keep the menu item
+  // from being fired twice; failures surface as the standard error toast.
+  const [docsBusy, setDocsBusy] = useState(false);
+  const [followupBusy, setFollowupBusy] = useState(false);
+
+  const handleSendToDocs = async () => {
+    setDocsBusy(true);
+    try {
+      await flushEdits();
+      const { url } = await ipc.sendToGoogleDocs(noteId, true, true);
+      await openExternal(url);
+    } catch (e) {
+      useRecordingStore
+        .getState()
+        .pushError({ noteId, message: String(e), kind: "summary" });
+    } finally {
+      setDocsBusy(false);
+    }
+  };
+
+  const handleFollowupEmail = async () => {
+    setFollowupBusy(true);
+    try {
+      await flushEdits();
+      const res = await ipc.generateFollowupEmail(noteId);
+      // The draft is in Gmail; open Drafts so the user reviews and sends.
+      await openExternal(res.gmail_url);
+    } catch (e) {
+      useRecordingStore
+        .getState()
+        .pushError({ noteId, message: String(e), kind: "summary" });
+    } finally {
+      setFollowupBusy(false);
+    }
+  };
 
   async function record() {
     // Pre-flight: don't start a doomed recording when the pipeline isn't
@@ -2126,6 +2198,28 @@ export function NoteToolbar({
               }}
             >
               Export…
+            </ContextMenuItem>
+          )}
+          {note && (
+            <ContextMenuItem
+              disabled={docsBusy}
+              onClick={() => {
+                setMenuPos(null);
+                void handleSendToDocs();
+              }}
+            >
+              {docsBusy ? "Sending to Google Docs…" : "Send to Google Docs"}
+            </ContextMenuItem>
+          )}
+          {note && (
+            <ContextMenuItem
+              disabled={followupBusy}
+              onClick={() => {
+                setMenuPos(null);
+                void handleFollowupEmail();
+              }}
+            >
+              {followupBusy ? "Drafting follow-up…" : "Draft follow-up email"}
             </ContextMenuItem>
           )}
           {note && (
@@ -2585,6 +2679,273 @@ function WorkspacePicker({
     />
   );
 }
+
+// Report switcher (#reports): tabs for each template-tagged summary a note has.
+// Self-loads on mount + on `summary_ready` (a new/updated report). Hidden when
+// the note has 0–1 reports — a lone report needs no chooser. The active tab is
+// the one whose preset matches the note's current `summary_preset`.
+function ReportTabs({
+  noteId,
+  activePreset,
+  readOnly,
+  onPick,
+}: {
+  noteId: string;
+  activePreset: string;
+  readOnly: boolean;
+  onPick: (r: NoteReport) => void;
+}) {
+  const [reports, setReports] = useState<NoteReport[]>([]);
+
+  const load = useCallback(() => {
+    ipc.noteReportsList(noteId)
+      .then((rs) => setReports(Array.isArray(rs) ? rs : []))
+      .catch(() => setReports([]));
+  }, [noteId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // A finished summary adds or refreshes a report for this note — reload so the
+  // new tab appears. `onSummary` fires for every note, so filter by id.
+  useEffect(() => {
+    const un = onSummary((e) => {
+      if (e.noteId === noteId) load();
+    });
+    return () => {
+      void un.then((f) => f());
+    };
+  }, [noteId, load]);
+
+  if (reports.length < 2) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 mb-4" role="tablist" aria-label="Reports">
+      {reports.map((r) => {
+        const active = r.preset === activePreset;
+        return (
+          <div
+            key={r.id}
+            className={
+              "group inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors " +
+              (active
+                ? "border-[var(--color-interactive)] text-[var(--color-interactive)] bg-[var(--color-surface-hover)]"
+                : "border-[var(--color-line-visible)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]")
+            }
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => onPick(r)}
+              className="truncate max-w-[14rem]"
+              title={r.title || r.preset}
+            >
+              {r.title || r.preset}
+            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                aria-label={`Delete ${r.title || r.preset} report`}
+                title="Delete this report"
+                onClick={() => {
+                  void ipc.noteReportsDelete(r.id).then(load);
+                }}
+                className="opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity"
+              >
+                <X size={12} strokeWidth={2} />
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// "Suggest" button (#reports): asks the model which call-type template fits,
+// then sets the picker to it. A hint, not an action — it never generates;
+// pressing Summarize is still what produces the report.
+function SuggestTemplateButton({
+  noteId,
+  onSuggest,
+}: {
+  noteId: string;
+  onSuggest: (preset: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={() => {
+        setBusy(true);
+        void ipc
+          .suggestTemplate(noteId)
+          .then((preset) => {
+            if (preset) onSuggest(preset);
+          })
+          .catch(() => {})
+          .finally(() => setBusy(false));
+      }}
+      title="Suggest a template from the transcript"
+      className="inline-flex items-center gap-1 rounded-full border border-[var(--color-line-visible)] px-2.5 py-1 text-xs text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] disabled:opacity-50"
+    >
+      <Sparkles size={12} strokeWidth={1.8} />
+      {busy ? "Thinking…" : "Suggest"}
+    </button>
+  );
+}
+
+// Per-note action items (#followups): the meeting's extracted follow-ups, plus
+// a row to add your own. Checking marks done; editing text/owner saves on blur.
+// Self-loads + reacts to `action_items_changed` (the auto-extract pass fires it
+// after a summary). Feeds the global Follow-ups view off the same table.
+function NoteActionItems({ noteId, readOnly }: { noteId: string; readOnly: boolean }) {
+  const [items, setItems] = useState<NoteActionItem[]>([]);
+  const [adding, setAdding] = useState("");
+
+  const load = useCallback(() => {
+    ipc.actionItemsList(noteId).then((rs) => setItems(Array.isArray(rs) ? rs : [])).catch(() => setItems([]));
+  }, [noteId]);
+
+  useEffect(() => {
+    load();
+    const un = listenTauri("action_items_changed", (e) => {
+      if (e.payload === noteId) load();
+    });
+    return () => {
+      void un.then((f) => f());
+    };
+  }, [noteId, load]);
+
+  const toggle = (it: NoteActionItem) => {
+    setItems((cur) => cur.map((x) => (x.id === it.id ? { ...x, done: !x.done } : x)));
+    void ipc.actionItemsUpdate(it.id, { done: !it.done }).catch(load);
+  };
+  const saveText = (it: NoteActionItem, text: string) => {
+    if (text.trim() === it.text) return;
+    void ipc.actionItemsUpdate(it.id, { text: text.trim() }).then(load).catch(load);
+  };
+  const saveOwner = (it: NoteActionItem, owner: string) => {
+    if (owner.trim() === it.owner) return;
+    void ipc.actionItemsUpdate(it.id, { owner: owner.trim() }).then(load).catch(load);
+  };
+  const saveDue = (it: NoteActionItem, due: string) => {
+    if (due === it.due) return;
+    void ipc.actionItemsUpdate(it.id, { due }).then(load).catch(load);
+  };
+  const remove = (id: string) => {
+    setItems((cur) => cur.filter((x) => x.id !== id));
+    void ipc.actionItemsDelete(id).catch(load);
+  };
+  const add = () => {
+    const text = adding.trim();
+    if (!text) return;
+    setAdding("");
+    void ipc.actionItemsCreate(noteId, text).then(load).catch(load);
+  };
+
+  if (items.length === 0 && readOnly) return null;
+
+  return (
+    <div className="mt-6 pt-5 border-t border-[var(--color-line)]">
+      <div className="flex items-center gap-1.5 mb-2.5">
+        <ListTodo size={15} strokeWidth={1.7} className="text-[var(--color-text-muted)]" />
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+          Action items
+        </h3>
+        {items.length > 0 && (
+          <span className="text-xs text-[var(--color-text-muted)]">
+            {items.filter((i) => !i.done).length} open
+          </span>
+        )}
+      </div>
+      <ul className="flex flex-col">
+        {items.map((it) => (
+          <li key={it.id} className="group flex items-start gap-2 py-1.5">
+            <button
+              type="button"
+              aria-label={it.done ? "Mark not done" : "Mark done"}
+              onClick={() => toggle(it)}
+              className="mt-0.5 shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-success)] transition-colors"
+            >
+              {it.done ? (
+                <CircleCheck size={16} strokeWidth={1.7} className="text-[var(--color-success)]" />
+              ) : (
+                <Circle size={16} strokeWidth={1.7} />
+              )}
+            </button>
+            <div className="min-w-0 flex-1">
+              <input
+                defaultValue={it.text}
+                readOnly={readOnly}
+                onBlur={(e) => !readOnly && saveText(it, e.target.value)}
+                className={
+                  "w-full bg-transparent text-sm leading-snug outline-none " +
+                  (it.done ? "line-through text-[var(--color-text-muted)]" : "")
+                }
+              />
+              {(it.owner || it.due || !readOnly) && (
+                <div className="mt-0.5 flex items-center gap-2">
+                  <input
+                    defaultValue={it.owner}
+                    readOnly={readOnly}
+                    placeholder={readOnly ? "" : "owner"}
+                    onBlur={(e) => !readOnly && saveOwner(it, e.target.value)}
+                    className="bg-transparent text-xs text-[var(--color-text-muted)] outline-none w-32 placeholder:text-[var(--color-text-faint)]"
+                  />
+                  {readOnly ? (
+                    it.due && (
+                      <span className="text-xs" style={{ color: dueColorVar(dueState(it.due)) }}>
+                        {dueLabel(it.due)}
+                      </span>
+                    )
+                  ) : (
+                    <input
+                      type="date"
+                      defaultValue={it.due}
+                      onChange={(e) => saveDue(it, e.target.value)}
+                      className="bg-transparent text-xs outline-none w-[8.5rem]"
+                      style={{ color: it.due ? dueColorVar(dueState(it.due)) : "var(--color-text-faint)" }}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+            {!readOnly && (
+              <button
+                type="button"
+                aria-label="Delete action item"
+                onClick={() => remove(it.id)}
+                className="opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity mt-0.5 shrink-0"
+              >
+                <X size={13} strokeWidth={2} />
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {!readOnly && (
+        <div className="flex items-center gap-2 mt-1.5">
+          <Plus size={14} strokeWidth={1.7} className="text-[var(--color-text-muted)] shrink-0" />
+          <input
+            value={adding}
+            onChange={(e) => setAdding(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") add();
+            }}
+            onBlur={add}
+            placeholder="Add an action item…"
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--color-text-faint)]"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 function PresetPicker({
   value,

@@ -94,3 +94,138 @@ export function IntegrationsSection({
     </Section>
   );
 }
+
+// Obsidian vault sync (obsidian.rs). A one-way mirror of notes into a vault
+// folder as Markdown — own state because it's driven by backend commands, not
+// the settings map. Off by default; picking a folder + enabling triggers a
+// backfill of every existing note.
+export function ObsidianSection() {
+  const [status, setStatus] = useState<import("../../../lib/ipc").ObsidianStatus | null>(null);
+  const [autoTag, setAutoTag] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = async () => {
+    try {
+      setStatus(await ipc.obsidianStatus());
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  useEffect(() => {
+    void refresh();
+    ipc.autoCustomerTaggingStatus().then(setAutoTag).catch(() => {});
+  }, []);
+
+  const pickVault = async () => {
+    setError(null);
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const picked = await open({ directory: true, multiple: false, title: "Choose your Obsidian vault folder" });
+      if (typeof picked === "string") {
+        setBusy(true);
+        await ipc.obsidianSetVault(picked);
+        await refresh();
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggle = async (next: boolean) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await ipc.obsidianSetEnabled(next);
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const enabled = status?.enabled ?? false;
+  const vault = status?.vault_path ?? "";
+
+  return (
+    <Section title="Obsidian sync">
+      <Row
+        label="Auto-tag the customer from each meeting"
+        description="After a recording is summarized, Humla reads it to identify which customer the meeting was with and tags the note — learning your account list as you go. Client-tagged notes are filed under the customer's name in your vault."
+        control={
+          <Toggle
+            checked={autoTag ?? true}
+            onChange={(next) => {
+              setAutoTag(next);
+              void ipc.autoCustomerTaggingSet(next);
+            }}
+            label="Auto-tag the customer from each meeting"
+          />
+        }
+      />
+      <Row
+        label="Mirror notes to an Obsidian vault"
+        description="Write each note (summary + your notes, no transcript) into a vault folder as Markdown, organised by folder. One-way: edits you make in Obsidian are never read back, and a note you've edited there is never overwritten."
+        control={
+          <Toggle
+            checked={enabled}
+            onChange={(next) => void toggle(next)}
+            disabled={busy || !vault}
+            label="Enable Obsidian sync"
+          />
+        }
+      />
+      <Row
+        label="Vault folder"
+        description={vault ? vault : "Pick the folder Humla should write notes into (your vault, or a subfolder of it)."}
+        control={
+          <button
+            type="button"
+            onClick={() => void pickVault()}
+            disabled={busy}
+            className="text-sm px-3 py-1.5 rounded-[var(--radius-control)] border border-[var(--color-line-visible)] hover:bg-[var(--color-surface-hover)] disabled:opacity-50"
+          >
+            {vault ? "Change…" : "Choose folder…"}
+          </button>
+        }
+      />
+      {enabled && vault && (
+        <Row label="Status">
+          <p className="text-xs text-[var(--color-text-muted)]">
+            {status?.synced_count ?? 0} note{(status?.synced_count ?? 0) === 1 ? "" : "s"} synced
+            {status && status.conflict_count > 0
+              ? ` · ${status.conflict_count} skipped (edited in Obsidian)`
+              : ""}
+          </p>
+          <button
+            type="button"
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await ipc.obsidianBackfill();
+                await refresh();
+              } catch (e) {
+                setError(String(e));
+              } finally {
+                setBusy(false);
+              }
+            }}
+            disabled={busy}
+            className="mt-2 text-xs text-[var(--color-interactive)] hover:underline disabled:opacity-50"
+          >
+            Re-sync all notes
+          </button>
+        </Row>
+      )}
+      {error && (
+        <Row label="">
+          <p className="text-xs text-[var(--color-danger)]">{error}</p>
+        </Row>
+      )}
+    </Section>
+  );
+}

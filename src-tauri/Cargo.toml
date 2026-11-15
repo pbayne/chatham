@@ -40,6 +40,13 @@ serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 reqwest = { version = "0.12", features = ["json", "multipart", "rustls-tls", "stream"], default-features = false }
+# OAuth 2.0 PKCE for Google Calendar (src/google_calendar.rs). All four are
+# already in the lockfile as transitive deps; promoting them to direct changes
+# nothing resolved. Pinned to the versions whose APIs the code uses.
+sha2 = "0.10"
+base64 = "0.22"
+rand = "0.8"
+url = "2"
 futures-util = "0.3"
 whisper-rs = { version = "0.16", features = ["metal", "raw-api"] }
 # Local LLM inference is delegated to whichever OpenAI-compatible HTTP server
@@ -94,8 +101,6 @@ github-copilot-sdk = { version = "=1.0.27", default-features = false, features =
 # The Copilot CLI download: an npm tarball, checked against a pinned sha512.
 tar = "0.4"
 flate2 = "1"
-sha2 = "0.10"
-base64 = "0.22"
 # `humla://` links. Same minor as `@tauri-apps/plugin-deep-link` in package.json.
 tauri-plugin-deep-link = "~2.4"
 

@@ -3,7 +3,7 @@ import { useShallow } from "zustand/react/shallow";
 import { Link } from "react-router-dom";
 import { Building2, Check, Folder as FolderIcon, Lock, Users } from "lucide-react";
 import { type Client, type Folder, type Note } from "../lib/ipc";
-import { formatNoteDate, noteExcerpt, noteState, NOTE_STATE_LABEL, type NoteState } from "../lib/noteList";
+import { formatNoteDate, noteExcerpt, noteState, noteFacets, NOTE_STATE_LABEL, NOTE_FACET_LABEL, NOTE_FACET_COLOR, NOTE_FACET_ORDER, type NoteState } from "../lib/noteList";
 import { cn } from "../lib/cn";
 import { noteActivity } from "../lib/noteActivity";
 import { useRecordingStore } from "../lib/store";
@@ -65,6 +65,8 @@ export function NoteCard({
   const excerpt = noteExcerpt(note);
   const key = noteState(note, recorded);
   const state = { label: NOTE_STATE_LABEL[key], color: STATE_COLOR[key] };
+  // Facet chips: what the note HAS (independent of the single state dot).
+  const facets = noteFacets(note, recorded);
   // `useShallow` because the helper builds a fresh object each call: without it
   // every card re-renders on every store tick.
   const activity = useRecordingStore(useShallow((s) => noteActivity(note.id, s)));
@@ -135,6 +137,26 @@ export function NoteCard({
             {shown.label}
             {activity?.timed && <LiveElapsed />}
           </span>
+          {/* Facet chips: color-coded markers for what the note holds, so you
+              can tell at a glance what's done vs still to do. */}
+          {NOTE_FACET_ORDER.filter((f) => facets.has(f)).map((f) => (
+            <span
+              key={f}
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded-full px-1.5 py-0.5"
+              style={{
+                color: NOTE_FACET_COLOR[f],
+                background: `color-mix(in srgb, ${NOTE_FACET_COLOR[f]} 12%, transparent)`,
+              }}
+              title={NOTE_FACET_LABEL[f]}
+            >
+              <span
+                aria-hidden
+                className="w-[5px] h-[5px] rounded-full shrink-0"
+                style={{ background: NOTE_FACET_COLOR[f] }}
+              />
+              {NOTE_FACET_LABEL[f]}
+            </span>
+          ))}
           {note.private && note.workspace_id && (
             // Only inside a workspace: every Personal note is private, so the
             // glyph would say nothing there and appear on every card (#191).

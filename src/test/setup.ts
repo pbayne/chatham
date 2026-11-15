@@ -57,3 +57,42 @@ if (!window.matchMedia) {
       dispatchEvent: () => false,
     }) as MediaQueryList;
 }
+
+// Node 26 ships an experimental native `localStorage` that THROWS on access
+// unless the process was started with `--localstorage-file`, and it shadows
+// jsdom's. Tests that call `localStorage.clear()` in beforeEach (visibility,
+// export-modal, workspace-move, …) crash before the first assertion. Install a
+// deterministic in-memory implementation unconditionally so tests never depend
+// on either the Node flag or jsdom's storage. Defined on both globalThis and
+// window since app code reaches it through both.
+{
+  const store = new Map<string, string>();
+  const mem: Storage = {
+    get length() {
+      return store.size;
+    },
+    clear() {
+      store.clear();
+    },
+    getItem(key: string) {
+      return store.has(key) ? (store.get(key) as string) : null;
+    },
+    key(index: number) {
+      return Array.from(store.keys())[index] ?? null;
+    },
+    removeItem(key: string) {
+      store.delete(key);
+    },
+    setItem(key: string, value: string) {
+      store.set(key, String(value));
+    },
+  };
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: mem,
+  });
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: mem,
+  });
+}

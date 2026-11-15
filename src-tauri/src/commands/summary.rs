@@ -415,12 +415,34 @@ async fn run_summary(app: AppHandle, note_id: String) -> anyhow::Result<()> {
             summary: Some(summary.clone()),
             ..Default::default()
         })?;
+        // Also store this as a template-tagged report (#reports). The note's
+        // `summary` column stays the "active/latest" copy for back-compat with
+        // exports + the old UI; `note_reports` lets the user keep a Meeting
+        // report AND a Sales Call report on the same recording and switch
+        // between them. Keyed by preset, so re-running a template refreshes its
+        // report in place. Best-effort — a report-store hiccup must not fail the
+        // summary that already wrote.
+        let report_preset = if note.summary_preset.trim().is_empty() {
+            crate::presets::DEFAULT_SUMMARY_PRESET.to_string()
+        } else {
+            note.summary_preset.clone()
+        };
+        let report_title = crate::presets::label_for(&report_preset);
+        let _ = db::upsert_note_report(&conn, &note_id, &report_preset, &report_title, &summary);
         // Content-settled checkpoint (issue #47): a fresh summary is new
         // searchable material — refresh the Note's retrieval chunks.
         super::chat::reindex_note_content(&conn, &note_id);
+        // Mirror to an Obsidian vault if the user turned that on (no-op otherwise).
+        super::obsidian::sync_one_best_effort(&conn, &note_id);
     }
     // Embed the refreshed chunks off the request path (issue #48).
     tauri::async_runtime::spawn(super::chat::embed_note_bg(app.clone(), note_id.clone()));
+    // Learn the customer from the meeting and tag the note (silent, untagged
+    // notes only). Off the request path like the embed + title passes.
+    tauri::async_runtime::spawn(super::customer::auto_tag_customer(app.clone(), note_id.clone()));
+    // Extract this meeting's action items into the follow-ups list (once per
+    // note; silent). Off the request path like the customer + embed passes.
+    tauri::async_runtime::spawn(super::action_items::auto_extract(app.clone(), note_id.clone()));
     state.sync.note_upserted(&note_id); // AI summary written → enqueue a push
     let _ = app.emit("summary_ready", SummaryPayload { note_id, summary });
     Ok(())
