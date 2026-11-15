@@ -374,6 +374,12 @@ export type ObsidianStatus = {
   conflict_count: number;
 };
 
+// Silence auto-stop (silence.rs).
+export type SilenceStatus = {
+  enabled: boolean;
+  minutes: number;
+};
+
 export type UpcomingMeeting = {
   id: string;
   title: string;
@@ -522,6 +528,10 @@ export const ipc = {
   obsidianSetEnabled: (enabled: boolean) =>
     invoke<number>("obsidian_set_enabled", { enabled }),
   obsidianBackfill: () => invoke<number>("obsidian_backfill"),
+  // Silence auto-stop (silence.rs). Stop a recording after N minutes of quiet.
+  silenceStatus: () => invoke<SilenceStatus>("silence_status"),
+  silenceSetEnabled: (enabled: boolean) => invoke<void>("silence_set_enabled", { enabled }),
+  silenceSetMinutes: (minutes: number) => invoke<number>("silence_set_minutes", { minutes }),
 
   // One-click export of a note to a formatted Google Doc. Returns the doc URL.
   sendToGoogleDocs: (

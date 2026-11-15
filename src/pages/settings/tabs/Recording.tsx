@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Permissions } from "../../../components/Permissions";
-import { ipc, type StoredAudioStats } from "../../../lib/ipc";
+import { ipc, type StoredAudioStats, type SilenceStatus } from "../../../lib/ipc";
 import { formatBytes, s as plural } from "../components/format";
 import { HotkeyField } from "../components/HotkeyField";
 import { LaunchAtLoginField } from "../components/LaunchAtLoginField";
@@ -86,6 +86,8 @@ export function RecordingSection({
         />
       </Section>
 
+      <SilenceAutoStopSection />
+
       <Section title="Menu bar">
         <Row
           label="Open at login"
@@ -117,6 +119,74 @@ export function RecordingSection({
         />
       </Section>
     </>
+  );
+}
+
+// Silence auto-stop (silence.rs). Backend-backed state (not the settings map).
+// Stops a recording after N minutes with no detected speech.
+function SilenceAutoStopSection() {
+  const [status, setStatus] = useState<SilenceStatus | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    ipc.silenceStatus()
+      .then((next) => {
+        if (!cancelled) setStatus(next);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const enabled = status?.enabled ?? false;
+  const minutes = status?.minutes ?? 5;
+
+  const setEnabled = async (on: boolean) => {
+    await ipc.silenceSetEnabled(on);
+    setStatus((s) => (s ? { ...s, enabled: on } : s));
+  };
+  const setMinutes = async (m: number) => {
+    const clamped = await ipc.silenceSetMinutes(m);
+    setStatus((s) => (s ? { ...s, minutes: clamped } : s));
+  };
+
+  return (
+    <Section title="Silence auto-stop">
+      <Row
+        label="Stop recording after silence"
+        description="Automatically stop a recording when no one has spoken for a while — handy when a call ends but the recording is left running."
+        control={
+          <Toggle
+            label="Stop recording after silence"
+            checked={enabled}
+            onChange={(on) => void setEnabled(on)}
+          />
+        }
+      />
+      {enabled && (
+        <Row
+          label="Stop after"
+          description="How long the room can stay quiet before Humla stops and summarizes."
+          control={
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={120}
+                value={minutes}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (Number.isFinite(n)) void setMinutes(n);
+                }}
+                className="w-16 text-sm px-2 py-1 rounded-[var(--radius-control)] border border-[var(--color-line-visible)] bg-transparent text-right"
+              />
+              <span className="text-sm text-[var(--color-text-muted)]">min</span>
+            </div>
+          }
+        />
+      )}
+    </Section>
   );
 }
 

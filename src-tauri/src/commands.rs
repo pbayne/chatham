@@ -42,6 +42,7 @@ mod mcp;
 mod menubar;
 mod models;
 mod obsidian;
+mod silence;
 pub(crate) mod notes;
 mod permissions;
 mod settings;
@@ -67,6 +68,7 @@ pub use mcp::*;
 pub use menubar::*;
 pub use models::*;
 pub use obsidian::*;
+pub use silence::*;
 pub use notes::*;
 pub use permissions::*;
 pub use settings::*;
@@ -2767,7 +2769,19 @@ pub async fn recording_start(
         // this one's log. `mode` is decided once, here — flipping the setting
         // mid-meeting changes nothing about a recording already running.
         s.sink = Arc::new(CaptureSink::new(sink_mode));
+        // Silence auto-stop: start the activity clock at "now" so the quiet gap
+        // is measured from the recording's start, not from the epoch.
+        *s.last_activity.lock() = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
     }
+
+    // Silence auto-stop watchdog: if enabled, poll the activity clock and press
+    // stop once the room has been quiet past the threshold. Spawned per capture;
+    // it exits on its own when the recording is no longer this note (stop
+    // happened) so it never outlives its session. No-op when the setting is off.
+    crate::silence::spawn_watchdog(app.clone(), note_id.clone());
 
     // Snapshot any existing transcript so diarize_and_apply can prepend it
     // to this session's output. Resuming a recording on a note that already
@@ -7487,6 +7501,16 @@ async fn transcribe_chunk(
         db::append_transcript(&conn, &note_id, &trimmed, " ")?
     };
     sink.trail(source).lock().push(&trimmed);
+    // Silence auto-stop: a VAD-bounded chunk landed = real speech just now.
+    // Bump the activity clock the watchdog reads (best-effort; no lock contention
+    // matters here since it's a single i64 write).
+    {
+        let s = state.recording.lock();
+        *s.last_activity.lock() = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+    }
     let _ = app.emit(
         "transcript_replaced",
         TranscriptPayload {
