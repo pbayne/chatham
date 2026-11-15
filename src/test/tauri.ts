@@ -35,6 +35,7 @@ export function mockTauri(
       case "summary_prompts_list":
       case "local_whisper_models":
       case "note_audio_files":
+      case "note_audio_export_info":
       case "note_diagnostics_files":
       case "note_sessions":
       case "notes_with_recordings":
@@ -58,7 +59,7 @@ export function mockTauri(
       case "chat_get_pin":
         return "";
       case "permissions_status":
-        return { microphone: "granted", screen: "granted" };
+        return { microphone: "granted", screen: "granted", notifications: "granted" };
       case "cloud_status":
         return {
           configured: false,
@@ -75,7 +76,13 @@ export function mockTauri(
         return { url: "", headers: [] };
       case "anthropic_list_models":
       case "openai_list_models":
+      case "custom_list_models":
+      case "copilot_models":
         return [];
+      case "copilot_status":
+        return { login: null, cliPath: null, cliVersion: null, cliError: null, downloadVersion: "0.0.0-test" };
+      case "copilot_sign_in_start":
+        return { userCode: "ABCD-1234", verificationUri: "https://github.com/login/device", expiresIn: 900 };
       // No embedding server in a test environment — the honest default is the
       // failure a real machine without one gives (#179).
       case "local_llm_embed_probe":

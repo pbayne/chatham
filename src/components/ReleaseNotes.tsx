@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { ArrowUpRight, Calendar, Check, ChevronDown, CircleCheck, CircleDot, Building2, FileText, Folder, Languages, Lock, MoreHorizontal, ShieldCheck, Tag, Users, X } from "lucide-react";
+import { ArrowUpRight, Calendar, Check, ChevronDown, CircleCheck, CircleDot, Building2, FileAudio, FileText, Folder, Languages, Lock, MoreHorizontal, ShieldCheck, Tag, Users, X } from "lucide-react";
 import { isTauri } from "@tauri-apps/api/core";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { latestReleases, type Release } from "../content/releases";
@@ -49,6 +49,10 @@ const VISUAL_CAPTION: Record<NonNullable<Release["visual"]>, string> = {
   export: "Save a meeting as a PDF.",
   "two-factor": "Sign in with a code from your phone.",
   date: "Set when a meeting happened.",
+  audio: "Save a meeting’s recording.",
+  copilot: "Use the Copilot subscription you already have.",
+  custom: "Bring any OpenAI-compatible API.",
+  share: "Share a note with the people who need it.",
 };
 
 function ReleaseVisual({ kind }: { kind: NonNullable<Release["visual"]> }) {
@@ -85,6 +89,21 @@ function ReleaseVisual({ kind }: { kind: NonNullable<Release["visual"]> }) {
           </div>
           <p className="release-preview-body">A few ideas to think through before our next team meeting.</p>
         </>}
+        {kind === "share" && <>
+          <div className="release-demo-heading"><span>Board meeting</span></div>
+          <div className="release-preview-meta">
+            <span className="nd-meta"><Building2 size={14} strokeWidth={1.7} />Design team</span>
+            <div className="release-preview-visibility">
+              <span className="nd-meta"><Users size={14} strokeWidth={1.7} />Alex, Sam</span>
+              <div className="release-preview-menu release-preview-share">
+                <div className="release-preview-person"><span>A</span>Alex<small>Owner</small></div>
+                <div className="release-preview-person"><span>S</span>Sam<X size={12} strokeWidth={1.8} /></div>
+                <div className={rowClass}><span className="release-preview-check"><Check size={14} strokeWidth={2} /></span>Only people added</div>
+              </div>
+            </div>
+          </div>
+          <p className="release-preview-body">Decisions on the budget and the hire.</p>
+        </>}
         {kind === "activity" && <>
           <div className="release-demo-heading"><span>All notes</span><small>8 notes</small></div>
           <PreviewNote recording />
@@ -113,6 +132,34 @@ function ReleaseVisual({ kind }: { kind: NonNullable<Release["visual"]> }) {
             <span className="release-preview-page-foot"><span>Weekly planning</span><span>1 / 2</span></span>
           </div>
           <div className="release-preview-sent"><FileText size={14} strokeWidth={1.8} />weekly-planning.pdf</div>
+        </>}
+        {kind === "audio" && <>
+          <div className="release-demo-heading"><span>Save audio</span></div>
+          <ul className="release-preview-takes">
+            <li><span>Recording 1</span><span>32 min 10 s</span></li>
+            <li><span>Recording 2</span><span>18 min 4 s</span></li>
+            <li className="is-total"><span>Total</span><span>50 min 14 s</span></li>
+          </ul>
+          <div className="release-preview-formats"><span className="is-selected">M4A</span><span>WAV</span></div>
+          <div className="release-preview-sent"><FileAudio size={14} strokeWidth={1.8} />weekly-planning.m4a</div>
+        </>}
+        {kind === "copilot" && <>
+          <div className="release-demo-heading"><span>GitHub Copilot</span></div>
+          <ul className="release-preview-takes">
+            <li><span>Copilot CLI</span><span>Installed</span></li>
+            <li><span>GitHub account</span><span>Signed in as octocat</span></li>
+            <li className="is-total"><span>Model</span><span>Claude Sonnet 5.5</span></li>
+          </ul>
+          <div className="release-preview-sent"><CircleCheck size={14} strokeWidth={1.8} />Summary written with your Copilot subscription</div>
+        </>}
+        {kind === "custom" && <>
+          <div className="release-demo-heading"><span>Custom endpoint</span></div>
+          <ul className="release-preview-takes">
+            <li><span>Base URL</span><span>openrouter.ai/api/v1</span></li>
+            <li><span>Transcription</span><span>elevenlabs/scribe-v2</span></li>
+            <li className="is-total"><span>Summaries</span><span>deepseek-v4.1-flash</span></li>
+          </ul>
+          <div className="release-preview-sent"><CircleCheck size={14} strokeWidth={1.8} />Model list and reply OK</div>
         </>}
         {kind === "two-factor" && <>
           <div className="release-demo-heading"><span>Two-factor authentication</span></div>

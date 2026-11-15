@@ -13,7 +13,9 @@
 // summary is optional, cloud never nags).
 
 import { ipc, type TranscribeProvider } from "./ipc";
-import { chosenCloudProvider, isCloudProvider } from "./transcribeDefault";
+import { copilotReady } from "./copilot";
+import { KEY_PROVIDERS } from "./providers";
+import { chosenCloudProvider, customDefaultWorking, isCloudProvider } from "./transcribeDefault";
 import { cloudApi } from "./cloud";
 
 // A model download the chip / recap can surface as "Downloading — NN%".
@@ -95,6 +97,13 @@ export async function computeSetupStatus(): Promise<SetupStatus> {
       provider: "local",
       model: modelId,
     };
+  } else if (def?.provider === "custom") {
+    stt = {
+      working: await customDefaultWorking(def),
+      kind: "cloud",
+      provider: "custom",
+      model: def.model,
+    };
   } else if (def && isCloudProvider(def.provider)) {
     // Shared with the onboarding resume so the two can't disagree on what
     // counts as a configured cloud default (see transcribeDefault.ts).
@@ -113,16 +122,27 @@ export async function computeSetupStatus(): Promise<SetupStatus> {
   }
 
   // ---- Summary configured? (informational) --------------------------------
-  // openai → a key exists; local → a model name is set. Never gates.
+  // A keyed provider → its key exists; local → a model name is set; copilot →
+  // signed in with a CLI; custom → a URL and a model. Never gates.
   let summaryConfigured = false;
   if (summaryProvider === "local") {
     const model = await ipc.getSetting("local_llm_model").catch(() => null);
     summaryConfigured = !!model && model.trim().length > 0;
+  } else if (summaryProvider === "copilot") {
+    const status = await ipc.copilotStatus().catch(() => null);
+    summaryConfigured = copilotReady(status);
+  } else if (summaryProvider === "custom") {
+    const [url, model] = await Promise.all([
+      ipc.getSetting("custom_base_url").catch(() => null),
+      ipc.getSetting("custom_model").catch(() => null),
+    ]);
+    summaryConfigured = !!url?.trim() && !!model?.trim();
   } else {
-    // Default provider is openai — configured iff its key is present. (This
-    // read may duplicate the STT one above; it's cheap and keeps the branches
-    // independent.)
-    const key = await ipc.getProviderKey("openai").catch(() => null);
+    // A keyed provider is configured iff its key is present; anything else
+    // reads as the default, openai. (This read may duplicate the STT one
+    // above; it's cheap and keeps the branches independent.)
+    const keyed = KEY_PROVIDERS.find((p) => p === summaryProvider) ?? "openai";
+    const key = await ipc.getProviderKey(keyed).catch(() => null);
     summaryConfigured = !!key;
   }
 

@@ -1,6 +1,6 @@
 import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import { listen as listenTauri } from "@tauri-apps/api/event";
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -23,7 +23,6 @@ import {
   FileText,
   Folder,
   Languages,
-  Lock,
   MessageCircle,
   MessageSquare,
   MoreHorizontal,
@@ -82,6 +81,7 @@ import { ContextMenu, ContextMenuItem } from "../components/ContextMenu";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { ExportModal } from "./ExportModal";
 import { SendToWebhookModal } from "./SendToWebhookModal";
+import { SaveAudioModal } from "./SaveAudioModal";
 import { useWebhookSends } from "../lib/webhook";
 import { SUMMARY_PRESETS, presetLabel } from "../lib/presets";
 import { LANGUAGES, languageOptionLabel } from "../lib/languages";
@@ -93,6 +93,16 @@ import {
   renameSpeakerAcrossNotes,
 } from "../lib/crossNoteRename";
 import { cn } from "../lib/cn";
+import { NoteAccessPicker } from "../components/NoteAccess";
+import {
+  PANEL_FLOOR,
+  PANEL_MAX,
+  PANEL_MIN,
+  readPanelOpen,
+  readPanelWidth,
+  writePanelOpen,
+  writePanelWidth,
+} from "../lib/notePanel";
 
 // Memoized Markdown renderer. ReactMarkdown's parse step is O(N) over
 // the source string and we paint summaries that can hit 10K+ chars on
@@ -153,23 +163,14 @@ async function runTranscribe(noteId: string, scope: "pending" | "all") {
   // future surface) silently skipping it.
 }
 
-/** Context-panel width bounds, and the body column's floor.
+/** The body column's floor beside the context panel.
  *
  * `BODY_MIN` is measured, not chosen: the note toolbar's irreducible width is
  * the traffic-light gutter a collapsed sidebar spends (116px) plus a chevron,
  * three icon-only action buttons and two icon buttons — 391px in the warm
  * theme once every label has dropped (see `NoteToolbar`'s degradation steps,
  * and `scripts/measure-toolbar.js` for how to re-measure). 420 clears that with
- * ~30px spare for a future theme's wider controls.
- *
- * `PANEL_FLOOR` is below `PANEL_MIN` on purpose. On a window too narrow to give
- * both columns their nominal minimum, a panel a little under its comfortable
- * width is a better answer than a body column that cannot hold its own toolbar
- * — which is what the old flat 320–720 clamp produced, since it never looked at
- * the window at all. */
-const PANEL_MIN = 320;
-const PANEL_FLOOR = 260;
-const PANEL_MAX = 720;
+ * ~30px spare for a future theme's wider controls. */
 const BODY_MIN = 420;
 
 /** How long the body has to sit still before #90's typed-note titler fires.
@@ -382,7 +383,16 @@ export function Note() {
   const [thinkingStream, setThinkingStream] = useState<string>("");
   const [contentStream, setContentStream] = useState<string>("");
   const [thinkingExpanded, setThinkingExpanded] = useState<boolean>(true);
-  const [panelOpen, setPanelOpen] = useState<boolean>(true);
+  const [panelOpen, setPanelOpen] = useState<boolean>(readPanelOpen);
+  // Only the user's own open/close is remembered; the recording's auto-open
+  // below sets the state directly and is undone by the next note.
+  const choosePanelOpen = useCallback((open: boolean) => {
+    setPanelOpen(open);
+    writePanelOpen(open);
+  }, []);
+  useEffect(() => {
+    setPanelOpen(readPanelOpen());
+  }, [id]);
   const [activeTab, setActiveTab] = useState<"summary" | "transcript" | "chat">("summary");
   // Chat session chrome for the panel header (issue #62). ChatPanel owns all
   // chat state and publishes this projection up; the header's +/history buttons
@@ -398,27 +408,22 @@ export function Note() {
     [draft?.id],
   );
   const chatTargetKey = chatTarget ? targetKey(chatTarget) : null;
-  const [panelWidth, setPanelWidth] = useState<number>(() => {
-    const saved = typeof localStorage !== "undefined" ? Number(localStorage.getItem("humla.panelWidth")) : NaN;
-    // `PANEL_FLOOR`, not `PANEL_MIN`: a width persisted from a cramped window
-    // is legitimately under the nominal minimum, and rejecting it would reset
-    // the panel to 440 on every reopen there.
-    return saved >= PANEL_FLOOR && saved <= PANEL_MAX ? saved : 440;
-  });
+  const [panelWidth, setPanelWidth] = useState<number>(readPanelWidth);
   // The width the two columns share, watched rather than derived: it is the
   // window minus the nav card, and the nav card collapses. Drives the clamp
   // that keeps the panel from squeezing the body column past what its toolbar
-  // can survive — see PANEL_MIN / BODY_MIN.
-  const columnsRef = useRef<HTMLDivElement | null>(null);
+  // can survive — see PANEL_MIN / BODY_MIN. A state ref, because the columns
+  // only mount once the note has loaded; measured before paint, or the panel
+  // draws uncapped and then animates down to the cap.
+  const [columnsEl, setColumnsEl] = useState<HTMLDivElement | null>(null);
   const [columnsWidth, setColumnsWidth] = useState(0);
-  useEffect(() => {
-    const el = columnsRef.current;
-    if (!el) return;
-    setColumnsWidth(el.clientWidth);
+  useLayoutEffect(() => {
+    if (!columnsEl) return;
+    setColumnsWidth(columnsEl.clientWidth);
     const ro = new ResizeObserver(([entry]) => setColumnsWidth(entry.contentRect.width));
-    ro.observe(el);
+    ro.observe(columnsEl);
     return () => ro.disconnect();
-  }, []);
+  }, [columnsEl]);
   // How wide the panel may actually be right now. Before #146 the drag handler
   // clamped to a flat 320–720 with no regard for the window, so on a
   // minimum-size window the panel could be dragged over the whole view and
@@ -643,11 +648,7 @@ export function Note() {
     };
     const onUp = () => {
       setResizing(false);
-      try {
-        localStorage.setItem("humla.panelWidth", String(panelWidthRef.current));
-      } catch {
-        /* ignore */
-      }
+      writePanelWidth(panelWidthRef.current);
     };
     document.body.style.userSelect = "none";
     document.body.style.cursor = "col-resize";
@@ -1132,7 +1133,7 @@ export function Note() {
   const wsInitial = noteWsName.slice(0, 1).toUpperCase();
 
   return (
-    <div ref={columnsRef} className="h-full flex min-h-0">
+    <div ref={setColumnsEl} className="h-full flex min-h-0">
       {/* Body column — toolbar + scrollable writing area. The context
           panel is a sibling card to the right; closing it widens the body
           into a focus-writing mode. */}
@@ -1145,7 +1146,7 @@ export function Note() {
           recActive={recActive}
           recordBlock={recordBlock}
           panelOpen={panelOpen}
-          onTogglePanel={() => setPanelOpen((v) => !v)}
+          onTogglePanel={() => choosePanelOpen(!panelOpen)}
           onSummarizeFailed={clearSummaryStream}
           onRegenerateTitle={regenerateTitle}
           flushEdits={flushSave}
@@ -1279,15 +1280,17 @@ export function Note() {
               </span>
             )
           )}
-          {draft.workspace_id && isMine && (
-            <VisibilityPicker
-              value={draft.private}
+          {draft.workspace_id && (isMine || draft.private) && (
+            <NoteAccessPicker
+              access={{ private: draft.private, shared_with: draft.shared_with ?? [] }}
+              owner={draft.owner}
+              editable={isMine}
               disabled={readOnly}
-              onChange={async (isPrivate) => {
-                if (!draft || readOnly || isPrivate === draft.private) return;
-                const next = { ...draft, private: isPrivate };
+              onChange={async (access) => {
+                if (!draft || readOnly || !isMine) return;
+                const next = { ...draft, ...access };
                 setDraft(next);
-                await ipc.setNotePrivate(draft.id, isPrivate);
+                await ipc.setNoteAccess(draft.id, access.private, access.shared_with);
                 upsert(next);
               }}
             />
@@ -1492,7 +1495,7 @@ export function Note() {
             )}
             <button
               type="button"
-              onClick={() => setPanelOpen(false)}
+              onClick={() => choosePanelOpen(false)}
               title="Close panel"
               aria-label="Close panel"
               className="nd-btn-icon"
@@ -1998,6 +2001,12 @@ export function NoteToolbar({
   const webhookEnabled = useLiveSetting("webhook_enabled") === "true";
   const sendingToWebhook = useWebhookSends((s) => !!s.sending[noteId]);
   const [webhookOpen, setWebhookOpen] = useState(false);
+  // Save audio (#224) is in this menu for the reason Export is: it is the note
+  // leaving the app. Offered on every note, with the sheet saying why there is
+  // nothing to save, rather than greyed here, where a menu item has no room for
+  // a reason. Disabled while a capture or a replay may still be writing a take.
+  const [audioOpen, setAudioOpen] = useState(false);
+  const keepAudio = useLiveSetting("keep_audio") === "true";
   // The export sheet's team hint opens this. Deliberately NOT the same instance
   // as the read-only banner's in `Note` above: that one rescues the workspace a
   // note already belongs to and only exists when there is one, while the hint
@@ -2213,6 +2222,17 @@ export function NoteToolbar({
               {followupBusy ? "Drafting follow-up…" : "Draft follow-up email"}
             </ContextMenuItem>
           )}
+          {note && (
+            <ContextMenuItem
+              disabled={recActive || isTranscribing}
+              onClick={() => {
+                setMenuPos(null);
+                setAudioOpen(true);
+              }}
+            >
+              Save audio…
+            </ContextMenuItem>
+          )}
           {note && webhookEnabled && (
             <ContextMenuItem
               disabled={sendingToWebhook}
@@ -2245,6 +2265,14 @@ export function NoteToolbar({
           onClose={() => setExportOpen(false)}
           flushEdits={flushEdits}
           onCreateTeam={() => setTeamHintOpen(true)}
+        />
+      )}
+      {note && (
+        <SaveAudioModal
+          note={note}
+          open={audioOpen}
+          onClose={() => setAudioOpen(false)}
+          keepAudio={keepAudio}
         />
       )}
       {note && (
@@ -2346,47 +2374,6 @@ function CtlSelect({
               </MenuRadioItem>
             </Fragment>
           ))}
-        </MenuRadioGroup>
-      </MenuContent>
-    </Menu>
-  );
-}
-
-/** Visibility inside a workspace (#191).
- *
- *  Rendered only for a note that has a workspace AND that the reader wrote. A
- *  Personal note is private by definition, and on someone else's note this is not
- *  the reader's call to make — not even a workspace owner's, or the word means
- *  nothing. The server refuses the write either way; this is the surface agreeing
- *  with it rather than offering a control that fails.
- */
-function VisibilityPicker({
-  value,
-  disabled,
-  onChange,
-}: {
-  value: boolean;
-  disabled?: boolean;
-  onChange: (isPrivate: boolean) => void;
-}) {
-  return (
-    <Menu>
-      <MenuTrigger
-        className="nd-meta is-interactive"
-        disabled={disabled}
-        title={value ? "Only you can read this note" : "Everyone in the workspace can read this note"}
-        aria-label="Visibility"
-      >
-        {value ? <Lock size={14} strokeWidth={1.7} /> : <Users size={14} strokeWidth={1.7} />}
-        <span>{value ? "Private" : "Shared"}</span>
-      </MenuTrigger>
-      <MenuContent aria-label="Visibility">
-        <MenuRadioGroup
-          value={value ? "private" : "shared"}
-          onValueChange={(v) => onChange(v === "private")}
-        >
-          <MenuRadioItem value="shared">Shared</MenuRadioItem>
-          <MenuRadioItem value="private">Private</MenuRadioItem>
         </MenuRadioGroup>
       </MenuContent>
     </Menu>
@@ -3072,7 +3059,9 @@ function SpeakersPicker({
 const CHIP_LABEL: Record<SummaryProvider, string> = {
   openai: "Cloud",
   anthropic: "Claude",
+  copilot: "Copilot",
   local: "Local",
+  custom: "Custom",
 };
 
 function SummaryProviderChip({

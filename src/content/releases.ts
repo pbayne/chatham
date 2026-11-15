@@ -3,13 +3,120 @@ export type Release = {
   date: string;
   title: string;
   summary: string;
-  visual?: "filters" | "privacy" | "activity" | "updates" | "speakers" | "webhook" | "export" | "two-factor" | "date";
+  visual?: "filters" | "privacy" | "activity" | "updates" | "speakers" | "webhook" | "export" | "two-factor" | "date" | "audio" | "copilot" | "custom" | "share";
   paragraphs: string[];
   highlights: string[];
   issues: { title: string; reference: string; status: "Open" | "Closed"; url: string }[];
 };
 
 export const releases: Release[] = [
+  {
+    version: "0.75.0",
+    date: "2026-11-10",
+    title: "Share a note with chosen people",
+    summary: "A note in a team workspace can now be shared with just the people who need it.",
+    visual: "share",
+    paragraphs: [
+      "Until now a note in a team workspace was either shared with everyone or private to you. Now you can pick who gets it: click the chip under the title, add people from the workspace, and only they can open the note, its transcript and its recording. Everyone else in the workspace doesn't see it, and it doesn't show up when they chat with their notes.",
+      "Only the person who wrote the note can change who has it. The people you add can read and edit it like any other note in the workspace, and they see who else has it. If you take someone off the list, the note is removed from their Mac the next time Humla syncs.",
+      "Also in this release: a microphone with many inputs, like the Focusrite Vocaster Two, now records from its first input instead of silence, and Humla remembers whether you left the side panel open or closed.",
+    ],
+    highlights: [
+      "Share a note with chosen people in your workspace.",
+      "Only you decide who has your note.",
+      "Multichannel microphones record from their first input.",
+    ],
+    issues: [
+      { title: "Share a note with chosen people in a workspace", reference: "#232", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/232" },
+      { title: "Silent microphone capture from Vocaster Two USB (14-channel input) on macOS", reference: "#231", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/231" },
+    ],
+  },
+  {
+    version: "0.74.0",
+    date: "2026-11-01",
+    title: "Start a team workspace from a link",
+    summary: "Links on humla.team and in our emails now open Humla right where you create a team workspace.",
+    paragraphs: [
+      "When you click a link to start a team workspace, for example from humla.team or one of our emails, Humla now opens and goes straight to creating the workspace. That works whether Humla is already running or not. If you're still setting Humla up, it waits until you're done.",
+    ],
+    highlights: [
+      "Links can open Humla straight to Create team workspace.",
+      "Works whether Humla is open or not.",
+    ],
+    issues: [],
+  },
+  {
+    version: "0.73.0",
+    date: "2026-10-29",
+    title: "Use any OpenAI-compatible API",
+    summary: "Bring your own endpoint, like OpenRouter, for summaries, chat and transcription.",
+    visual: "custom",
+    paragraphs: [
+      "Summaries, chat and transcription now have a Custom provider: any service that speaks the OpenAI API, such as OpenRouter, Together, DeepSeek or your company's own gateway. Pick Custom under Settings → Summary, Chat or Transcription, enter the base URL and, if the service needs one, an API key, then type the model you want. One endpoint serves all three, and each picks its own model.",
+      "Humla uses the URL exactly as you type it, and when something's wrong the error shows the full address it tried. Test checks the service's model list and a short reply separately, since some services don't list their models at all. The key is kept in your Keychain.",
+      "Transcription asks for word timings, so playback can highlight each word as it's spoken. A model that can't give them still transcribes, just without the highlighting. Chat on a custom endpoint searches your notes by keyword.",
+    ],
+    highlights: [
+      "Pick Custom for summaries, chat or transcription.",
+      "Works with OpenRouter and other OpenAI-compatible APIs.",
+      "The API key is optional and stays in your Keychain.",
+    ],
+    issues: [
+      { title: "Custom OpenAI-compatible provider: user-supplied base URL + API key", reference: "#173", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/173" },
+    ],
+  },
+  {
+    version: "0.72.1",
+    date: "2026-10-29",
+    title: "Humla opens on macOS Ventura and Sonoma again",
+    summary: "Humla quit right after opening on Macs older than macOS Sequoia. This fixes it.",
+    paragraphs: [
+      "On macOS 13 Ventura and macOS 14 Sonoma, Humla quit as soon as it opened, with a “Humla quit unexpectedly” message. Part of the on-device transcription code needed something only macOS 15 Sequoia has. Humla now starts on macOS 13 and later again, and uses the newer feature only on Macs that have it.",
+    ],
+    highlights: [
+      "Humla opens again on macOS 13 Ventura and macOS 14 Sonoma.",
+    ],
+    issues: [],
+  },
+  {
+    version: "0.72.0",
+    date: "2026-10-27",
+    title: "Use your GitHub Copilot",
+    summary: "Summaries and chat on the Copilot subscription you already have, no API key needed.",
+    visual: "copilot",
+    paragraphs: [
+      "GitHub Copilot is now a provider for summaries, titles and chat over your notes. Pick it under Settings → Summary or Settings → Chat, sign in with GitHub by entering a short code, and choose a model. You get the models your Copilot plan includes, such as Claude and GPT, and the calls count against your Copilot plan instead of an API key.",
+      "Humla reaches Copilot through GitHub's Copilot CLI. If it's already on your Mac, Humla finds it; if not, Settings downloads it for you (about 120 MB). Chat on Copilot searches your notes by keyword, as it does on Anthropic.",
+      "Also fixed: chat on some newer OpenAI models, such as GPT-6.1 Sol, failed with an error about reasoning_effort. It works again.",
+    ],
+    highlights: [
+      "Pick GitHub Copilot for summaries and chat.",
+      "Sign in with GitHub, no API key to paste.",
+      "Choose from the models your Copilot plan includes.",
+    ],
+    issues: [
+      { title: "GitHub Copilot", reference: "#227", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/227" },
+    ],
+  },
+  {
+    version: "0.71.0",
+    date: "2026-10-24",
+    title: "Save a meeting’s audio",
+    summary: "Save the recording behind a note as one audio file, wherever you want it.",
+    visual: "audio",
+    paragraphs: [
+      "A note’s ⋯ menu now has Save audio…, right below Export…. It lists every recording on the note with its length, then saves them joined in order as one file, as M4A or WAV, wherever you pick. Use it to keep a meeting somewhere else, share it, or open it in another app.",
+      "Humla only has audio to save when Keep recorded audio is on under Settings → Recording. If some of a note’s recordings aren’t stored on this Mac, the list marks them as missing and the file leaves them out.",
+    ],
+    highlights: [
+      "Save a note’s audio from ⋯ → Save audio….",
+      "Choose M4A or WAV.",
+      "Every recording on the note is joined into one file, in order.",
+    ],
+    issues: [
+      { title: "Button for save audio records from note", reference: "#224", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/224" },
+    ],
+  },
   {
     version: "0.70.0",
     date: "2026-10-20",

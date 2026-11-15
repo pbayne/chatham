@@ -52,6 +52,11 @@
 .release-preview-visibility { position: relative; }
 .release-preview-menu { position: absolute; top: calc(100% + 4px); right: 0; width: 160px; padding: 4px; border: 1px solid var(--color-line-visible); border-radius: 8px; background: var(--color-canvas); box-shadow: 0 10px 15px -3px #0000001a, 0 4px 6px -4px #0000001a; }
 .release-preview-menu > div:first-child { color: var(--color-text-muted); }
+.release-preview-share { width: 190px; }
+.release-preview-share > div:first-child { color: inherit; }
+.release-preview-person { display: flex; align-items: center; gap: 8px; padding: 5px 8px; font-size: 13px; }
+.release-preview-person > span { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 999px; font-size: 10px; font-weight: 600; background: var(--color-surface-raised); }
+.release-preview-person > small, .release-preview-person > svg { margin-left: auto; color: var(--color-text-muted); }
 .release-preview-check { display: grid; place-items: center; width: 14px; height: 14px; color: var(--color-accent-text); }
 .release-preview-body { margin-top: 22px; max-width: 140px; font-size: 13px; line-height: 1.65; color: var(--color-text-muted); min-height: 96px; }
 .release-visual-caption { font-size: 11px; color: var(--color-text-muted); }
@@ -111,6 +116,11 @@
 .release-preview-page em { font-style: normal; font-size: 10.5px; font-weight: 600; padding-bottom: 2px; border-bottom: 1px solid #dad8d2; }
 .release-preview-page ul { margin: 0; padding-left: 12px; list-style: disc; }
 .release-preview-page-foot { display: flex; justify-content: space-between; margin-top: 8px; font-size: 7.5px; color: #706e68; }
+.release-preview-takes { display: flex; flex-direction: column; margin: 12px 0 0; padding: 0; list-style: none; font-size: 13px; color: var(--color-text); }
+.release-preview-takes li { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--color-line); font-variant-numeric: tabular-nums; }
+.release-preview-takes li > span:last-child { color: var(--color-text-muted); }
+.release-preview-takes li.is-total { border-bottom: 0; font-weight: 600; }
+.release-preview-takes li.is-total > span:last-child { color: var(--color-text); }
 .release-preview-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin: 12px 0 14px; }
 .release-preview-days span { display: grid; place-items: center; height: 30px; border-radius: 6px; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--color-text); }
 .release-preview-days span.is-selected { background: var(--color-accent); color: var(--color-on-accent); font-weight: 600; }

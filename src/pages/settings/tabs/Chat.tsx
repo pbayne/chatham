@@ -7,10 +7,17 @@ import { OllamaConnect } from "../../../components/provider/OllamaConnect";
 import { ProviderKeyCard } from "../../../components/provider/ProviderKeyCard";
 import { CommandSnippet } from "../../../components/CommandSnippet";
 import { useOllamaProbe } from "../../../components/provider/useOllamaProbe";
-import { cloudChatHint, localChatHint } from "../../../components/provider/useChatReadiness";
+import {
+  cloudChatHint,
+  customChatHint,
+  localChatHint,
+} from "../../../components/provider/useChatReadiness";
 import { useEmbedProbe } from "../../../components/provider/useEmbedProbe";
 import { useProviderKey } from "../../../components/provider/useProviderKey";
 import { useCloudModels } from "../../../components/provider/useCloudModels";
+import { CopilotCard } from "../../../components/provider/CopilotCard";
+import { CustomEndpointCard, CustomModelField } from "../../../components/provider/CustomEndpoint";
+import { copilotHint, useCopilotStatus } from "../../../components/provider/useCopilot";
 import { CHAT_PROVIDERS } from "../types";
 import {
   EMBEDDING_OLLAMA_MODEL,
@@ -38,11 +45,14 @@ export function modelSuitsProvider(model: string, provider: string): boolean {
 export function ChatTab({ s, update }: Pick<SettingsHook, "s" | "update">) {
   const isOllama = s.chat_provider === "ollama";
   const isAnthropic = s.chat_provider === "anthropic";
+  const isCopilot = s.chat_provider === "copilot";
+  const isCustom = s.chat_provider === "custom";
   // Every hook runs unconditionally (rules of hooks); the probe parks itself
   // when chat isn't on Ollama, and the listing when no Anthropic key is stored.
-  const key = useProviderKey("openai", { enabled: !isOllama && !isAnthropic });
+  const isOpenAi = !isOllama && !isAnthropic && !isCopilot && !isCustom;
+  const key = useProviderKey("openai", { enabled: isOpenAi });
   const anthropicKey = useProviderKey("anthropic", { enabled: isAnthropic });
-  const isOpenAi = !isOllama && !isAnthropic;
+  const copilot = useCopilotStatus({ enabled: isCopilot });
   const openaiModels = useCloudModels("openai", key.hasKey, s.chat_model, { enabled: isOpenAi });
   const anthropicModels = useCloudModels("anthropic", anthropicKey.hasKey, s.chat_model, {
     enabled: isAnthropic,
@@ -67,6 +77,12 @@ export function ChatTab({ s, update }: Pick<SettingsHook, "s" | "update">) {
       baseUrl: s.local_llm_base_url,
       where: "above",
     });
+    ready = hint === "";
+  } else if (isCopilot) {
+    hint = copilotHint(copilot, "above");
+    ready = hint === "";
+  } else if (isCustom) {
+    hint = customChatHint({ baseUrl: s.custom_base_url, model: s.custom_chat_model, where: "above" });
     ready = hint === "";
   } else {
     hint = cloudChatHint({
@@ -93,7 +109,7 @@ export function ChatTab({ s, update }: Pick<SettingsHook, "s" | "update">) {
       </p>
       <Row
         label="Provider"
-        description="Ask questions grounded in your notes. Cloud (OpenAI) uses your key; Local runs fully offline against Ollama or any OpenAI-compatible server. Independent of your transcription and summary providers."
+        description="Ask questions grounded in your notes. Cloud providers use your key or, for GitHub Copilot, your Copilot subscription; Local runs fully offline against Ollama or any OpenAI-compatible server. Independent of your transcription and summary providers."
         control={
           <Select
             value={s.chat_provider}
@@ -133,6 +149,41 @@ export function ChatTab({ s, update }: Pick<SettingsHook, "s" | "update">) {
           <p className="text-xs text-[var(--color-text-muted)] py-3">
             Anthropic has no embedding model, so chat searches your notes by keyword rather than
             by meaning. Cloud (OpenAI) or a local server give semantic search as well.
+          </p>
+        </>
+      )}
+
+      {isCopilot && (
+        <>
+          <CopilotCard
+            copilot={copilot}
+            model={s.copilot_chat_model}
+            onModelChange={(v) => update("copilot_chat_model", v)}
+            modelDescription="Used for chat over your notes. Auto lets Copilot pick."
+          />
+          <p className="text-xs text-[var(--color-text-muted)] py-3">
+            GitHub Copilot has no embedding model here, so chat searches your notes by keyword
+            rather than by meaning. Cloud (OpenAI) or a local server give semantic search as well.
+          </p>
+        </>
+      )}
+
+      {isCustom && (
+        <>
+          <CustomEndpointCard
+            baseUrl={s.custom_base_url}
+            onBaseUrlChange={(v) => update("custom_base_url", v)}
+            testModel={s.custom_chat_model}
+          />
+          <CustomModelField
+            value={s.custom_chat_model}
+            onChange={(v) => update("custom_chat_model", v)}
+            description="Used for chat over your notes. It has to support tool calling, which is how chat searches your notes."
+          />
+          <p className="text-xs text-[var(--color-text-muted)] py-3">
+            Many endpoints serve no embedding model, so chat on a custom endpoint searches your
+            notes by keyword rather than by meaning. Cloud (OpenAI) or a local server give semantic
+            search as well.
           </p>
         </>
       )}

@@ -4,6 +4,33 @@ import type { Provider, SummaryProvider } from "./providers";
 import type { SpeakerLabelStat } from "./speakerSuggest";
 import { targetFolderId, targetNoteId, type ChatTarget } from "./chatTarget";
 
+export type CopilotStatus = {
+  login: string | null;
+  cliPath: string | null;
+  cliVersion: string | null;
+  /** Why the CLI last failed to start, if it did. */
+  cliError: string | null;
+  downloadVersion: string;
+};
+export type CopilotDeviceCode = { userCode: string; verificationUri: string; expiresIn: number };
+export type CopilotSignInEvent = {
+  status: "signed_in" | "denied" | "expired" | "failed";
+  login: string | null;
+  message: string | null;
+};
+export type CopilotCliDownloadEvent = {
+  status: "progress" | "done" | "failed";
+  fraction: number | null;
+  message: string | null;
+};
+export type CopilotModel = {
+  id: string;
+  name: string;
+  vendor: string | null;
+  /** Premium requests per call relative to the base rate; 0 is included. */
+  multiplier: number | null;
+};
+
 /** The `(noteId, folderId)` pair every chat command sends, derived in ONE place
  *  so no call site can pair a folder id with a note scope. `chatTarget.ts` imports
  *  only a type from here, so this direction of the cycle carries no runtime edge. */
@@ -53,6 +80,9 @@ export type Note = {
   // flipped private is WITHDRAWN from teammates: their local copy is deleted on
   // their next pull, not merely hidden.
   private: boolean;
+  // Members a private note is also readable by (#232), as user ids. Empty on a
+  // private note = its author alone; always empty on a shared one.
+  shared_with: string[];
   // Soft-delete timestamp (ms) when the note is in the Trash; null/absent = live.
   deleted_at?: number | null;
   // Optional Client tag (issue #43). null = untagged. Independent of folder_id.
@@ -83,6 +113,17 @@ export type Client = {
   name: string;
   created_at: number;
   updated_at: number;
+};
+
+// ⋯ → Save audio… (#224): every take's audio joined into one file. Mirrors
+// `AudioFormat` / `TakeAudio` in `commands/export.rs`.
+export type AudioFormat = "m4a" | "wav";
+
+// One take as the sheet lists it; `durationMs` is null when its audio is no
+// longer on this device, and the saved file leaves it out.
+export type TakeAudio = {
+  index: number;
+  durationMs: number | null;
 };
 
 // Note export (issue #18). One combined file; content selection + format +
@@ -139,6 +180,18 @@ export type SettingsKey =
   | "summary_model"
   // The Anthropic summary model (#183). Chat reuses `chat_model`, as OpenAI does.
   | "anthropic_model"
+  // GitHub Copilot's model for summaries and titles, and for chat (#227). Its
+  // own keys: Copilot's ids overlap OpenAI's and Anthropic's without meaning
+  // the same thing. Unset means "auto".
+  | "copilot_model"
+  | "copilot_chat_model"
+  // The custom OpenAI-compatible endpoint (#173): one base URL, used as typed
+  // and shared by summaries, chat and transcription, and a model per surface
+  // (transcription's lives in its `transcribe_config` entry). The key is in the
+  // Keychain under the `custom` provider.
+  | "custom_base_url"
+  | "custom_model"
+  | "custom_chat_model"
   | "summary_provider"
   | "local_llm_base_url"
   | "local_llm_model"
@@ -189,14 +242,18 @@ export type SettingsKey =
 
 export type TranscribeProvider = Provider;
 
-// Mirror of the Rust `crate::stt::ProviderConfig` tagged union. The four
-// variants match the four supported STT providers; `local` carries the
-// extra preset + GPU fields it needs.
+// Mirror of the Rust `crate::stt::ProviderConfig` tagged union, one variant
+// per STT provider; `local` carries the extra preset + GPU fields it needs.
+// `custom` takes its base URL from the `custom_base_url` setting.
 export type ProviderConfig =
   | { provider: "openai"; model: string; base_url?: string }
   | { provider: "local"; model_id: string; preset: string; use_gpu: boolean }
   | { provider: "deepgram"; model: string; base_url?: string }
-  | { provider: "groq"; model: string };
+  | { provider: "groq"; model: string }
+  | { provider: "custom"; model: string };
+
+/** One half of the custom endpoint's Test (`custom_endpoint::Probe`). */
+export type CustomProbe = { outcome: "ok" | "failed" | "skipped"; message: string };
 
 // Mirror of the Rust `crate::stt::TranscribeConfig`. Wraps a default
 // ProviderConfig plus a map of per-language overrides keyed by ISO 639-1
@@ -497,10 +554,11 @@ export const ipc = {
   // Reassign a note to a workspace ("" = Personal/local-only).
   setNoteWorkspace: (id: string, workspaceId: string) =>
     invoke<void>("notes_set_workspace", { id, workspaceId }),
-  // Visibility inside the workspace (#191). Also banks the choice as that
+  // Who can read the note inside its workspace (#191, #232): everyone, or its
+  // author plus `sharedWith`. Also banks everyone-or-restricted as that
   // workspace's default for the next note.
-  setNotePrivate: (id: string, isPrivate: boolean) =>
-    invoke<void>("notes_set_private", { id, private: isPrivate }),
+  setNoteAccess: (id: string, isPrivate: boolean, sharedWith: string[]) =>
+    invoke<void>("notes_set_access", { id, private: isPrivate, sharedWith }),
   // When the note happened, epoch ms.
   setNoteDate: (id: string, createdAt: number) =>
     invoke<void>("notes_set_date", { id, createdAt }),
@@ -766,6 +824,11 @@ export const ipc = {
   // Write a note's selected content to the chosen path as one combined file.
   exportNote: (noteId: string, spec: ExportSpec) =>
     invoke<void>("export_note", { noteId, spec }),
+  noteAudioExportInfo: (noteId: string) =>
+    invoke<TakeAudio[]>("note_audio_export_info", { noteId }),
+  // Save the note's audio to the path chosen in the native save panel.
+  exportNoteAudio: (noteId: string, spec: { path: string; format: AudioFormat }) =>
+    invoke<void>("export_note_audio", { noteId, spec }),
   rediarizeNote: (noteId: string) => invoke<void>("rediarize_note", { noteId }),
 
   summaryPromptsList: () => invoke<SummaryPrompt[]>("summary_prompts_list"),
@@ -808,8 +871,29 @@ export const ipc = {
   /** Models the stored Anthropic key can reach, newest first (#183). */
   anthropicListModels: () => invoke<string[]>("anthropic_list_models"),
 
+  /** Copilot's sign-in and CLI (#227). Reads the Keychain and may spawn a
+   *  login shell, so call it only while Copilot is the selected provider. */
+  copilotStatus: () => invoke<CopilotStatus>("copilot_status"),
+  /** Starts GitHub's device flow; the outcome arrives once on `copilot_sign_in`. */
+  copilotSignInStart: () => invoke<CopilotDeviceCode>("copilot_sign_in_start"),
+  copilotSignInCancel: () => invoke<void>("copilot_sign_in_cancel"),
+  copilotSignOut: () => invoke<void>("copilot_sign_out"),
+  /** Returns at once; progress and outcome arrive on `copilot_cli_download`. */
+  copilotCliDownload: () => invoke<void>("copilot_cli_download"),
+  copilotModels: () => invoke<CopilotModel[]>("copilot_models"),
+
   /** Chat-capable models the stored OpenAI key can reach. */
   openaiListModels: () => invoke<string[]>("openai_list_models"),
+
+  /** Every model the custom endpoint lists (#173). A help for the model field
+   *  only: plenty of gateways serve no listing. */
+  customListModels: () => invoke<string[]>("custom_list_models"),
+  /** The custom endpoint's listing and a completion with `model`, reported
+   *  separately. Without a model the completion is skipped. */
+  customEndpointTest: (model?: string) =>
+    invoke<{ listing: CustomProbe; completion: CustomProbe }>("custom_endpoint_test", {
+      model: model || null,
+    }),
 
   // Dimensionality of one real embedding, or the server's own error. The model
   // listing can't answer this (#179): a server can list a model and serve no
@@ -831,6 +915,8 @@ export const ipc = {
   // capture slot until it lands on idle (#182) — so it is a third answer to
   // "can a capture start", not a variant of either other one.
   recordingState: () => invoke<"idle" | "recording" | "stopping">("recording_state"),
+  // Recording links are held until this frontend hears `recording_status` (#91).
+  deepLinksReady: () => invoke<void>("deep_links_ready"),
   summarizeNote: (noteId: string) => invoke<void>("summarize_note", { noteId }),
   // Regenerate a note's title from its content (#90). Resolves to the new title,
   // or null when the model gave back nothing usable — in which case the existing
@@ -982,7 +1068,7 @@ export const ipc = {
   permissionsOpenSettings: (kind: PermissionKind) => invoke<void>("permissions_open_settings", { kind }),
 };
 
-export type PermissionKind = "microphone" | "screen";
+export type PermissionKind = "microphone" | "screen" | "notifications";
 export type PermissionStatus =
   | "granted"
   | "denied"
@@ -992,6 +1078,7 @@ export type PermissionStatus =
 export type PermissionsStatus = {
   microphone: PermissionStatus;
   screen: PermissionStatus;
+  notifications: PermissionStatus;
 };
 
 // ── AI chat (issues #46, #47) ────────────────────────────────────────────
@@ -1250,6 +1337,12 @@ export function onLocalWhisperDownloadError(
   cb: (e: LocalWhisperDownloadError) => void,
 ): Promise<UnlistenFn> {
   return listen<LocalWhisperDownloadError>("local_whisper_download_error", (e) => cb(e.payload));
+}
+export function onCopilotSignIn(cb: (e: CopilotSignInEvent) => void): Promise<UnlistenFn> {
+  return listen<CopilotSignInEvent>("copilot_sign_in", (e) => cb(e.payload));
+}
+export function onCopilotCliDownload(cb: (e: CopilotCliDownloadEvent) => void): Promise<UnlistenFn> {
+  return listen<CopilotCliDownloadEvent>("copilot_cli_download", (e) => cb(e.payload));
 }
 export function onDiarizeDownloadProgress(cb: (e: DiarizeDownloadProgress) => void): Promise<UnlistenFn> {
   return listen<DiarizeDownloadProgress>("diarize_download_progress", (e) => cb(e.payload));

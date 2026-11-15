@@ -21,7 +21,9 @@ describe("ChatTab provider setting", () => {
     expect(options).toEqual([
       "Cloud (OpenAI)",
       "Cloud (Anthropic)",
+      "Cloud (GitHub Copilot)",
       "Local (any OpenAI-compatible server)",
+      "Custom (OpenAI-compatible API)",
     ]);
     expect(screen.queryByRole("option", { name: /Groq/i })).toBeNull();
     expect(screen.queryByRole("option", { name: /Deepgram/i })).toBeNull();
@@ -440,5 +442,85 @@ describe("ChatTab rebuild-index row", () => {
     render(<ChatTab s={settings()} update={async () => {}} />);
     expect(await screen.findByText(/Up to date/)).toBeTruthy();
     expect(screen.queryByText(/indexed before the latest improvements/)).toBeNull();
+  });
+});
+
+describe("ChatTab on GitHub Copilot", () => {
+  const ready = { login: "octocat", cliPath: "/bin/copilot", cliVersion: "1", cliError: null, downloadVersion: "1" };
+
+  it("never asks for Copilot's status while another provider is selected", async () => {
+    const status = vi.fn(() => null);
+    mockTauri({ copilot_status: status });
+    render(<ChatTab s={settings({ chat_provider: "openai" })} update={async () => {}} />);
+    await screen.findByLabelText("OpenAI API key");
+    expect(status).not.toHaveBeenCalled();
+  });
+
+  it("writes the model to copilot_chat_model and reads ready", async () => {
+    mockTauri({
+      copilot_status: () => ready,
+      copilot_models: () => [
+        { id: "auto", name: "Auto", vendor: null },
+        { id: "gpt-5.4", name: "GPT-5.4", vendor: "OpenAI" },
+      ],
+    });
+    const update = vi.fn();
+    render(<ChatTab s={settings({ chat_provider: "copilot" })} update={update} />);
+    expect(await screen.findByText("Ready ✓")).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("combobox", { name: "Auto" }));
+    await userEvent.click(await screen.findByRole("option", { name: "GPT-5.4" }));
+    expect(update).toHaveBeenCalledWith("copilot_chat_model", "gpt-5.4");
+    expect(update).not.toHaveBeenCalledWith("chat_model", expect.anything());
+  });
+
+  it("asks for a sign-in when signed out", async () => {
+    mockTauri({ copilot_status: () => ({ ...ready, login: null }) });
+    render(<ChatTab s={settings({ chat_provider: "copilot" })} update={async () => {}} />);
+    expect(await screen.findByText("Sign in to GitHub Copilot above.")).toBeInTheDocument();
+  });
+});
+
+describe("ChatTab on a custom endpoint", () => {
+  it("reads only its own key, writes custom_chat_model, and says search is by keyword", async () => {
+    const keyReads: unknown[] = [];
+    const listed = vi.fn(() => []);
+    mockTauri({
+      provider_key_get: (args) => {
+        keyReads.push((args as { provider: string }).provider);
+        return null;
+      },
+      openai_list_models: listed,
+    });
+    const update = vi.fn();
+    render(
+      <ChatTab
+        s={settings({ chat_provider: "custom", custom_base_url: "https://gw.example/v1", chat_model: "gpt-5.5" })}
+        update={update}
+      />,
+    );
+    expect(screen.getByText(/searches your notes by keyword/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Type a model…" }));
+    await userEvent.type(screen.getByRole("combobox", { name: "Custom endpoint model" }), "deepseek-chat{Enter}");
+    expect(update).toHaveBeenCalledWith("custom_chat_model", "deepseek-chat");
+    expect(update).not.toHaveBeenCalledWith("chat_model", expect.anything());
+    expect(keyReads).toEqual(["custom"]);
+    expect(listed).not.toHaveBeenCalled();
+  });
+
+  it("needs a base URL, then a model — and no key", async () => {
+    const { rerender } = render(<ChatTab s={settings({ chat_provider: "custom" })} update={async () => {}} />);
+    expect(screen.getByText("Setup needed")).toBeInTheDocument();
+    expect(screen.getByText(/base URL above/)).toBeInTheDocument();
+    rerender(
+      <ChatTab s={settings({ chat_provider: "custom", custom_base_url: "https://gw.example/v1" })} update={async () => {}} />,
+    );
+    expect(screen.getByText(/chat model for the custom endpoint above/)).toBeInTheDocument();
+    rerender(
+      <ChatTab
+        s={settings({ chat_provider: "custom", custom_base_url: "https://gw.example/v1", custom_chat_model: "m" })}
+        update={async () => {}}
+      />,
+    );
+    expect(screen.getByText("Ready ✓")).toBeInTheDocument();
   });
 });

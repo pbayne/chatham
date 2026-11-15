@@ -454,6 +454,7 @@ mod tests {
             workspace_id: String::new(),
             private: false,
             deleted_at: None,
+            shared_with: Vec::new(),
         }
     }
 

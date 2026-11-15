@@ -528,6 +528,10 @@ enum Endpoint<'a> {
     /// Base URL of a local OpenAI-compat server (Ollama, LM Studio,
     /// llama-server, vLLM).
     Local(&'a str),
+    /// The user's own endpoint (#173), used exactly as typed. Nothing about it
+    /// is inferred from its URL or its model names, so requests to it carry no
+    /// optional parameter at all.
+    Custom(&'a str),
 }
 
 impl<'a> Endpoint<'a> {
@@ -542,7 +546,7 @@ impl<'a> Endpoint<'a> {
     fn base(&self) -> &str {
         match self {
             Self::Cloud => BASE,
-            Self::Local(base) => base,
+            Self::Local(base) | Self::Custom(base) => base,
         }
     }
 
@@ -553,7 +557,7 @@ impl<'a> Endpoint<'a> {
     fn client(&self) -> reqwest::Client {
         match self {
             Self::Cloud => summary_cloud_client(),
-            Self::Local(_) => local_client(),
+            Self::Local(_) | Self::Custom(_) => local_client(),
         }
     }
 
@@ -570,6 +574,10 @@ impl<'a> Endpoint<'a> {
                  The local model may be stuck — restart your \
                  local-LLM server (e.g. `pkill ollama && ollama serve`)."
             ),
+            Self::Custom(_) => anyhow!(
+                "Timed out after {secs}s waiting for {}. Try again, or pick a faster model.",
+                self.url()
+            ),
         }
     }
 
@@ -582,6 +590,28 @@ impl<'a> Endpoint<'a> {
             Self::Local(_) => anyhow!(
                 "Couldn't reach {base}. Is your local-LLM server running? (ollama serve, etc.)"
             ),
+            Self::Custom(_) => anyhow!(
+                "Couldn't reach {}. Check the base URL in Settings and your connection.",
+                self.url()
+            ),
+        }
+    }
+
+    /// Attach the key. A custom endpoint's key is optional, and one that takes
+    /// none gets no Authorization header rather than an empty bearer.
+    fn authorize(&self, req: reqwest::RequestBuilder, api_key: &str) -> reqwest::RequestBuilder {
+        match self {
+            Self::Custom(_) if api_key.is_empty() => req,
+            _ => req.bearer_auth(api_key),
+        }
+    }
+
+    fn status_error(&self, status: reqwest::StatusCode, body: &str, api_key: &str) -> anyhow::Error {
+        match self {
+            Self::Custom(_) => {
+                crate::custom_endpoint::status_error(status.as_u16(), &self.url(), body, !api_key.is_empty())
+            }
+            _ => anyhow!("HTTP {status} from {}: {body}", self.base()),
         }
     }
 
@@ -596,6 +626,7 @@ impl<'a> Endpoint<'a> {
                 "Network error talking to {base}: {cause}. \
                  Check that your local-LLM server is reachable."
             ),
+            Self::Custom(_) => anyhow!("Network error talking to {}: {cause}.", self.url()),
         }
     }
 }
@@ -623,7 +654,7 @@ async fn post_chat(
     started: std::time::Instant,
 ) -> Result<reqwest::Response> {
     let r = send_chat(ep, api_key, body, started).await?;
-    check_chat_status(ep, r, started).await
+    check_chat_status(ep, r, api_key, started).await
 }
 
 /// Asked of every local OpenAI-compat server as `max_tokens`. It guards against a
@@ -645,7 +676,7 @@ async fn post_chat_lifting_limit<B: Serialize>(
     if let Endpoint::Local(base) = ep {
         let r = send_chat(ep, api_key, &body(Some(LOCAL_MAX_TOKENS)), started).await?;
         if r.status() != reqwest::StatusCode::BAD_REQUEST {
-            return check_chat_status(ep, r, started).await;
+            return check_chat_status(ep, r, api_key, started).await;
         }
         let refusal = r.text().await.unwrap_or_default();
         eprintln!("[llm] {base} refused max_tokens={LOCAL_MAX_TOKENS} ({refusal}); retrying without it");
@@ -661,7 +692,7 @@ async fn send_chat(
 ) -> Result<reqwest::Response> {
     let http = ep.client();
     let url = ep.url();
-    match send_with_retries(|| http.post(&url).bearer_auth(api_key).json(body), started).await {
+    match send_with_retries(|| ep.authorize(http.post(&url).json(body), api_key), started).await {
         Ok(resp) => Ok(resp),
         Err(e) if e.is_timeout() => Err(ep.timeout_error(started.elapsed().as_secs())),
         Err(e) if e.is_connect() => Err(ep.connect_error()),
@@ -672,6 +703,7 @@ async fn send_chat(
 async fn check_chat_status(
     ep: &Endpoint<'_>,
     r: reqwest::Response,
+    api_key: &str,
     started: std::time::Instant,
 ) -> Result<reqwest::Response> {
     let status = r.status();
@@ -679,20 +711,22 @@ async fn check_chat_status(
     if !status.is_success() {
         let body = r.text().await.unwrap_or_default();
         eprintln!("[llm] error body: {body}");
-        return Err(anyhow!("HTTP {status} from {}: {body}", ep.base()));
+        return Err(ep.status_error(status, &body, api_key));
     }
     Ok(r)
 }
 
-/// Cloud-OpenAI summary, streamed. Same contract as `summarize_with_base` —
-/// returns the assembled summary — but fires `on_chunk` per content delta so
-/// the UI shows tokens landing, and, crucially, keeps bytes moving on the wire
-/// so no middlebox reaps the connection while a reasoning model thinks.
+/// Cloud-OpenAI or custom-endpoint summary, streamed. Same contract as
+/// `summarize_with_base` — returns the assembled summary — but fires
+/// `on_chunk` per content delta so the UI shows tokens landing, and, crucially,
+/// keeps bytes moving on the wire so no middlebox reaps the connection while a
+/// reasoning model thinks.
 ///
 /// Cloud `/chat/completions` doesn't expose reasoning tokens in its SSE
 /// deltas, so `StreamChunk::Thinking` is never emitted here — only the Ollama
 /// native path produces those.
-async fn summarize_cloud_stream<F>(
+async fn summarize_stream<F>(
+    ep: Endpoint<'_>,
     api_key: &str,
     model: &str,
     system_prompt: &str,
@@ -709,10 +743,13 @@ where
             ChatMessage { role: "user", content: transcript },
         ],
         stream: true,
-        // Reasoning models (gpt-5 and later / o-series) reject a custom temperature.
-        temperature: if is_reasoning_model(model) { None } else { Some(0.2) },
+        // Reasoning models (gpt-5 and later / o-series) reject a custom
+        // temperature, and a custom endpoint is sent none at all.
+        temperature: match ep {
+            Endpoint::Cloud if !is_reasoning_model(model) => Some(0.2),
+            _ => None,
+        },
     };
-    let ep = Endpoint::Cloud;
     let started = std::time::Instant::now();
     eprintln!(
         "[llm] POST {} (stream) model={model} system_chars={} user_chars={}",
@@ -735,6 +772,24 @@ where
         return Err(anyhow!("{model} returned an empty response"));
     }
     Ok(summary)
+}
+
+/// A summary from the user's own endpoint (#173), streamed like cloud OpenAI.
+/// `api_key` is optional; without one the request carries no Authorization
+/// header.
+pub async fn summarize_custom<F>(
+    base_url: &str,
+    api_key: Option<&str>,
+    model: &str,
+    system_prompt: &str,
+    transcript: &str,
+    on_chunk: F,
+) -> Result<String>
+where
+    F: FnMut(StreamChunk) + Send,
+{
+    let ep = Endpoint::Custom(base_url);
+    summarize_stream(ep, api_key.unwrap_or(""), model, system_prompt, transcript, on_chunk).await
 }
 
 /// Same shape as `summarize` but takes an explicit base URL. Used to route
@@ -791,7 +846,8 @@ where
     // TCP idle rather than time-to-first-byte, the window is narrowed rather
     // than closed.
     if !is_local {
-        return summarize_cloud_stream(api_key, model, system_prompt, transcript, on_chunk).await;
+        return summarize_stream(Endpoint::Cloud, api_key, model, system_prompt, transcript, on_chunk)
+            .await;
     }
     // Local OpenAI-compat servers (LM Studio, llama-server, vLLM) stay
     // non-streaming — they're on localhost, with no middlebox to reap the
@@ -1225,7 +1281,7 @@ where
 // `messages`/`tools` are pre-lowered `serde_json::Value`s so this wire layer
 // stays free of the chat module's types.
 
-use serde_json::Value;
+use serde_json::{json, Value};
 
 /// A tool call parsed off the wire: provider-supplied (or synthesised) `id`,
 /// tool `name`, and raw JSON `arguments` as a string.
@@ -1247,6 +1303,188 @@ struct ToolChatRequest<'a> {
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u32>,
+}
+
+/// Whether a failed request is OpenAI refusing function tools alongside the
+/// model's reasoning on `/v1/chat/completions`; such a model takes tools only
+/// through `/v1/responses`.
+fn refuses_tools_beside_reasoning(error: &str) -> bool {
+    let Some(json) = error.find('{').map(|i| &error[i..]) else { return false };
+    serde_json::from_str::<Value>(json)
+        .ok()
+        .and_then(|v| v["error"]["param"].as_str().map(|p| p == "reasoning_effort"))
+        .unwrap_or(false)
+}
+
+/// Models that refused tools on `/v1/chat/completions` this launch, so their
+/// later steps go straight to `/v1/responses`.
+static RESPONSES_FOR_TOOLS: std::sync::LazyLock<parking_lot::Mutex<std::collections::HashSet<String>>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// Chat-completions messages and tools as the Responses API takes them: system
+/// turns become `instructions`, tool calls `function_call` items and tool
+/// results `function_call_output` items.
+fn responses_request_parts(messages: &[Value], tools: &[Value]) -> (String, Vec<Value>, Vec<Value>) {
+    let mut instructions = Vec::new();
+    let mut input = Vec::new();
+    for m in messages {
+        let role = m["role"].as_str().unwrap_or_default();
+        let content = m["content"].as_str().unwrap_or_default();
+        match role {
+            "system" => instructions.push(content.to_string()),
+            "tool" => input.push(json!({
+                "type": "function_call_output",
+                "call_id": m["tool_call_id"],
+                "output": content,
+            })),
+            _ => {
+                let calls = m["tool_calls"].as_array();
+                if !content.is_empty() || calls.is_none() {
+                    input.push(json!({ "role": role, "content": content }));
+                }
+                for call in calls.into_iter().flatten() {
+                    input.push(json!({
+                        "type": "function_call",
+                        "call_id": call["id"],
+                        "name": call["function"]["name"],
+                        "arguments": call["function"]["arguments"],
+                    }));
+                }
+            }
+        }
+    }
+    let tools = tools
+        .iter()
+        .map(|t| {
+            json!({
+                "type": "function",
+                "name": t["function"]["name"],
+                "description": t["function"]["description"],
+                "parameters": t["function"]["parameters"],
+            })
+        })
+        .collect();
+    (instructions.join("\n\n"), input, tools)
+}
+
+/// What a streamed Responses call has produced so far.
+#[derive(Default)]
+struct ResponsesFold {
+    text: String,
+    /// Function calls by output index: call id, name, arguments.
+    calls: std::collections::BTreeMap<u64, (String, String, String)>,
+    done: bool,
+}
+
+impl ResponsesFold {
+    /// Take one stream event; the answer text it adds, if any.
+    fn feed(&mut self, ev: &Value) -> Result<Option<String>> {
+        let index = ev["output_index"].as_u64().unwrap_or_default();
+        match ev["type"].as_str().unwrap_or_default() {
+            "response.output_text.delta" => {
+                let delta = ev["delta"].as_str().unwrap_or_default().to_string();
+                self.text.push_str(&delta);
+                return Ok(Some(delta));
+            }
+            "response.output_item.added" | "response.output_item.done"
+                if ev["item"]["type"] == "function_call" =>
+            {
+                let item = &ev["item"];
+                let slot = self.calls.entry(index).or_default();
+                slot.0 = item["call_id"].as_str().unwrap_or_default().to_string();
+                slot.1 = item["name"].as_str().unwrap_or_default().to_string();
+                let args = item["arguments"].as_str().unwrap_or_default();
+                if !args.is_empty() {
+                    slot.2 = args.to_string();
+                }
+            }
+            "response.function_call_arguments.delta" => {
+                self.calls.entry(index).or_default().2.push_str(ev["delta"].as_str().unwrap_or_default());
+            }
+            "response.completed" | "response.incomplete" => self.done = true,
+            "response.failed" => {
+                let message = ev["response"]["error"]["message"].as_str().unwrap_or("the response failed");
+                return Err(anyhow!("OpenAI: {message}"));
+            }
+            "error" => {
+                let message = ev["message"].as_str().unwrap_or("stream error");
+                return Err(anyhow!("OpenAI: {message}"));
+            }
+            _ => {}
+        }
+        Ok(None)
+    }
+
+    fn tool_calls(&self) -> Vec<RawToolCall> {
+        self.calls
+            .values()
+            .filter(|(_, name, _)| !name.is_empty())
+            .enumerate()
+            .map(|(i, (id, name, arguments))| RawToolCall {
+                id: if id.is_empty() { format!("call_{i}") } else { id.clone() },
+                name: name.clone(),
+                arguments: if arguments.trim().is_empty() { "{}".into() } else { arguments.clone() },
+            })
+            .collect()
+    }
+}
+
+/// One cloud step through `/v1/responses`, for a model that takes tools only
+/// there. Same contract as [`openai_chat_step`].
+async fn openai_responses_step<F>(
+    api_key: &str,
+    model: &str,
+    messages: &[Value],
+    tools: &[Value],
+    mut on_delta: F,
+) -> Result<(String, Vec<RawToolCall>)>
+where
+    F: FnMut(&str) -> bool + Send,
+{
+    use futures_util::StreamExt;
+    let (instructions, input, tools) = responses_request_parts(messages, tools);
+    let mut body = json!({ "model": model, "input": input, "stream": true, "store": false });
+    if !instructions.is_empty() {
+        body["instructions"] = json!(instructions);
+    }
+    if !tools.is_empty() {
+        body["tools"] = json!(tools);
+    }
+    let started = std::time::Instant::now();
+    let ep = Endpoint::Cloud;
+    let http = ep.client();
+    let url = format!("{BASE}/responses");
+    let r = match send_with_retries(|| http.post(&url).bearer_auth(api_key).json(&body), started).await {
+        Ok(r) => r,
+        Err(e) if e.is_timeout() => return Err(ep.timeout_error(started.elapsed().as_secs())),
+        Err(e) if e.is_connect() => return Err(ep.connect_error()),
+        Err(e) => return Err(ep.network_error(&error_chain(&e))),
+    };
+    let r = check_chat_status(&ep, r, api_key, started).await?;
+
+    let mut stream = r.bytes_stream();
+    let mut lines = LineBuf::default();
+    let mut fold = ResponsesFold::default();
+    'read: while let Some(chunk) = stream.next().await {
+        lines.extend(&chunk.map_err(|e| anyhow!("stream read: {e}"))?);
+        while let Some(line) = lines.next_line() {
+            let Some(data) = line.trim().strip_prefix("data:") else { continue };
+            let Ok(ev) = serde_json::from_str::<Value>(data.trim()) else { continue };
+            if let Some(delta) = fold.feed(&ev)? {
+                if !delta.is_empty() && !on_delta(&delta) {
+                    return Ok((fold.text, Vec::new()));
+                }
+            }
+            if fold.done {
+                break 'read;
+            }
+        }
+    }
+    let tool_calls = fold.tool_calls();
+    if fold.text.trim().is_empty() && tool_calls.is_empty() {
+        return Err(empty_answer_error(model, None, 0));
+    }
+    Ok((fold.text, tool_calls))
 }
 
 // Streaming SSE delta shapes for OpenAI tool calls. `tool_calls` arrive as
@@ -1307,7 +1545,7 @@ pub(crate) async fn openai_chat_step<F>(
     model: &str,
     messages: &[Value],
     tools: &[Value],
-    mut on_delta: F,
+    on_delta: F,
 ) -> Result<(String, Vec<RawToolCall>)>
 where
     F: FnMut(&str) -> bool + Send,
@@ -1323,8 +1561,58 @@ where
     // `base_url` may be a local OpenAI-compat server, which needs the longer
     // timeout and its own failure vocabulary — `Endpoint` owns both.
     let ep = Endpoint::from_base(base_url);
-    let r = post_chat_lifting_limit(&ep, api_key, std::time::Instant::now(), req).await?;
+    let cloud = matches!(ep, Endpoint::Cloud);
+    if cloud && !tools.is_empty() && RESPONSES_FOR_TOOLS.lock().contains(model) {
+        return openai_responses_step(api_key, model, messages, tools, on_delta).await;
+    }
+    let r = match post_chat_lifting_limit(&ep, api_key, std::time::Instant::now(), req).await {
+        Err(e) if cloud && !tools.is_empty() && refuses_tools_beside_reasoning(&e.to_string()) => {
+            eprintln!("[llm] {model} takes tools only through /v1/responses; using it for this model");
+            RESPONSES_FOR_TOOLS.lock().insert(model.to_string());
+            return openai_responses_step(api_key, model, messages, tools, on_delta).await;
+        }
+        r => r?,
+    };
+    read_tool_stream(r, model, on_delta).await
+}
 
+/// One chat step against the user's own endpoint (#173): `model`, `messages`,
+/// `stream` and the tools, nothing else. Same `on_delta` contract as
+/// [`openai_chat_step`].
+pub(crate) async fn custom_chat_step<F>(
+    base_url: &str,
+    api_key: Option<&str>,
+    model: &str,
+    messages: &[Value],
+    tools: &[Value],
+    on_delta: F,
+) -> Result<(String, Vec<RawToolCall>)>
+where
+    F: FnMut(&str) -> bool + Send,
+{
+    let req = ToolChatRequest {
+        model,
+        messages,
+        stream: true,
+        tools: if tools.is_empty() { None } else { Some(tools) },
+        temperature: None,
+        max_tokens: None,
+    };
+    let ep = Endpoint::Custom(base_url);
+    let r = post_chat(&ep, api_key.unwrap_or(""), &req, std::time::Instant::now()).await?;
+    read_tool_stream(r, model, on_delta).await
+}
+
+/// Read a streamed chat-completions step: answer deltas through `on_delta`
+/// (which returns whether to keep reading), tool-call fragments assembled.
+async fn read_tool_stream<F>(
+    r: reqwest::Response,
+    model: &str,
+    mut on_delta: F,
+) -> Result<(String, Vec<RawToolCall>)>
+where
+    F: FnMut(&str) -> bool + Send,
+{
     use futures_util::StreamExt;
     let mut byte_stream = r.bytes_stream();
     let mut lines = LineBuf::default();
@@ -1729,7 +2017,98 @@ pub(crate) async fn openai_embed(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_model_refusing_tools_beside_reasoning_is_recognised() {
+        let refusal = r#"HTTP 400 Bad Request from https://api.openai.com/v1: { "error": { "message": "Function tools with reasoning_effort are not supported for gpt-6.1-sol in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'.", "type": "invalid_request_error", "param": "reasoning_effort", "code": null } }"#;
+        assert!(refuses_tools_beside_reasoning(refusal));
+        let other = r#"HTTP 400 Bad Request from https://api.openai.com/v1: { "error": { "message": "Unsupported value: 'temperature'", "type": "invalid_request_error", "param": "temperature", "code": null } }"#;
+        assert!(!refuses_tools_beside_reasoning(other));
+        assert!(!refuses_tools_beside_reasoning("HTTP 500 Internal Server Error from https://api.openai.com/v1: oops"));
+    }
+
+    #[test]
+    fn chat_messages_become_responses_items() {
+        let messages = vec![
+            json!({ "role": "system", "content": "Answer from notes." }),
+            json!({ "role": "system", "content": "Today is 27 Oct." }),
+            json!({ "role": "user", "content": "What did Acme decide?" }),
+            json!({ "role": "assistant", "content": "", "tool_calls": [
+                { "id": "call_1", "type": "function", "function": { "name": "search_notes", "arguments": "{\"query\":\"Acme\"}" } }
+            ]}),
+            json!({ "role": "tool", "tool_call_id": "call_1", "content": "kept the budget" }),
+        ];
+        let tools = vec![json!({ "type": "function", "function": {
+            "name": "search_notes", "description": "Search notes.", "parameters": { "type": "object" }
+        }})];
+
+        let (instructions, input, tools) = responses_request_parts(&messages, &tools);
+
+        assert_eq!(instructions, "Answer from notes.\n\nToday is 27 Oct.");
+        assert_eq!(
+            input,
+            vec![
+                json!({ "role": "user", "content": "What did Acme decide?" }),
+                json!({ "type": "function_call", "call_id": "call_1", "name": "search_notes", "arguments": "{\"query\":\"Acme\"}" }),
+                json!({ "type": "function_call_output", "call_id": "call_1", "output": "kept the budget" }),
+            ]
+        );
+        assert_eq!(
+            tools,
+            vec![json!({ "type": "function", "name": "search_notes", "description": "Search notes.", "parameters": { "type": "object" } })]
+        );
+    }
+
+    #[test]
+    fn an_assistant_turn_with_text_keeps_it_beside_its_calls() {
+        let (_, input, _) = responses_request_parts(
+            &[json!({ "role": "assistant", "content": "Let me look.", "tool_calls": [
+                { "id": "c", "type": "function", "function": { "name": "get_note", "arguments": "{}" } }
+            ]})],
+            &[],
+        );
+        assert_eq!(input[0], json!({ "role": "assistant", "content": "Let me look." }));
+        assert_eq!(input[1]["type"], "function_call");
+    }
+
+    #[test]
+    fn the_stream_folds_into_text_and_tool_calls() {
+        let mut fold = ResponsesFold::default();
+        let mut streamed = String::new();
+        for ev in [
+            json!({"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"search_notes","arguments":""}}),
+            json!({"type":"response.function_call_arguments.delta","output_index":0,"delta":"{\"query\":"}),
+            json!({"type":"response.function_call_arguments.delta","output_index":0,"delta":"\"Acme\"}"}),
+            json!({"type":"response.output_item.added","output_index":1,"item":{"type":"message","role":"assistant","content":[]}}),
+            json!({"type":"response.output_text.delta","output_index":1,"delta":"Hi"}),
+            json!({"type":"response.output_text.delta","output_index":1,"delta":" there"}),
+            json!({"type":"response.completed","response":{"status":"completed"}}),
+        ] {
+            if let Some(delta) = fold.feed(&ev).unwrap() {
+                streamed.push_str(&delta);
+            }
+        }
+        assert!(fold.done);
+        assert_eq!(streamed, "Hi there");
+        assert_eq!(fold.text, "Hi there");
+        assert_eq!(
+            fold.tool_calls(),
+            vec![RawToolCall { id: "call_1".into(), name: "search_notes".into(), arguments: "{\"query\":\"Acme\"}".into() }]
+        );
+    }
+
+    #[test]
+    fn a_failed_response_is_an_error() {
+        let mut fold = ResponsesFold::default();
+        let err = fold
+            .feed(&json!({"type":"response.failed","response":{"status":"failed","error":{"code":"server_error","message":"The server had an error"}}}))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("The server had an error"), "{err}");
+        assert!(fold.feed(&json!({"type":"error","message":"rate limited"})).unwrap_err().to_string().contains("rate limited"));
+    }
+
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn a_model_listing_is_narrowed_to_chat_models() {
@@ -2040,6 +2419,122 @@ data: [DONE]
             .await;
             assert_eq!(summarize(&base(port)).await.unwrap(), "Referat");
             assert!(request_json(&server.await.unwrap()[1]).get("max_tokens").is_none());
+        }
+    }
+
+    mod custom_endpoint {
+        use super::*;
+        use crate::chat::test_server::serve;
+        use serde_json::json;
+
+        fn base(port: u16) -> String {
+            format!("http://127.0.0.1:{port}/api/v1")
+        }
+
+        fn split(raw: &str) -> (String, Value) {
+            let (head, body) = raw.split_once("\r\n\r\n").unwrap();
+            (head.to_lowercase(), serde_json::from_str(body).unwrap())
+        }
+
+        fn keys(body: &Value) -> Vec<String> {
+            let mut keys: Vec<String> = body.as_object().unwrap().keys().cloned().collect();
+            keys.sort();
+            keys
+        }
+
+        const ANSWER: &str = r#"data: {"choices":[{"delta":{"content":"Referat"},"finish_reason":"stop"}]}
+
+data: [DONE]
+
+"#;
+
+        #[tokio::test]
+        async fn a_summary_sends_only_model_messages_and_stream() {
+            let (port, server) = serve(vec![(200, "text/event-stream", ANSWER.into())]).await;
+            let mut streamed = String::new();
+            let out = summarize_custom(&base(port), Some("sk-or-test"), "openai/o3", "sys", "transcript", |c| {
+                if let StreamChunk::Content(t) = c {
+                    streamed.push_str(t);
+                }
+            })
+            .await
+            .unwrap();
+            assert_eq!(out, "Referat");
+            assert_eq!(streamed, "Referat");
+            let raw = &server.await.unwrap()[0];
+            assert!(raw.starts_with("POST /api/v1/chat/completions "), "{raw}");
+            let (head, body) = split(raw);
+            assert!(head.contains("authorization: bearer sk-or-test"), "{head}");
+            assert_eq!(keys(&body), ["messages", "model", "stream"]);
+            assert_eq!(body["model"], "openai/o3");
+            assert_eq!(body["stream"], true);
+            assert_eq!(
+                body["messages"],
+                json!([{"role": "system", "content": "sys"}, {"role": "user", "content": "transcript"}])
+            );
+        }
+
+        #[tokio::test]
+        async fn a_keyless_endpoint_gets_no_authorization_header() {
+            let (port, server) = serve(vec![(200, "text/event-stream", ANSWER.into())]).await;
+            summarize_custom(&base(port), None, "m", "sys", "t", |_| {}).await.unwrap();
+            let (head, _) = split(&server.await.unwrap()[0]);
+            assert!(!head.contains("authorization"), "{head}");
+        }
+
+        #[tokio::test]
+        async fn a_wrong_root_names_the_url_that_was_requested() {
+            let (port, _server) =
+                serve(vec![(404, "text/html", "<html>Not Found</html>".into())]).await;
+            let root = format!("http://127.0.0.1:{port}");
+            let err = summarize_custom(&root, Some("k"), "m", "sys", "t", |_| {})
+                .await
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains(&format!("{root}/chat/completions")), "{err}");
+            assert!(err.contains("404"), "{err}");
+            assert!(err.contains("base URL"), "{err}");
+        }
+
+        #[tokio::test]
+        async fn a_refused_key_says_so() {
+            let (port, _server) =
+                serve(vec![(401, "application/json", r#"{"error":"bad key"}"#.into())]).await;
+            let err = summarize_custom(&base(port), Some("k"), "m", "sys", "t", |_| {})
+                .await
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("API key"), "{err}");
+            assert!(err.contains("bad key"), "{err}");
+        }
+
+        #[tokio::test]
+        async fn a_chat_step_adds_only_the_tools_and_reads_their_calls() {
+            let frames = [
+                json!({"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_7","function":{"name":"search_notes","arguments":"{\"query\":"}}]}}]}),
+                json!({"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"Acme\"}"}}]},"finish_reason":"tool_calls"}]}),
+            ];
+            let mut body: String = frames.iter().map(|f| format!("data: {f}\n\n")).collect();
+            body.push_str("data: [DONE]\n\n");
+            let (port, server) = serve(vec![(200, "text/event-stream", body)]).await;
+            let msgs = [json!({"role": "user", "content": "What did Acme decide?"})];
+            let tools = [json!({"type": "function", "function": {"name": "search_notes"}})];
+            let (text, calls) =
+                custom_chat_step(&base(port), None, "deepseek-chat", &msgs, &tools, |_| true)
+                    .await
+                    .unwrap();
+            assert_eq!(text, "");
+            assert_eq!(
+                calls,
+                vec![RawToolCall {
+                    id: "call_7".into(),
+                    name: "search_notes".into(),
+                    arguments: r#"{"query":"Acme"}"#.into(),
+                }]
+            );
+            let (head, sent) = split(&server.await.unwrap()[0]);
+            assert!(!head.contains("authorization"), "{head}");
+            assert_eq!(keys(&sent), ["messages", "model", "stream", "tools"]);
         }
     }
 }

@@ -4,6 +4,7 @@ mod export_doc;
 mod keychain;
 mod openai;
 mod anthropic;
+mod copilot;
 mod local_whisper;
 mod diarize;
 mod echo;
@@ -12,10 +13,13 @@ mod presets;
 mod wav;
 mod recording;
 mod menubar;
+mod deep_link;
+mod notifications;
 mod sessions;
 mod commands;
 mod stt;
 mod providers;
+mod custom_endpoint;
 mod chat;
 mod embed;
 mod import_date;
@@ -97,6 +101,8 @@ pub struct AppState {
     /// Mic-based meeting detection watcher (mic_detect.rs). Guards against a
     /// second watcher and lets the settings toggle (re)start it.
     pub mic_watcher: mic_detect::MicWatcher,
+    /// The Copilot CLI while it runs, and where it was found (#227).
+    pub copilot: Arc<copilot::Runtime>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -131,6 +137,7 @@ where
         // `menubar::install` registers it from there.
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_deep_link::init())
         // Open at login (#207). Only the Settings toggle turns it on; the
         // argument is how `menubar::present_at_launch` recognises the launch.
         .plugin(
@@ -229,6 +236,7 @@ where
                 transcribing: Arc::new(Mutex::new(std::collections::HashSet::new())),
                 autopilot: autopilot::Autopilot::default(),
                 mic_watcher: mic_detect::MicWatcher::default(),
+                copilot: Arc::new(copilot::Runtime::default()),
             });
             let menu = build_menu(app.handle())?;
             app.set_menu(menu)?;
@@ -347,6 +355,7 @@ where
                     mic_detect::start_watcher(app_handle);
                 }
             }
+            notifications::install(app.handle());
             // Tray + global hotkey. Last in setup so a failure here can't stop
             // the app from coming up — the menu bar is an extra surface, not a
             // precondition for using Humla.
@@ -358,6 +367,19 @@ where
                 }
             };
             menubar::present_at_launch(app.handle(), tray_installed);
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                app.manage(deep_link::Held::default());
+                deep_link::release_after_limit(app.handle());
+                let handle = app.handle().clone();
+                app.deep_link()
+                    .on_open_url(move |event| deep_link::open(&handle, event.urls()));
+                // The link a cold launch was opened with can arrive before the
+                // listener exists; the plugin then holds it as the current link.
+                if let Ok(Some(urls)) = app.deep_link().get_current() {
+                    deep_link::open(app.handle(), urls);
+                }
+            }
 
             Ok(())
         })
@@ -371,7 +393,7 @@ where
             commands::notes_delete,
             commands::notes_move,
             commands::notes_set_workspace,
-            commands::notes_set_private,
+            commands::notes_set_access,
             commands::notes_set_date,
             commands::notes_list_trash,
             commands::notes_restore,
@@ -488,6 +510,8 @@ where
             commands::note_timeline_delete_chunk,
             commands::open_in_finder,
             commands::export_note,
+            commands::note_audio_export_info,
+            commands::export_note_audio,
             commands::rediarize_note,
             commands::summary_prompts_list,
             commands::summary_prompts_create,
@@ -498,12 +522,20 @@ where
             commands::provider_key_get,
             commands::provider_key_set,
             commands::provider_key_test,
+            commands::custom_endpoint_test,
+            commands::copilot_status,
+            commands::copilot_sign_in_start,
+            commands::copilot_sign_in_cancel,
+            commands::copilot_sign_out,
+            commands::copilot_cli_download,
+            commands::copilot_models,
             commands::local_whisper_models,
             commands::local_whisper_download,
             commands::local_whisper_delete,
             commands::local_llm_list_models,
             commands::anthropic_list_models,
             commands::openai_list_models,
+            commands::custom_list_models,
             commands::local_llm_embed_probe,
             commands::diarize_status,
             commands::diarize_download,
@@ -546,6 +578,7 @@ where
             commands::permissions_open_settings,
             commands::record_hotkey_get,
             commands::record_hotkey_set,
+            commands::deep_links_ready,
             commands::launch_at_login_get,
             commands::launch_at_login_set,
             app_relaunch,

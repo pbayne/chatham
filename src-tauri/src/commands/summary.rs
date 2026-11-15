@@ -11,6 +11,7 @@ use super::{DEFAULT_LANGUAGE, DEFAULT_LOCAL_LLM_BASE_URL, DEFAULT_SUMMARY_MODEL}
 use crate::db::{self, Note, NotePatch};
 use crate::languages;
 use crate::anthropic;
+use crate::custom_endpoint;
 use crate::openai;
 use crate::presets::{self, DEFAULT_SUMMARY_PRESET};
 use crate::providers::ProviderId;
@@ -30,6 +31,9 @@ pub(super) struct ResolvedProvider {
     // chain-of-thought). Default off; flipping it on lets users A/B the
     // quality difference in dev. Ignored for cloud + non-Ollama servers.
     pub(super) think: bool,
+    /// The running Copilot CLI, which the caller attaches after resolving —
+    /// starting it is async and resolving is not.
+    pub(super) copilot: Option<github_copilot_sdk::Client>,
 }
 
 /// Which client a resolved provider is called through. One answer, so a caller
@@ -37,6 +41,10 @@ pub(super) struct ResolvedProvider {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(super) enum Dispatch {
     Anthropic,
+    Copilot,
+    /// The user's own endpoint, which is never treated as OpenAI or Ollama
+    /// whatever its URL looks like.
+    Custom,
     OpenAiCompatible,
 }
 
@@ -44,6 +52,8 @@ impl ResolvedProvider {
     pub(super) fn dispatch(&self) -> Dispatch {
         match self.provider {
             ProviderId::Anthropic => Dispatch::Anthropic,
+            ProviderId::Copilot => Dispatch::Copilot,
+            ProviderId::Custom => Dispatch::Custom,
             _ => Dispatch::OpenAiCompatible,
         }
     }
@@ -64,6 +74,19 @@ impl ResolvedProvider {
                 anthropic::summarize(&self.api_key, &self.model, system_prompt, user_message, on_chunk)
                     .await
             }
+            Dispatch::Copilot => {
+                let client = self
+                    .copilot
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("the Copilot CLI isn't running"))?;
+                crate::copilot::session::complete(client, &self.model, system_prompt, user_message, on_chunk)
+                    .await
+            }
+            Dispatch::Custom => {
+                let key = Some(self.api_key.as_str()).filter(|k| !k.is_empty());
+                openai::summarize_custom(&self.base_url, key, &self.model, system_prompt, user_message, on_chunk)
+                    .await
+            }
             Dispatch::OpenAiCompatible => {
                 openai::summarize_with_base(
                     &self.base_url,
@@ -78,6 +101,18 @@ impl ResolvedProvider {
             }
         }
     }
+}
+
+/// Start the Copilot CLI for a provider that resolved to Copilot; any other
+/// provider is left as it is.
+pub(super) async fn attach_copilot(app: &AppHandle, p: &mut ResolvedProvider) -> anyhow::Result<()> {
+    if p.provider != ProviderId::Copilot {
+        return Ok(());
+    }
+    let state: State<AppState> = app.state();
+    let app_data = app.path().app_data_dir()?;
+    p.copilot = Some(state.copilot.ready_client(&state.keychain_cache, &app_data).await?);
+    Ok(())
 }
 
 // Decide whether this note's summary call should hit cloud OpenAI or a
@@ -142,6 +177,7 @@ pub(super) fn resolve_provider(
                 api_key: "humla-local".into(),
                 model,
                 think,
+                copilot: None,
             })
         }
         ProviderId::OpenAi => {
@@ -157,6 +193,7 @@ pub(super) fn resolve_provider(
                 api_key,
                 model,
                 think: false,
+                copilot: None,
             })
         }
         ProviderId::Anthropic => {
@@ -174,6 +211,36 @@ pub(super) fn resolve_provider(
                 api_key,
                 model,
                 think: false,
+                copilot: None,
+            })
+        }
+        ProviderId::Copilot => {
+            let model = db::get_setting(conn, "copilot_model")?
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| crate::copilot::DEFAULT_MODEL.to_string());
+            eprintln!("[llm] resolved copilot: model={model}");
+            Ok(ResolvedProvider {
+                provider: id,
+                base_url: String::new(),
+                api_key: String::new(),
+                model,
+                think: false,
+                copilot: None,
+            })
+        }
+        ProviderId::Custom => {
+            let base_url = custom_endpoint::base_url(conn)?;
+            let model = custom_endpoint::model(conn, custom_endpoint::SUMMARY_MODEL_SETTING)?;
+            eprintln!("[llm] resolved custom: url={base_url} model={model}");
+            Ok(ResolvedProvider {
+                provider: id,
+                base_url,
+                // Optional: empty means the endpoint takes no key.
+                api_key: api_key.unwrap_or_default(),
+                model,
+                think: false,
+                copilot: None,
             })
         }
         ProviderId::Deepgram | ProviderId::Groq => unreachable!("filtered on the summarize capability"),
@@ -290,9 +357,11 @@ async fn run_summary(app: AppHandle, note_id: String) -> anyhow::Result<()> {
         let p_resolved = resolve_provider(&conn, &n, api_key)?;
         (p_resolved, note_language(&conn, &n)?, n)
     };
+    let mut provider = provider;
     if note.transcript.trim().is_empty() && note.body.trim().is_empty() {
         return Ok(());
     }
+    attach_copilot(&app, &mut provider).await?;
     let prompt = {
         let conn = state.db.lock();
         resolve_prompt(&conn, &note, &language)
@@ -574,6 +643,64 @@ mod tests {
         let note = db::create_note(&conn, "no", "meeting", "").unwrap();
         let err = resolve_provider(&conn, &note, None).err().unwrap().to_string();
         assert!(err.contains("Anthropic API key"), "{err}");
+    }
+
+    #[test]
+    fn copilot_needs_no_key_and_lets_copilot_pick_by_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = db::open(&dir.path().join("t.sqlite")).unwrap();
+        db::set_setting(&conn, "summary_provider", "copilot").unwrap();
+        let note = db::create_note(&conn, "no", "meeting", "").unwrap();
+        let p = resolve_provider(&conn, &note, None).unwrap();
+        assert_eq!(p.provider, ProviderId::Copilot);
+        assert_eq!(p.dispatch(), Dispatch::Copilot);
+        assert_eq!(p.model, "auto");
+    }
+
+    #[test]
+    fn the_copilot_model_setting_wins_over_auto() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = db::open(&dir.path().join("t.sqlite")).unwrap();
+        db::set_setting(&conn, "summary_provider", "copilot").unwrap();
+        db::set_setting(&conn, "copilot_model", "claude-sonnet-5.5").unwrap();
+        db::set_setting(&conn, "anthropic_model", "claude-opus-5").unwrap();
+        let note = db::create_note(&conn, "no", "meeting", "").unwrap();
+        assert_eq!(resolve_provider(&conn, &note, None).unwrap().model, "claude-sonnet-5.5");
+    }
+
+    #[test]
+    fn custom_resolves_to_its_own_endpoint_and_summary_model_without_a_key() {
+        let (_dir, conn) = temp_conn();
+        db::set_setting(&conn, "summary_provider", "custom").unwrap();
+        // Used as typed: surrounding whitespace is an input artifact, the
+        // trailing slash is not Humla's to remove.
+        db::set_setting(&conn, "custom_base_url", "  https://openrouter.ai/api/v1/ ").unwrap();
+        db::set_setting(&conn, "custom_model", "deepseek/deepseek-chat").unwrap();
+        db::set_setting(&conn, "local_llm_model", "gemma4:12b-mlx").unwrap();
+        db::set_setting(&conn, "summary_model", "gpt-5.4").unwrap();
+        let note = db::create_note(&conn, "no", "meeting", "").unwrap();
+        let p = resolve_provider(&conn, &note, None).unwrap();
+        assert_eq!(p.provider, ProviderId::Custom);
+        assert_eq!(p.dispatch(), Dispatch::Custom);
+        assert_eq!(p.base_url, "https://openrouter.ai/api/v1/");
+        assert_eq!(p.model, "deepseek/deepseek-chat");
+        assert_eq!(p.api_key, "");
+        let keyed = resolve_provider(&conn, &note, Some("sk-or-test".into())).unwrap();
+        assert_eq!(keyed.api_key, "sk-or-test");
+    }
+
+    #[test]
+    fn custom_without_a_base_url_or_a_model_says_which() {
+        let (_dir, conn) = temp_conn();
+        db::set_setting(&conn, "summary_provider", "custom").unwrap();
+        db::set_setting(&conn, "custom_model", "m").unwrap();
+        let note = db::create_note(&conn, "no", "meeting", "").unwrap();
+        let err = resolve_provider(&conn, &note, None).err().unwrap().to_string();
+        assert!(err.contains("base URL"), "{err}");
+        db::set_setting(&conn, "custom_base_url", "https://gateway.example/v1").unwrap();
+        db::set_setting(&conn, "custom_model", "  ").unwrap();
+        let err = resolve_provider(&conn, &note, None).err().unwrap().to_string();
+        assert!(err.contains("model"), "{err}");
     }
 
     #[test]

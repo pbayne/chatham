@@ -280,6 +280,78 @@ impl ChatAdapter for OllamaChatAdapter {
     }
 }
 
+/// The user's own OpenAI-compatible endpoint (#173): the OpenAI message and
+/// tool shapes, and nothing else on the request.
+pub struct CustomChatAdapter;
+
+#[async_trait]
+impl ChatAdapter for CustomChatAdapter {
+    fn provider_id(&self) -> &'static str {
+        "custom"
+    }
+
+    async fn step(
+        &self,
+        ctx: ChatCtx<'_>,
+        messages: &[ChatTurn],
+        tools: &[ToolSpec],
+        on_event: &mut (dyn FnMut(ChatStreamEvent) + Send),
+    ) -> Result<ChatStep> {
+        let (text, raw) = crate::openai::custom_chat_step(
+            ctx.base_url,
+            ctx.api_key,
+            ctx.model,
+            &lower_messages_openai(messages),
+            &lower_tools(tools),
+            |delta| {
+                on_event(ChatStreamEvent::TextDelta(delta.to_string()));
+                !ctx.cancel.is_cancelled()
+            },
+        )
+        .await?;
+        Ok(emit_step(text, raw, on_event))
+    }
+}
+
+/// GitHub Copilot through its CLI. One adapter serves one turn, and the turn's
+/// steps share a session (`copilot::session::ChatTurnSession`).
+pub struct CopilotChatAdapter {
+    client: github_copilot_sdk::Client,
+    turn: crate::copilot::session::ChatTurnSession,
+}
+
+impl CopilotChatAdapter {
+    pub fn new(client: github_copilot_sdk::Client) -> Self {
+        Self { client, turn: Default::default() }
+    }
+}
+
+#[async_trait]
+impl ChatAdapter for CopilotChatAdapter {
+    fn provider_id(&self) -> &'static str {
+        "copilot"
+    }
+
+    async fn step(
+        &self,
+        ctx: ChatCtx<'_>,
+        messages: &[ChatTurn],
+        tools: &[ToolSpec],
+        on_event: &mut (dyn FnMut(ChatStreamEvent) + Send),
+    ) -> Result<ChatStep> {
+        let step = self
+            .turn
+            .step(&self.client, ctx.model, messages, tools, ctx.cancel, &mut |s| {
+                on_event(ChatStreamEvent::TextDelta(s.to_string()))
+            })
+            .await?;
+        for call in &step.tool_calls {
+            on_event(ChatStreamEvent::ToolCall(call.clone()));
+        }
+        Ok(step)
+    }
+}
+
 /// Anthropic's Messages API. The base URL is a constructor argument so tests
 /// can point one at a loopback server; production always uses the cloud base.
 pub struct AnthropicChatAdapter {

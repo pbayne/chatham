@@ -33,9 +33,13 @@ import { Segmented } from "./pages/settings/components/Segmented";
 import { Toggle } from "./pages/settings/components/Toggle";
 import { NoteTitleBox, NoteToolbar, PanelEmpty, TranscriptEditor, TranscriptPlayer } from "./pages/Note";
 import { IntegrationsSection } from "./pages/settings/tabs/Integrations";
+import { CopilotCard } from "./components/provider/CopilotCard";
+import { useCopilotStatus } from "./components/provider/useCopilot";
 import { SendToWebhookModal } from "./pages/SendToWebhookModal";
 import { ExportModal } from "./pages/ExportModal";
+import { SaveAudioModal } from "./pages/SaveAudioModal";
 import { ChatTab } from "./pages/settings/tabs/Chat";
+import { SummaryTab } from "./pages/settings/tabs/Summary";
 import { RecordingSection } from "./pages/settings/tabs/Recording";
 import { TranscriptionTab } from "./pages/settings/tabs/Transcription";
 import { DiarizeModelManager } from "./pages/settings/components/DiarizeModelManager";
@@ -337,6 +341,49 @@ function noteTranscribeCase(withText: boolean, replay?: ReplayRun): Scenario {
   };
 }
 
+// #232: the Share popover on a note in a workspace. `owner` decides whether the
+// reader is its author (controls) or a member it was shared with (read-only).
+function noteShareCase(owner: string, isPrivate: boolean, sharedWith: string[]): Scenario {
+  const note = makeNote({
+    id: "n1",
+    title: "Styremøte 10. november 2026",
+    body: "<p>Møtedeltagere: Stian, Michael, Petter</p>",
+    workspace_id: "ws1",
+    owner,
+    private: isPrivate,
+    shared_with: sharedWith,
+  });
+  const ws = { id: "ws1", name: "Screenpartner", role: "owner", plan_status: "active" };
+  return {
+    route: "/note/n1",
+    render: () => null, // unused — `route` renders the app
+    ipc: {
+      notes_list: () => [note],
+      notes_get: () => note,
+      note_timeline: () => [],
+      note_sessions: () => [],
+      notes_set_access: () => null,
+      cloud_status: () => ({
+        ...DISCONNECTED,
+        configured: true,
+        logged_in: true,
+        base_url: "https://sync.humla.team",
+        user: { id: "u1", email: "michael@example.no", name: "Michael Wilhelmsen", verified: true },
+        current_workspace: ws,
+        workspaces: [ws],
+      }),
+      cloud_workspace_members: () => [
+        { id: "u1", email: "michael@example.no", name: "Michael Wilhelmsen", role: "owner" },
+        { id: "u-stian", email: "stian@example.no", name: "Stian Berg", role: "member" },
+        { id: "u-petter", email: "petter@example.no", name: "Petter Hansen", role: "member" },
+        { id: "u-anne", email: "anne@example.no", name: "Anne Kristiansen", role: "member" },
+        { id: "u-ola", email: "ola@example.no", name: "Ola Nordmann", role: "viewer" },
+        { id: "u-kari", email: "kari@example.no", name: "Kari Lie", role: "member" },
+      ],
+    },
+  };
+}
+
 // ---- #146 axis: the note toolbar at the widths the body column really gets --
 // The toolbar sits in the BODY column, whose width is the window minus the
 // context panel (clamped 320–720) — so at the 720px minimum window it can be
@@ -437,6 +484,105 @@ function IntegrationsHarness({ mcp, webhook }: { mcp: boolean; webhook: boolean 
   return <IntegrationsSection s={s} update={(k, v) => setS((p) => ({ ...p, [k]: v }))} />;
 }
 
+// ---- #227: the Copilot card's three resting states, and the sign-in code
+// once "Sign in with GitHub" is pressed in the signed-out one.
+function copilotCase(state: "no-cli" | "broken-cli" | "signed-out" | "signed-in"): Scenario {
+  return {
+    wrap: settingsWrap,
+    render: () => <CopilotHarness />,
+    ipc: {
+      copilot_status: () => ({
+        login: state === "signed-in" || state === "broken-cli" ? "octocat" : null,
+        cliPath: state === "no-cli" ? null : "/Users/u/.hermes/node/lib/node_modules/@github/copilot/node_modules/@github/copilot-darwin-arm64/copilot",
+        cliVersion: state === "no-cli" ? null : state === "broken-cli" ? "0.9.0" : "1.0.104",
+        cliError:
+          state === "broken-cli"
+            ? "Couldn't start the Copilot CLI: protocol version 2 is not in the supported range 3..=3"
+            : null,
+        downloadVersion: "1.0.104",
+      }),
+      copilot_sign_in_start: () => ({
+        userCode: "8C17-B75D",
+        verificationUri: "https://github.com/login/device",
+        expiresIn: 899,
+      }),
+      copilot_sign_in_cancel: () => undefined,
+      copilot_cli_download: () => undefined,
+      copilot_models: () => [
+        { id: "auto", name: "Auto", vendor: null },
+        { id: "claude-sonnet-5.5", name: "Claude Sonnet 5.5", vendor: "Anthropic" },
+        { id: "gpt-6.1-sol", name: "GPT-6.1 Sol", vendor: "OpenAI" },
+      ],
+    },
+  };
+}
+
+function CopilotHarness() {
+  const copilot = useCopilotStatus({ enabled: true });
+  const [model, setModel] = useState("auto");
+  return (
+    <CopilotCard
+      copilot={copilot}
+      model={model}
+      onModelChange={setModel}
+      modelDescription="Used for summaries and titles."
+    />
+  );
+}
+
+// ---- #173: the custom endpoint on each surface. What needs eyes is the URL
+// field and key row sharing a card with the Test's two report lines, the model
+// field at rest and while editing, and a long base URL in the error.
+const CUSTOM_LISTING = [
+  "deepseek/deepseek-chat",
+  "deepseek/deepseek-r1",
+  "elevenlabs/scribe-v2",
+  "openai/gpt-5.5",
+  "openai/gpt-4o-transcribe",
+];
+
+function customCase(surface: "summary" | "chat" | "transcription"): Scenario {
+  return {
+    wrap: settingsWrap,
+    render: () =>
+      surface === "transcription" ? <TranscriptionKeysHarness /> : <CustomHarness surface={surface} />,
+    ipc: {
+      provider_key_get: (args) => ((args as { provider: string }).provider === "custom" ? "stored" : null),
+      provider_key_set: () => undefined,
+      custom_list_models: () => CUSTOM_LISTING,
+      summary_prompts_list: () => [],
+      custom_endpoint_test: () => ({
+        listing: {
+          outcome: "failed",
+          message:
+            "HTTP 404 from https://gateway.internal.example.com/openai/v1/models. Nothing answers at that address, or it doesn't know the model — check the base URL and model in Settings.",
+        },
+        completion: { outcome: "ok", message: "deepseek/deepseek-chat answered." },
+      }),
+      get_transcribe_config: () => ({
+        default: { provider: "custom", model: "elevenlabs/scribe-v2" },
+        per_language: {},
+      }),
+      settings_get: (args) =>
+        (args as { key: string }).key === "custom_base_url" ? "https://openrouter.ai/api/v1" : null,
+      local_whisper_models: () => [],
+      diarize_status: () => ({ downloaded: false, needsWarmUp: false, warmUpError: null, sizeBytes: 0, path: "" }),
+    },
+  };
+}
+
+function CustomHarness({ surface }: { surface: "summary" | "chat" }) {
+  const [s, setS] = useState({
+    ...DEFAULTS,
+    summary_provider: "custom",
+    chat_provider: "custom",
+    custom_base_url: "https://openrouter.ai/api/v1",
+    custom_model: "deepseek/deepseek-chat",
+  } as Record<EditableKey, string>);
+  const update = async (k: EditableKey, v: string) => setS((p) => ({ ...p, [k]: v }));
+  return surface === "summary" ? <SummaryTab s={s} update={update} /> : <ChatTab s={s} update={update} />;
+}
+
 // ---- #213: the confirmation before a note is sent. What needs eyes is the
 // receiver's host sitting in the sentence, and the unset state's error with
 // its way out to Settings.
@@ -466,6 +612,42 @@ function exportCase(): Scenario {
       <ExportModal note={note} open onClose={() => {}} onCreateTeam={() => {}} flushEdits={async () => {}} />
     ),
     ipc: { export_note: () => undefined },
+  };
+}
+
+// ---- #224: ⋯ → Save audio…'s sheet, in each of the three things it can say
+// before it asks where — all takes there, some gone, none at all — plus the
+// whole note view for the menu item's place beside Export….
+function saveAudioCase(
+  takes: { index: number; durationMs: number | null }[],
+  keepAudio = true,
+): Scenario {
+  const note = makeNote({ id: "n1", title: "Weekly planning" });
+  return {
+    wrap: (node) => <MemoryRouter>{node}</MemoryRouter>,
+    render: () => <SaveAudioModal note={note} open onClose={() => {}} keepAudio={keepAudio} />,
+    ipc: { note_audio_export_info: () => takes, export_note_audio: () => undefined },
+  };
+}
+
+function saveAudioNoteCase(): Scenario {
+  const note = makeNote({
+    id: "n1",
+    title: "Weekly planning",
+    transcript: "Michael: Shall we go through the launch?\nHege: Yes, I have the notes ready",
+  });
+  return {
+    route: "/note/n1",
+    render: () => null, // unused — `route` renders the app
+    ipc: {
+      notes_list: () => [note],
+      notes_get: () => note,
+      note_timeline: () => [],
+      note_audio_export_info: () => [
+        { index: 1, durationMs: 3_254_000 },
+        { index: 2, durationMs: 240_000 },
+      ],
+    },
   };
 }
 
@@ -544,7 +726,7 @@ function menubarCase(closeToTray: boolean, hotkey: string): Scenario {
       record_hotkey_set: () => null,
       launch_at_login_get: () => closeToTray,
       launch_at_login_set: () => null,
-      permissions_status: () => ({ microphone: "granted", screen: "granted" }),
+      permissions_status: () => ({ microphone: "granted", screen: "granted", notifications: "granted" }),
       stored_audio_stats: () => ({ notes: 0, files: 0, bytes: 0, noteIds: [] }),
     },
   };
@@ -568,7 +750,7 @@ function retentionCase(keepAudio: boolean, manual: boolean): Scenario {
     ipc: {
       record_hotkey_get: () => "Command+Control+KeyR",
       record_hotkey_set: () => null,
-      permissions_status: () => ({ microphone: "granted", screen: "granted" }),
+      permissions_status: () => ({ microphone: "granted", screen: "granted", notifications: "granted" }),
       stored_audio_stats: () => ({ notes: 0, files: 0, bytes: 0, noteIds: [] }),
     },
   };
@@ -1223,9 +1405,30 @@ const CASES: Record<string, Scenario> = {
 
   // --- #213: the webhook rows with a saved endpoint, and the send's confirmation.
   "webhook-settings": integrationsCase(false, true),
+  "copilot-no-cli": copilotCase("no-cli"),
+  "copilot-broken-cli": copilotCase("broken-cli"),
+  "copilot-signed-out": copilotCase("signed-out"),
+  "copilot-signed-in": copilotCase("signed-in"),
+  "custom-summary": customCase("summary"),
+  "custom-chat": customCase("chat"),
+  "custom-transcription": customCase("transcription"),
   "webhook-send": webhookSendCase("hooks.example.com"),
   "webhook-send-unset": webhookSendCase(null),
   export: exportCase(),
+
+  // --- #224: Save audio's sheet, and the ⋯ menu it opens from.
+  "save-audio": saveAudioCase([
+    { index: 1, durationMs: 3_254_000 },
+    { index: 2, durationMs: 240_000 },
+  ]),
+  "save-audio-partial": saveAudioCase([
+    { index: 1, durationMs: 3_254_000 },
+    { index: 2, durationMs: null },
+    { index: 3, durationMs: 240_000 },
+  ]),
+  "save-audio-one": saveAudioCase([{ index: 1, durationMs: 1_265_000 }]),
+  "save-audio-none": saveAudioCase([{ index: 1, durationMs: null }, { index: 2, durationMs: null }], false),
+  "save-audio-note": saveAudioNoteCase(),
 
   // --- #147: the issue's exact report — recommended model already pulled.
   recommended: summaryCase(["gemma4:12b-mlx", "embeddinggemma"]),
@@ -1285,6 +1488,11 @@ const CASES: Record<string, Scenario> = {
   "panel-nothing": panelEmptyCase(false),
   // The same two states in the real note, where the action has to hold its own
   // beside the toolbar's copy of it and the panel's pickers.
+  // --- #232: who can read a note.
+  "note-share-everyone": noteShareCase("u1", false, []),
+  "note-share-people": noteShareCase("u1", true, ["u-stian"]),
+  "note-share-only-me": noteShareCase("u1", true, []),
+  "note-share-readonly": noteShareCase("u-stian", true, ["u1", "u-petter"]),
   "note-pending": noteTranscribeCase(false),
   "note-pending-text": noteTranscribeCase(true),
   // #146: the same note mid-replay. Two surfaces report the one run — the

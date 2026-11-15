@@ -4,6 +4,7 @@ import { DEFAULTS } from "../../pages/settings/types";
 import { isEmbeddingModel, isOllamaUrl } from "../../lib/localModels";
 import { useOllamaProbe } from "./useOllamaProbe";
 import { useProviderKey } from "./useProviderKey";
+import { copilotHint, useCopilotStatus } from "./useCopilot";
 
 /** What still stands between a local chat provider and a working chat, or `""`
  *  when nothing does. Shared by the Settings tab and the Note pane so the two
@@ -67,6 +68,23 @@ export function cloudChatHint({
   return "";
 }
 
+/** The ladder for the custom endpoint (#173): a base URL, then a model. Its key
+ *  is optional, so a missing one is never what stands in the way. */
+export function customChatHint({
+  baseUrl,
+  model,
+  where,
+}: {
+  baseUrl: string;
+  model: string;
+  where: "above" | "settings";
+}): string {
+  const at = where === "above" ? "above" : "in Settings → Chat";
+  if (!baseUrl.trim()) return `Add the custom endpoint's base URL ${at}.`;
+  if (!model.trim()) return `Type a chat model for the custom endpoint ${at}.`;
+  return "";
+}
+
 // Chat readiness for the Note's Chat tab (issue #44): what's still missing
 // before a chat can run, so the panel shows a setup prompt instead of a dead
 // input. Settings are read once on mount — they only change from the Settings
@@ -77,19 +95,33 @@ export function useChatReadiness() {
   const [provider, setProvider] = useState(DEFAULTS.chat_provider);
   const [model, setModel] = useState(DEFAULTS.chat_model);
   const [baseUrl, setBaseUrl] = useState(DEFAULTS.local_llm_base_url);
+  const [customBaseUrl, setCustomBaseUrl] = useState(DEFAULTS.custom_base_url);
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([
       ipc.getSetting("chat_provider"),
       ipc.getSetting("chat_model"),
+      ipc.getSetting("copilot_chat_model"),
       ipc.getSetting("local_llm_base_url"),
+      ipc.getSetting("custom_chat_model"),
+      ipc.getSetting("custom_base_url"),
     ])
-      .then(([p, m, b]) => {
+      .then(([p, m, copilotModel, b, customModel, customUrl]) => {
         if (cancelled) return;
-        setProvider(p || DEFAULTS.chat_provider);
-        setModel(m || DEFAULTS.chat_model);
+        const chosen = p || DEFAULTS.chat_provider;
+        setProvider(chosen);
+        // Copilot and a custom endpoint answer on model settings of their own,
+        // not the shared one.
+        setModel(
+          chosen === "copilot"
+            ? copilotModel || DEFAULTS.copilot_chat_model
+            : chosen === "custom"
+              ? customModel || DEFAULTS.custom_chat_model
+              : m || DEFAULTS.chat_model,
+        );
         setBaseUrl(b || DEFAULTS.local_llm_base_url);
+        setCustomBaseUrl(customUrl || DEFAULTS.custom_base_url);
         setLoading(false);
       })
       .catch(() => {
@@ -102,8 +134,11 @@ export function useChatReadiness() {
 
   const isOllama = provider === "ollama";
   const isAnthropic = provider === "anthropic";
-  const key = useProviderKey("openai", { enabled: !isOllama && !isAnthropic });
+  const isCopilot = provider === "copilot";
+  const isCustom = provider === "custom";
+  const key = useProviderKey("openai", { enabled: !isOllama && !isAnthropic && !isCopilot && !isCustom });
   const anthropicKey = useProviderKey("anthropic", { enabled: isAnthropic });
+  const copilot = useCopilotStatus({ enabled: !loading && isCopilot });
   const { reachable, installed } = useOllamaProbe(baseUrl, { enabled: isOllama });
 
   let ready = false;
@@ -112,6 +147,12 @@ export function useChatReadiness() {
     hint = "";
   } else if (isOllama) {
     hint = localChatHint({ reachable, installed, model, baseUrl, where: "settings" });
+    ready = hint === "";
+  } else if (isCopilot) {
+    hint = copilotHint(copilot, "in Settings → Chat");
+    ready = hint === "";
+  } else if (isCustom) {
+    hint = customChatHint({ baseUrl: customBaseUrl, model, where: "settings" });
     ready = hint === "";
   } else {
     hint = cloudChatHint({

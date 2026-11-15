@@ -1,10 +1,10 @@
 [package]
 name = "humla"
-version = "0.70.0"
+version = "0.75.0"
 description = "Humla — personal meeting notes that hum along"
 authors = ["Michael Wilhelmsen"]
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.94"
 license = "MIT"
 # The app is THE binary. Required since `humla-mcp` (#172) became a second
 # `[[bin]]`: `tauri dev` shells out to a bare `cargo run`, which refuses to pick
@@ -95,6 +95,14 @@ tauri-plugin-autostart = "~2.5"
 pulldown-cmark = { version = "0.13", default-features = false }
 krilla = { version = "0.8", default-features = false, features = ["simple-text"] }
 rustybuzz = "0.20"
+# GitHub Copilot: drives the user's Copilot CLI over JSON-RPC. Without
+# `bundled-cli`, so copilot::cli finds or downloads the CLI at run time.
+github-copilot-sdk = { version = "=1.0.27", default-features = false, features = ["runtime"] }
+# The Copilot CLI download: an npm tarball, checked against a pinned sha512.
+tar = "0.4"
+flate2 = "1"
+# `humla://` links. Same minor as `@tauri-apps/plugin-deep-link` in package.json.
+tauri-plugin-deep-link = "~2.4"
 
 [dev-dependencies]
 tempfile = "3"
@@ -110,6 +118,12 @@ custom-protocol = ["tauri/custom-protocol"]
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSError", "NSSet", "NSString"] }
+objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "block2", "UNNotification", "UNNotificationAction", "UNNotificationCategory", "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotificationSettings", "UNNotificationTrigger", "UNUserNotificationCenter"] }
 
 [profile.dev]
 debug = "line-tables-only"
