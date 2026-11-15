@@ -37,11 +37,11 @@ export function FollowUps() {
   // group, keep the newest-note-first order the backend already applied.
   const groups = useMemo(() => {
     if (!items) return [];
-    const byClient = new Map<string, { name: string; items: OpenActionItem[] }>();
+    const byClient = new Map<string, { id: string | null; name: string; items: OpenActionItem[] }>();
     for (const it of items) {
       const key = it.client_id ?? "__none__";
       const name = it.client_name ?? "No customer";
-      if (!byClient.has(key)) byClient.set(key, { name, items: [] });
+      if (!byClient.has(key)) byClient.set(key, { id: it.client_id, name, items: [] });
       byClient.get(key)!.items.push(it);
     }
     const arr = [...byClient.values()];
@@ -83,7 +83,17 @@ export function FollowUps() {
             {groups.map((g) => (
               <div key={g.name}>
                 <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-2.5">
-                  {g.name}
+                  {g.id ? (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/client/${g.id}`)}
+                      className="hover:text-[var(--color-interactive)] transition-colors uppercase"
+                    >
+                      {g.name}
+                    </button>
+                  ) : (
+                    g.name
+                  )}
                   <span className="ml-2 font-normal normal-case">{g.items.length}</span>
                 </h2>
                 <ul className="flex flex-col">

@@ -46,12 +46,12 @@ export function Home() {
 
   // Customers ranked by open follow-up count — "who needs attention".
   const customers = useMemo(() => {
-    const byClient = new Map<string, { name: string; count: number }>();
+    const byClient = new Map<string, { id: string; name: string; count: number }>();
     for (const it of open) {
       if (!it.client_id) continue;
       const key = it.client_id;
       const name = it.client_name ?? "Customer";
-      const e = byClient.get(key) ?? { name, count: 0 };
+      const e = byClient.get(key) ?? { id: key, name, count: 0 };
       e.count += 1;
       byClient.set(key, e);
     }
@@ -139,7 +139,13 @@ export function Home() {
                       key={c.name}
                       className="flex items-center justify-between py-1.5 border-b border-[var(--color-line)] last:border-0"
                     >
-                      <span className="text-sm truncate">{c.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/client/${c.id}`)}
+                        className="text-sm truncate text-left hover:text-[var(--color-interactive)] transition-colors"
+                      >
+                        {c.name}
+                      </button>
                       <span className="text-xs text-[var(--color-text-muted)] tabular-nums shrink-0 ml-2">
                         {c.count}
                       </span>
