@@ -1,4 +1,5 @@
 import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom";
+import { listen as listenTauri } from "@tauri-apps/api/event";
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -14,6 +15,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  ListTodo,
+  Plus,
   Circle,
   Cloud,
   Copy,
@@ -31,7 +34,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { ipc, onSummary, onSummaryThinkingDelta, onSummaryContentDelta, type Note as TNote, type NoteReport, type NoteRevision, type NoteSession, type SummaryPrompt, type TimelineEntry } from "../lib/ipc";
+import { ipc, onSummary, onSummaryThinkingDelta, onSummaryContentDelta, type NoteActionItem, type Note as TNote, type NoteReport, type NoteRevision, type NoteSession, type SummaryPrompt, type TimelineEntry } from "../lib/ipc";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { SUMMARY_CAPABLE, type SummaryProvider } from "../lib/providers";
 import { useLiveSetting } from "../lib/settingsBus";
@@ -1595,6 +1598,14 @@ export function Note() {
                     }
                   />
                 )}
+
+                {/* Action items (#followups): this meeting's extracted
+                    follow-ups, editable + checkable, feeding the global
+                    Follow-ups list. Shown once there's a summary/transcript to
+                    have produced them. */}
+                {(hasSummary || hasTranscript) && (
+                  <NoteActionItems noteId={draft.id} readOnly={readOnly} />
+                )}
               </div>
             ) : activeTab === "chat" ? (
               chatTarget && <ChatPanel target={chatTarget} onControls={handleChatControls} />
@@ -2798,6 +2809,134 @@ function SuggestTemplateButton({
     </button>
   );
 }
+
+// Per-note action items (#followups): the meeting's extracted follow-ups, plus
+// a row to add your own. Checking marks done; editing text/owner saves on blur.
+// Self-loads + reacts to `action_items_changed` (the auto-extract pass fires it
+// after a summary). Feeds the global Follow-ups view off the same table.
+function NoteActionItems({ noteId, readOnly }: { noteId: string; readOnly: boolean }) {
+  const [items, setItems] = useState<NoteActionItem[]>([]);
+  const [adding, setAdding] = useState("");
+
+  const load = useCallback(() => {
+    ipc.actionItemsList(noteId).then((rs) => setItems(Array.isArray(rs) ? rs : [])).catch(() => setItems([]));
+  }, [noteId]);
+
+  useEffect(() => {
+    load();
+    const un = listenTauri("action_items_changed", (e) => {
+      if (e.payload === noteId) load();
+    });
+    return () => {
+      void un.then((f) => f());
+    };
+  }, [noteId, load]);
+
+  const toggle = (it: NoteActionItem) => {
+    setItems((cur) => cur.map((x) => (x.id === it.id ? { ...x, done: !x.done } : x)));
+    void ipc.actionItemsUpdate(it.id, { done: !it.done }).catch(load);
+  };
+  const saveText = (it: NoteActionItem, text: string) => {
+    if (text.trim() === it.text) return;
+    void ipc.actionItemsUpdate(it.id, { text: text.trim() }).then(load).catch(load);
+  };
+  const saveOwner = (it: NoteActionItem, owner: string) => {
+    if (owner.trim() === it.owner) return;
+    void ipc.actionItemsUpdate(it.id, { owner: owner.trim() }).then(load).catch(load);
+  };
+  const remove = (id: string) => {
+    setItems((cur) => cur.filter((x) => x.id !== id));
+    void ipc.actionItemsDelete(id).catch(load);
+  };
+  const add = () => {
+    const text = adding.trim();
+    if (!text) return;
+    setAdding("");
+    void ipc.actionItemsCreate(noteId, text).then(load).catch(load);
+  };
+
+  if (items.length === 0 && readOnly) return null;
+
+  return (
+    <div className="mt-6 pt-5 border-t border-[var(--color-line)]">
+      <div className="flex items-center gap-1.5 mb-2.5">
+        <ListTodo size={15} strokeWidth={1.7} className="text-[var(--color-text-muted)]" />
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+          Action items
+        </h3>
+        {items.length > 0 && (
+          <span className="text-xs text-[var(--color-text-muted)]">
+            {items.filter((i) => !i.done).length} open
+          </span>
+        )}
+      </div>
+      <ul className="flex flex-col">
+        {items.map((it) => (
+          <li key={it.id} className="group flex items-start gap-2 py-1.5">
+            <button
+              type="button"
+              aria-label={it.done ? "Mark not done" : "Mark done"}
+              onClick={() => toggle(it)}
+              className="mt-0.5 shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-success)] transition-colors"
+            >
+              {it.done ? (
+                <CircleCheck size={16} strokeWidth={1.7} className="text-[var(--color-success)]" />
+              ) : (
+                <Circle size={16} strokeWidth={1.7} />
+              )}
+            </button>
+            <div className="min-w-0 flex-1">
+              <input
+                defaultValue={it.text}
+                readOnly={readOnly}
+                onBlur={(e) => !readOnly && saveText(it, e.target.value)}
+                className={
+                  "w-full bg-transparent text-sm leading-snug outline-none " +
+                  (it.done ? "line-through text-[var(--color-text-muted)]" : "")
+                }
+              />
+              {(it.owner || !readOnly) && (
+                <input
+                  defaultValue={it.owner}
+                  readOnly={readOnly}
+                  placeholder={readOnly ? "" : "owner"}
+                  onBlur={(e) => !readOnly && saveOwner(it, e.target.value)}
+                  className="mt-0.5 bg-transparent text-xs text-[var(--color-text-muted)] outline-none w-40 placeholder:text-[var(--color-text-faint)]"
+                />
+              )}
+            </div>
+            {!readOnly && (
+              <button
+                type="button"
+                aria-label="Delete action item"
+                onClick={() => remove(it.id)}
+                className="opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity mt-0.5 shrink-0"
+              >
+                <X size={13} strokeWidth={2} />
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {!readOnly && (
+        <div className="flex items-center gap-2 mt-1.5">
+          <Plus size={14} strokeWidth={1.7} className="text-[var(--color-text-muted)] shrink-0" />
+          <input
+            value={adding}
+            onChange={(e) => setAdding(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") add();
+            }}
+            onBlur={add}
+            placeholder="Add an action item…"
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--color-text-faint)]"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 function PresetPicker({
   value,

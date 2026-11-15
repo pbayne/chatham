@@ -371,6 +371,9 @@ async fn run_summary(app: AppHandle, note_id: String) -> anyhow::Result<()> {
     // Learn the customer from the meeting and tag the note (silent, untagged
     // notes only). Off the request path like the embed + title passes.
     tauri::async_runtime::spawn(super::customer::auto_tag_customer(app.clone(), note_id.clone()));
+    // Extract this meeting's action items into the follow-ups list (once per
+    // note; silent). Off the request path like the customer + embed passes.
+    tauri::async_runtime::spawn(super::action_items::auto_extract(app.clone(), note_id.clone()));
     state.sync.note_upserted(&note_id); // AI summary written → enqueue a push
     let _ = app.emit("summary_ready", SummaryPayload { note_id, summary });
     Ok(())

@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { Layout } from "./components/Layout";
 import { Home } from "./pages/Home";
 import { AllNotes } from "./pages/AllNotes";
+import { FollowUps } from "./pages/FollowUps";
 import { Chat, FolderChat } from "./pages/Chat";
 import { Inbox } from "./pages/Inbox";
 import { Note } from "./pages/Note";
@@ -125,6 +126,7 @@ function AppRoutes() {
         <Route element={<Layout />}>
           <Route path="/" element={<Home key={location.key} />} />
           <Route path="/all-notes" element={<AllNotes />} />
+          <Route path="/follow-ups" element={<FollowUps />} />
           {/* Library-level destination, same tier as "All notes" (#95). */}
           <Route path="/chat" element={<Chat />} />
           <Route path="/inbox" element={<Inbox />} />

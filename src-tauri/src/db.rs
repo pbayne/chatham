@@ -408,6 +408,30 @@ pub fn open(path: &Path) -> Result<Connection> {
         "CREATE INDEX IF NOT EXISTS idx_note_reports_note ON note_reports(note_id, updated_at DESC)",
         [],
     );
+    // Action items / follow-ups (#followups). Extracted from each meeting so the
+    // user has one running list of what they owe and what they're owed, across
+    // every note. Keyed by note_id; `owner` is who's on the hook (free text, ""
+    // = unassigned), `done` tracks completion, `due` is an optional ISO date.
+    // Local-only like note_reports — derived from the transcript, regenerable.
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS note_action_items (
+            id           TEXT PRIMARY KEY,
+            note_id      TEXT NOT NULL,
+            text         TEXT NOT NULL DEFAULT '',
+            owner        TEXT NOT NULL DEFAULT '',
+            due          TEXT NOT NULL DEFAULT '',
+            done         INTEGER NOT NULL DEFAULT 0,
+            source       TEXT NOT NULL DEFAULT 'auto',
+            sort_order   INTEGER NOT NULL DEFAULT 0,
+            created_at   INTEGER NOT NULL,
+            updated_at   INTEGER NOT NULL
+        )",
+        [],
+    );
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_note_action_items_note ON note_action_items(note_id, sort_order)",
+        [],
+    );
     // Workspace (Teams) chat (issue #50). A workspace conversation is
     // server-authoritative: the local row is just a (tenant, scope, scope_id)
     // handle whose `remote_id` maps to the humla-cloud conversation record id.
@@ -1401,6 +1425,161 @@ pub fn upsert_note_report(
     } else {
         create_note_report(conn, note_id, preset, title, content)
     }
+}
+
+// ── Action items / follow-ups (#followups) ─────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionItem {
+    pub id: String,
+    pub note_id: String,
+    pub text: String,
+    pub owner: String,
+    pub due: String,
+    pub done: bool,
+    /// "auto" (LLM-extracted) or "user" (typed by hand).
+    pub source: String,
+    pub sort_order: i64,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+/// One open action item joined with its note's title + client, for the
+/// cross-note Follow-ups view. `done` items are excluded by the query.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenActionItem {
+    #[serde(flatten)]
+    pub item: ActionItem,
+    pub note_title: String,
+    pub client_id: Option<String>,
+    pub client_name: Option<String>,
+    pub note_created_at: i64,
+}
+
+fn map_action_item(row: &rusqlite::Row) -> rusqlite::Result<ActionItem> {
+    Ok(ActionItem {
+        id: row.get(0)?,
+        note_id: row.get(1)?,
+        text: row.get(2)?,
+        owner: row.get(3)?,
+        due: row.get(4)?,
+        done: row.get::<_, i64>(5)? != 0,
+        source: row.get(6)?,
+        sort_order: row.get(7)?,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
+    })
+}
+
+const ACTION_COLS: &str = "id, note_id, text, owner, due, done, source, sort_order, created_at, updated_at";
+
+/// All action items for one note, in sort order.
+pub fn list_action_items(conn: &Connection, note_id: &str) -> Result<Vec<ActionItem>> {
+    let sql = format!("SELECT {ACTION_COLS} FROM note_action_items WHERE note_id = ?1 ORDER BY done, sort_order, created_at");
+    let mut stmt = conn.prepare_cached(&sql)?;
+    let rows = stmt.query_map(params![note_id], map_action_item)?.collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+pub fn get_action_item(conn: &Connection, id: &str) -> Result<ActionItem> {
+    let sql = format!("SELECT {ACTION_COLS} FROM note_action_items WHERE id = ?1");
+    let mut stmt = conn.prepare_cached(&sql)?;
+    Ok(stmt.query_row(params![id], map_action_item)?)
+}
+
+pub fn create_action_item(
+    conn: &Connection,
+    note_id: &str,
+    text: &str,
+    owner: &str,
+    due: &str,
+    source: &str,
+) -> Result<ActionItem> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = now_ms();
+    // Append at the end: max existing sort_order + 1.
+    let next_order: i64 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM note_action_items WHERE note_id = ?1",
+            params![note_id],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    conn.execute(
+        "INSERT INTO note_action_items (id, note_id, text, owner, due, done, source, sort_order, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7, ?8, ?8)",
+        params![id, note_id, text, owner, due, source, next_order, now],
+    )?;
+    get_action_item(conn, &id)
+}
+
+/// Update the editable fields of an action item. Any `None` is left unchanged.
+pub fn update_action_item(
+    conn: &Connection,
+    id: &str,
+    text: Option<&str>,
+    owner: Option<&str>,
+    due: Option<&str>,
+    done: Option<bool>,
+) -> Result<ActionItem> {
+    let now = now_ms();
+    if let Some(t) = text {
+        conn.execute("UPDATE note_action_items SET text = ?1, updated_at = ?2 WHERE id = ?3", params![t, now, id])?;
+    }
+    if let Some(o) = owner {
+        conn.execute("UPDATE note_action_items SET owner = ?1, updated_at = ?2 WHERE id = ?3", params![o, now, id])?;
+    }
+    if let Some(d) = due {
+        conn.execute("UPDATE note_action_items SET due = ?1, updated_at = ?2 WHERE id = ?3", params![d, now, id])?;
+    }
+    if let Some(dn) = done {
+        conn.execute("UPDATE note_action_items SET done = ?1, updated_at = ?2 WHERE id = ?3", params![dn as i64, now, id])?;
+    }
+    get_action_item(conn, id)
+}
+
+pub fn delete_action_item(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("DELETE FROM note_action_items WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+/// Whether a note already has auto-extracted action items (so a re-summarize
+/// doesn't duplicate them — we only auto-extract once, then the user owns them).
+pub fn note_has_auto_action_items(conn: &Connection, note_id: &str) -> Result<bool> {
+    let n: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM note_action_items WHERE note_id = ?1 AND source = 'auto'",
+        params![note_id],
+        |r| r.get(0),
+    )?;
+    Ok(n > 0)
+}
+
+/// Every open (not-done) action item across all notes in a workspace, joined
+/// with note title + client. Newest notes first. Powers the Follow-ups view.
+pub fn list_open_action_items(conn: &Connection, workspace: &str) -> Result<Vec<OpenActionItem>> {
+    let sql = format!(
+        "SELECT {} , n.title, n.client_id, c.name, n.created_at
+         FROM note_action_items a
+         JOIN notes n ON n.id = a.note_id
+         LEFT JOIN clients c ON c.id = n.client_id
+         WHERE a.done = 0 AND n.deleted_at IS NULL AND n.workspace_id = ?1
+         ORDER BY n.created_at DESC, a.sort_order",
+        ACTION_COLS.split(", ").map(|c| format!("a.{c}")).collect::<Vec<_>>().join(", ")
+    );
+    let mut stmt = conn.prepare_cached(&sql)?;
+    let rows = stmt
+        .query_map(params![workspace], |row| {
+            let item = map_action_item(row)?;
+            Ok(OpenActionItem {
+                item,
+                note_title: row.get(10)?,
+                client_id: row.get(11)?,
+                client_name: row.get(12)?,
+                note_created_at: row.get(13)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
 }
 
 

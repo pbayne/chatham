@@ -8,6 +8,7 @@ import {
   FolderPlus,
   Home as HomeIcon,
   Inbox,
+  ListTodo,
   MessageCircle,
   Plus,
   Search,
@@ -243,6 +244,12 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
             icon={Inbox}
             label="Inbox"
             active={location.pathname === "/inbox"}
+          />
+          <NavItem
+            to="/follow-ups"
+            icon={ListTodo}
+            label="Follow-ups"
+            active={location.pathname === "/follow-ups"}
           />
           <button
             type="button"

@@ -391,6 +391,28 @@ export type NoteReport = {
   updated_at: number;
 };
 
+// Action items / follow-ups (#followups).
+export type NoteActionItem = {
+  id: string;
+  note_id: string;
+  text: string;
+  owner: string;
+  due: string;
+  done: boolean;
+  source: string;
+  sort_order: number;
+  created_at: number;
+  updated_at: number;
+};
+
+// One open action item joined with its note + client (Follow-ups view).
+export type OpenActionItem = NoteActionItem & {
+  note_title: string;
+  client_id: string | null;
+  client_name: string | null;
+  note_created_at: number;
+};
+
 export type UpcomingMeeting = {
   id: string;
   title: string;
@@ -552,6 +574,16 @@ export const ipc = {
   noteReportsSetActive: (id: string) => invoke<void>("note_reports_set_active", { id }),
   // Template suggestion (#reports): model picks the likely call-type preset.
   suggestTemplate: (noteId: string) => invoke<string | null>("suggest_template", { noteId }),
+  // Action items / follow-ups (#followups).
+  actionItemsList: (noteId: string) => invoke<NoteActionItem[]>("action_items_list", { noteId }),
+  actionItemsOpen: () => invoke<OpenActionItem[]>("action_items_open"),
+  actionItemsCreate: (noteId: string, text: string, owner?: string, due?: string) =>
+    invoke<NoteActionItem>("action_items_create", { noteId, text, owner, due }),
+  actionItemsUpdate: (
+    id: string,
+    patch: { text?: string; owner?: string; due?: string; done?: boolean },
+  ) => invoke<NoteActionItem>("action_items_update", { id, ...patch }),
+  actionItemsDelete: (id: string) => invoke<void>("action_items_delete", { id }),
 
   // One-click export of a note to a formatted Google Doc. Returns the doc URL.
   sendToGoogleDocs: (
