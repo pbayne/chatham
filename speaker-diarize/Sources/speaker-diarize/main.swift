@@ -417,6 +417,59 @@ func runDiarizeNemotron(audioPath: String) async -> Int32 {
 let semaphore = DispatchSemaphore(value: 0)
 var exitCode: Int32 = 0
 
+// MARK: - Embed (speaker voiceprint, #voiceprints Phase C)
+
+/// Extract one 256-d L2-normalized speaker embedding from the given audio,
+/// restricted to the supplied millisecond ranges (one speaker's turns). Prints
+/// {"embedding":[...],"dim":256,"samples":N}. Ranges arrive as "start:end,..."
+/// via --ranges; absent, the whole file is used (a single-speaker clip).
+func runEmbed(audioPath: String, ranges: [(Int, Int)]) async -> Int32 {
+    do {
+        let models = try await DiarizerModels.load()
+        let manager = DiarizerManager()
+        manager.initialize(models: models)
+
+        let all = try AudioConverter().resampleAudioFile(path: audioPath) // 16kHz mono
+        let rate = 16  // samples per millisecond at 16kHz
+
+        var samples: [Float]
+        if ranges.isEmpty {
+            samples = all
+        } else {
+            samples = []
+            for (startMs, endMs) in ranges {
+                let lo = max(0, startMs * rate)
+                let hi = min(all.count, endMs * rate)
+                if hi > lo { samples.append(contentsOf: all[lo..<hi]) }
+            }
+        }
+
+        // The embedding model needs enough signal to be meaningful; too short a
+        // slice yields a noisy print. ~1s minimum (16k samples).
+        guard samples.count >= 16_000 else {
+            writeError("not enough speaker audio to embed (\(samples.count) samples)")
+            return 1
+        }
+
+        let embedding = try manager.extractSpeakerEmbedding(from: samples)
+        writeStdout(["embedding": embedding, "dim": embedding.count, "samples": samples.count] as [String: Any])
+        return 0
+    } catch {
+        writeError(error)
+        return 1
+    }
+}
+
+/// Parse "--ranges start:end,start:end" into [(Int,Int)] ms pairs.
+func parseRanges() -> [(Int, Int)] {
+    guard let i = args.firstIndex(of: "--ranges"), i + 1 < args.count else { return [] }
+    return args[i + 1].split(separator: ",").compactMap { pair in
+        let parts = pair.split(separator: ":")
+        guard parts.count == 2, let a = Int(parts[0]), let b = Int(parts[1]) else { return nil }
+        return (a, b)
+    }
+}
+
 switch args[1] {
 case "status":
     runStatus()
@@ -428,6 +481,15 @@ case "download":
         case .community1: exitCode = await runDownloadCommunity1()
         case .nemotron3: exitCode = await runDownloadNemotron()
         }
+        semaphore.signal()
+    }
+    semaphore.wait()
+case "embed":
+    guard args.count >= 3 else { usage() }
+    let path = args[2]
+    let ranges = parseRanges()
+    Task {
+        exitCode = await runEmbed(audioPath: path, ranges: ranges)
         semaphore.signal()
     }
     semaphore.wait()

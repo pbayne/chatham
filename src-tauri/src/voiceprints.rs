@@ -34,9 +34,39 @@ pub struct VoiceMatch {
     pub score: f32,
 }
 
-/// Default cosine threshold to call it the same speaker. Tuned conservatively —
-/// a wrong auto-label is worse than no suggestion. Overridable per call.
-pub const DEFAULT_THRESHOLD: f32 = 0.75;
+/// Cosine thresholds, tuned on real Humla recordings (per-speaker segment
+/// embeddings from the FluidAudio WeSpeaker model, L2-normalized 256-d):
+///   - same-speaker self-matches clustered ~0.55–0.80
+///   - different speakers clustered ~0.0–0.25
+///   - a thin overlap band in between, where a confident auto-label would risk
+///     a wrong name — so that band only *suggests*, it never auto-applies.
+/// `AUTO` is deliberately high (a wrong auto-rename is worse than no rename);
+/// `SUGGEST` opens a review band the UI can surface for the user to confirm.
+pub const AUTO_THRESHOLD: f32 = 0.78;
+pub const SUGGEST_THRESHOLD: f32 = 0.55;
+
+/// Back-compat alias (older callers): the suggest floor is the general
+/// "could be a match at all" line.
+pub const DEFAULT_THRESHOLD: f32 = SUGGEST_THRESHOLD;
+
+/// Whether a match score is strong enough to auto-apply the name vs merely
+/// suggest it for confirmation vs ignore. Lets the UI pick its behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub enum MatchStrength {
+    Auto,
+    Suggest,
+    None,
+}
+
+pub fn strength(score: f32) -> MatchStrength {
+    if score >= AUTO_THRESHOLD {
+        MatchStrength::Auto
+    } else if score >= SUGGEST_THRESHOLD {
+        MatchStrength::Suggest
+    } else {
+        MatchStrength::None
+    }
+}
 
 /// Cosine similarity of two equal-length vectors. Returns 0.0 for a length
 /// mismatch or a zero-magnitude vector (no panic, no NaN leaking out).
@@ -220,6 +250,15 @@ mod tests {
         let m = best_match(&[1.0, 0.0, 0.0], &prints, DEFAULT_THRESHOLD).unwrap();
         assert_eq!(m.name, "Hege");
         assert!((m.score - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn strength_bands() {
+        assert_eq!(strength(0.90), MatchStrength::Auto);
+        assert_eq!(strength(0.78), MatchStrength::Auto);
+        assert_eq!(strength(0.65), MatchStrength::Suggest);
+        assert_eq!(strength(0.55), MatchStrength::Suggest);
+        assert_eq!(strength(0.40), MatchStrength::None);
     }
 
     #[test]
