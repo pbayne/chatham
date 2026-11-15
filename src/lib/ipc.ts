@@ -550,6 +550,8 @@ export const ipc = {
   noteReportsList: (noteId: string) => invoke<NoteReport[]>("note_reports_list", { noteId }),
   noteReportsDelete: (id: string) => invoke<void>("note_reports_delete", { id }),
   noteReportsSetActive: (id: string) => invoke<void>("note_reports_set_active", { id }),
+  // Template suggestion (#reports): model picks the likely call-type preset.
+  suggestTemplate: (noteId: string) => invoke<string | null>("suggest_template", { noteId }),
 
   // One-click export of a note to a formatted Google Doc. Returns the doc URL.
   sendToGoogleDocs: (

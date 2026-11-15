@@ -410,6 +410,7 @@ where
             commands::note_reports_list,
             commands::note_reports_delete,
             commands::note_reports_set_active,
+            commands::suggest_template,
             commands::send_to_google_docs,
             commands::generate_followup_email,
             commands::inbox_status,

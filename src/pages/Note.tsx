@@ -1505,6 +1505,12 @@ export function Note() {
                     value={draft.summary_preset || "meeting"}
                     onChange={(v) => patch("summary_preset", v)}
                   />
+                  {!readOnly && (hasTranscript || hasSummary) && (
+                    <SuggestTemplateButton
+                      noteId={draft.id}
+                      onSuggest={(preset) => patch("summary_preset", preset)}
+                    />
+                  )}
                   <SummaryProviderChip
                     value={draft.summary_provider}
                     globalDefault={globalProvider}
@@ -2756,6 +2762,40 @@ function ReportTabs({
         );
       })}
     </div>
+  );
+}
+
+// "Suggest" button (#reports): asks the model which call-type template fits,
+// then sets the picker to it. A hint, not an action — it never generates;
+// pressing Summarize is still what produces the report.
+function SuggestTemplateButton({
+  noteId,
+  onSuggest,
+}: {
+  noteId: string;
+  onSuggest: (preset: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={() => {
+        setBusy(true);
+        void ipc
+          .suggestTemplate(noteId)
+          .then((preset) => {
+            if (preset) onSuggest(preset);
+          })
+          .catch(() => {})
+          .finally(() => setBusy(false));
+      }}
+      title="Suggest a template from the transcript"
+      className="inline-flex items-center gap-1 rounded-full border border-[var(--color-line-visible)] px-2.5 py-1 text-xs text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] disabled:opacity-50"
+    >
+      <Sparkles size={12} strokeWidth={1.8} />
+      {busy ? "Thinking…" : "Suggest"}
+    </button>
   );
 }
 
