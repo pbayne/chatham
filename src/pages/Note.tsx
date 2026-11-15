@@ -43,6 +43,7 @@ import { computeSetupStatus } from "../lib/setupStatus";
 import { useOwnerName, useCloudStore } from "../lib/cloud";
 import { billingCta, planIsLive } from "../lib/billing";
 import { extractSpeakerLabels, renameSpeakerInTranscript } from "../lib/speakers";
+import { harvestSpeakerNames } from "../lib/speakerNames";
 import { NEMOTRON_MAX_SPEAKERS } from "../lib/diarizeEngine";
 import { SPEAKER_COUNT_OPTIONS, speakerCountLabel } from "../lib/speakerCount";
 import { htmlToText } from "../lib/noteList";
@@ -1705,6 +1706,22 @@ export function Note() {
 
                 {hasTranscript ? (
                   <>
+                    {!readOnly && (
+                      <DetectedSpeakerNames
+                        transcript={draft.transcript}
+                        onAccept={(oldLabel, newLabel) => {
+                          if (readOnlyRef.current) return;
+                          patch("transcript", renameSpeakerInTranscript(draft.transcript, oldLabel, newLabel));
+                          setTimeline((tl) =>
+                            tl.map((e) => (e.label === oldLabel ? { ...e, label: newLabel } : e)),
+                          );
+                          ipc
+                            .noteTimelineRename(draft.id, oldLabel, newLabel)
+                            .then(() => void ipc.uploadNoteSessions(draft.id))
+                            .catch((err) => console.error("noteTimelineRename failed", err));
+                        }}
+                      />
+                    )}
                     <div className="shrink-0">
                       <SpeakerLabels
                         transcript={draft.transcript}
@@ -2801,6 +2818,72 @@ function SuggestTemplateButton({
 // Per-note action items (#followups): the meeting's extracted follow-ups, plus
 // a row to add your own. Checking marks done; editing text/owner saves on blur.
 // Self-loads + reacts to `action_items_changed` (the auto-extract pass fires it
+// Detected names (#voiceprints Phase A): names harvested from the transcript
+// itself (self-intros, vocatives) offered as one-tap relabels for the generic
+// "Speaker N" diarizer labels. Only shows guesses whose label is still a
+// placeholder — once renamed (here or in the picker) the guess disappears. This
+// is the "attach a name the first time" step that later lets a voiceprint be
+// enrolled under a real name.
+function DetectedSpeakerNames({
+  transcript,
+  onAccept,
+}: {
+  transcript: string;
+  onAccept: (oldLabel: string, newLabel: string) => void;
+}) {
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const guesses = useMemo(() => {
+    const labels = new Set(extractSpeakerLabels(transcript));
+    return harvestSpeakerNames(transcript).filter(
+      // Only offer for labels still present as a placeholder-ish label, and not
+      // already equal to the guessed name (nothing to change).
+      (g) => labels.has(g.label) && g.label.trim() !== g.name && !labels.has(g.name),
+    );
+  }, [transcript]);
+
+  const visible = guesses.filter((g) => !dismissed.has(g.label));
+  if (visible.length === 0) return null;
+
+  return (
+    <div className="shrink-0 mb-2 rounded-[var(--radius-panel)] border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-3 py-2">
+      <div className="flex items-center gap-1.5 mb-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+        <Sparkles size={12} strokeWidth={1.8} />
+        Detected names
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {visible.map((g) => (
+          <span
+            key={g.label}
+            className="inline-flex items-center rounded-full border border-[var(--color-line-visible)] text-xs overflow-hidden"
+          >
+            <button
+              type="button"
+              onClick={() => onAccept(g.label, g.name)}
+              className="px-2.5 py-1 hover:bg-[var(--color-surface-hover)] transition-colors"
+              title={`Rename ${g.label} to ${g.name}${g.confidence === "medium" ? " (less certain)" : ""}`}
+            >
+              <span className="text-[var(--color-text-muted)]">{g.label}</span>
+              <span className="mx-1.5 text-[var(--color-text-faint)]">→</span>
+              <span className="font-medium">{g.name}</span>
+              {g.confidence === "medium" && (
+                <span className="ml-1 text-[var(--color-text-faint)]">?</span>
+              )}
+            </button>
+            <button
+              type="button"
+              aria-label={`Dismiss ${g.name}`}
+              onClick={() => setDismissed((d) => new Set(d).add(g.label))}
+              className="px-1.5 py-1 text-[var(--color-text-faint)] hover:text-[var(--color-text)] border-l border-[var(--color-line)]"
+            >
+              <X size={11} strokeWidth={2} />
+            </button>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // after a summary). Feeds the global Follow-ups view off the same table.
 function NoteActionItems({ noteId, readOnly }: { noteId: string; readOnly: boolean }) {
   const [items, setItems] = useState<NoteActionItem[]>([]);
