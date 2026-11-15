@@ -56,26 +56,119 @@ pub struct Verdict {
     pub suggested_reply: String,
 }
 
-/// System prompt: strict, anti-hallucination, JSON-only. Mirrors the tone of
-/// the follow-up prompt already in the app (extract only what's really there).
-pub const TRIAGE_SYSTEM_PROMPT: &str = "\
-You are an inbox triage assistant. You read one email and return a STRICT JSON \
-object — nothing else, no prose, no code fences. The JSON shape is exactly:\n\
-{\n\
-  \"category\": one of \"action_needed\" | \"follow_up\" | \"fyi\" | \"noise\",\n\
-  \"reason\": a short one-line explanation of the category,\n\
-  \"action_items\": array of strings, each a concrete to-do; [] if none,\n\
-  \"suggested_reply\": a plain-text reply body, or \"\" if no reply is warranted\n\
-}\n\
+/// Build the triage system prompt. `recipient_name` is the inbox owner (you) —
+/// derived from the email's To header — so suggested replies sign as you and
+/// the model never invents a name. When empty, the model is told to leave the
+/// reply unsigned rather than guess. Strict JSON-only, example-driven (small
+/// local models follow a worked example far better than a schema alone).
+pub fn triage_system_prompt(recipient_name: &str) -> String {
+    let signing = if recipient_name.trim().is_empty() {
+        "The reply is written AS the recipient. Do NOT invent or guess the \
+         recipient's name, and do NOT sign the reply with any name — end it \
+         without a signature line."
+            .to_string()
+    } else {
+        format!(
+            "The reply is written AS the recipient, whose name is \"{name}\". \
+             Sign the reply as \"{name}\" if a signature is natural. NEVER use \
+             any other name — do not invent names like \"Kai\" or \"John\".",
+            name = recipient_name.trim()
+        )
+    };
+    format!(
+        "You are an inbox triage assistant. You read ONE email and return ONLY a \
+single JSON object — no prose before or after it, no markdown, no code fences. \
+The JSON shape is exactly:\n\
+{{\"category\":\"...\",\"reason\":\"...\",\"action_items\":[\"...\"],\"suggested_reply\":\"...\"}}\n\
+Fields:\n\
+- category: one of \"action_needed\", \"follow_up\", \"fyi\", \"noise\".\n\
+- reason: one short sentence explaining the category.\n\
+- action_items: array of concrete to-do strings; [] if none.\n\
+- suggested_reply: a plain-text reply body, or \"\" when no reply is warranted.\n\
 Category meanings:\n\
-- action_needed: the recipient must DO something (a request, a task, a decision).\n\
-- follow_up: the recipient is owed a response, or promised something that's now due.\n\
-- fyi: informational, worth reading, but no action required.\n\
+- action_needed: the recipient must DO something (a request, task, or decision).\n\
+- follow_up: the recipient owes a response, or was promised something now due.\n\
+- fyi: informational, worth reading, no action required.\n\
 - noise: newsletters, promotions, receipts, automated notifications.\n\
 Rules: Extract ONLY action items that genuinely appear in the email — never \
-invent tasks, dates, or commitments. Attribute an owner when the email names one. \
-Write suggested_reply only for action_needed or follow_up, in the recipient's \
-voice, concise and professional; otherwise use \"\". Output JSON ONLY.";
+invent tasks, dates, or commitments. Write suggested_reply only for \
+action_needed or follow_up; otherwise use \"\". {signing}\n\
+Example input:\n\
+From: Dana Lee <dana@acme.com>\n\
+To: Pat Rivera <pat@corp.com>\n\
+Subject: Q3 deck\n\
+Can you send the Q3 deck by Friday?\n\
+Example output (note it is signed as the recipient, Pat Rivera, and is ONLY JSON):\n\
+{{\"category\":\"action_needed\",\"reason\":\"Dana requests the Q3 deck by Friday.\",\"action_items\":[\"Send the Q3 deck to Dana by Friday\"],\"suggested_reply\":\"Hi Dana,\\n\\nI'll send the Q3 deck over by Friday.\\n\\nBest,\\nPat Rivera\"}}\n\
+Now return ONLY the JSON object for the email below."
+    )
+}
+
+/// Derive the inbox owner's display name from an email's To header, so a reply
+/// signs as them. Handles `Name <addr>`, bare `addr`, and multiple recipients
+/// (takes the first). Falls back to the local-part of a bare address as a last
+/// resort, and to "" when nothing usable is present (prompt then leaves it
+/// unsigned rather than guessing). Pure + tested.
+pub fn recipient_name(to_header: &str) -> String {
+    let trimmed = to_header.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    // Take the first recipient — but don't split on a comma that sits inside a
+    // quoted display name like "Bayne, Patrick" <pat@x.com>.
+    let first = first_recipient(trimmed);
+    // "Patrick Bayne <pat@x.com>" -> "Patrick Bayne"
+    if let Some(idx) = first.find('<') {
+        let name = first[..idx].trim().trim_matches('"').trim();
+        if !name.is_empty() {
+            return name.to_string();
+        }
+        // "<pat@x.com>" with no display name -> local part, title-cased-ish.
+        let addr = first[idx + 1..].trim_end_matches('>').trim();
+        return local_part_name(addr);
+    }
+    // Bare address, no angle brackets.
+    if first.contains('@') {
+        return local_part_name(first);
+    }
+    // A bare display name with no address.
+    first.trim_matches('"').to_string()
+}
+
+/// The first recipient in a To header, respecting quotes: a comma inside a
+/// "quoted, name" is part of that name, not a recipient separator.
+fn first_recipient(header: &str) -> &str {
+    let mut in_quotes = false;
+    for (i, c) in header.char_indices() {
+        match c {
+            '"' => in_quotes = !in_quotes,
+            ',' if !in_quotes => return header[..i].trim(),
+            _ => {}
+        }
+    }
+    header.trim()
+}
+
+/// Turn an email local-part into a plausible name: "patrick.bayne" ->
+/// "Patrick Bayne". Only used when there's no display name to read.
+fn local_part_name(addr: &str) -> String {
+    let local = addr.split('@').next().unwrap_or("").trim();
+    if local.is_empty() {
+        return String::new();
+    }
+    local
+        .split(['.', '_', '-'])
+        .filter(|p| !p.is_empty())
+        .map(|p| {
+            let mut c = p.chars();
+            match c.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + c.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
 
 /// Build the user message for one email: the fields the model reasons over.
 pub fn build_user_message(msg: &InboxMessage) -> String {
@@ -160,6 +253,49 @@ pub fn parse_verdict(raw: &str) -> Verdict {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recipient_name_from_display_name() {
+        assert_eq!(recipient_name("Patrick Bayne <pat@x.com>"), "Patrick Bayne");
+        assert_eq!(recipient_name("\"Bayne, Patrick\" <pat@x.com>"), "Bayne, Patrick");
+    }
+
+    #[test]
+    fn recipient_name_from_bare_address() {
+        assert_eq!(recipient_name("patrick.bayne@databricks.com"), "Patrick Bayne");
+        assert_eq!(recipient_name("<jane_doe@x.com>"), "Jane Doe");
+    }
+
+    #[test]
+    fn recipient_name_takes_first_of_many() {
+        assert_eq!(
+            recipient_name("Patrick Bayne <pat@x.com>, Someone Else <s@y.com>"),
+            "Patrick Bayne"
+        );
+    }
+
+    #[test]
+    fn recipient_name_empty_when_absent() {
+        assert_eq!(recipient_name(""), "");
+        assert_eq!(recipient_name("   "), "");
+    }
+
+    #[test]
+    fn prompt_embeds_name_and_forbids_invention() {
+        let p = triage_system_prompt("Patrick Bayne");
+        assert!(p.contains("Patrick Bayne"));
+        assert!(p.contains("NEVER use"));
+        // The example output is signed as the example recipient, demonstrating
+        // the pattern to a small model.
+        assert!(p.contains("Pat Rivera"));
+    }
+
+    #[test]
+    fn prompt_unsigned_when_no_name() {
+        let p = triage_system_prompt("");
+        assert!(p.contains("without a signature"));
+        assert!(p.contains("Do NOT invent"));
+    }
 
     fn msg() -> InboxMessage {
         InboxMessage {

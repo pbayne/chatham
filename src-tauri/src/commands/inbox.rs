@@ -259,11 +259,14 @@ async fn classify(
     msg: &InboxMessage,
 ) -> anyhow::Result<Verdict> {
     let user_message = triage::build_user_message(msg);
+    // Derive the inbox owner's name from the To header so replies sign as them
+    // (never a hallucinated name like "Kai").
+    let system_prompt = triage::triage_system_prompt(&triage::recipient_name(&msg.to));
     let raw = if provider == "anthropic" {
         anthropic::summarize(
             api_key,
             model,
-            triage::TRIAGE_SYSTEM_PROMPT,
+            &system_prompt,
             &user_message,
             |_| {},
         )
@@ -274,7 +277,7 @@ async fn classify(
             api_key,
             model,
             think,
-            triage::TRIAGE_SYSTEM_PROMPT,
+            &system_prompt,
             &user_message,
             |_| {},
         )
