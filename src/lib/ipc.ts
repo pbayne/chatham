@@ -359,6 +359,13 @@ export type AutopilotStatus = {
   stop_tail_secs: number;
 };
 
+// Mic-based meeting detection (mic_detect.rs). `supported` is false below
+// macOS 14, where the reliable per-app mic signal doesn't exist.
+export type MicDetectStatus = {
+  enabled: boolean;
+  supported: boolean;
+};
+
 export type UpcomingMeeting = {
   id: string;
   title: string;
@@ -497,6 +504,10 @@ export const ipc = {
   autopilotDisconnectGoogle: () => invoke<void>("autopilot_disconnect_google"),
   autopilotUpcoming: () => invoke<UpcomingMeeting[]>("autopilot_upcoming"),
   autopilotTick: () => invoke<void>("autopilot_tick"),
+  // Mic-based meeting detection (mic_detect.rs). Shares the autopilot mode.
+  micDetectStatus: () => invoke<MicDetectStatus>("mic_detect_status"),
+  micDetectSetEnabled: (enabled: boolean) =>
+    invoke<boolean>("mic_detect_set_enabled", { enabled }),
 
   // One-click export of a note to a formatted Google Doc. Returns the doc URL.
   sendToGoogleDocs: (

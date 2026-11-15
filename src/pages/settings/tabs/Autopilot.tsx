@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ipc, type AutopilotMode, type AutopilotStatus, type UpcomingMeeting } from "../../../lib/ipc";
+import { ipc, type AutopilotMode, type AutopilotStatus, type MicDetectStatus, type UpcomingMeeting } from "../../../lib/ipc";
 import { Row, Section } from "../components/Section";
 
 // Calendar auto-record ("Autopilot"). Connects a Google account (read-only
@@ -40,12 +40,21 @@ function fmtTime(iso: string | null): string {
 export function AutopilotTab() {
   const [status, setStatus] = useState<AutopilotStatus | null>(null);
   const [upcoming, setUpcoming] = useState<UpcomingMeeting[] | null>(null);
+  const [micDetect, setMicDetect] = useState<MicDetectStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refreshStatus = useCallback(async () => {
     try {
       setStatus(await ipc.autopilotStatus());
+    } catch (e) {
+      setError(String(e));
+    }
+  }, []);
+
+  const refreshMicDetect = useCallback(async () => {
+    try {
+      setMicDetect(await ipc.micDetectStatus());
     } catch (e) {
       setError(String(e));
     }
@@ -65,6 +74,10 @@ export function AutopilotTab() {
   useEffect(() => {
     void refreshStatus();
   }, [refreshStatus]);
+
+  useEffect(() => {
+    void refreshMicDetect();
+  }, [refreshMicDetect]);
 
   useEffect(() => {
     if (status?.connected) void refreshUpcoming();
@@ -100,6 +113,15 @@ export function AutopilotTab() {
     try {
       await ipc.autopilotSetMode(mode);
       await refreshStatus();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const toggleMicDetect = async (enabled: boolean) => {
+    try {
+      await ipc.micDetectSetEnabled(enabled);
+      await refreshMicDetect();
     } catch (e) {
       setError(String(e));
     }
@@ -168,6 +190,26 @@ export function AutopilotTab() {
           </div>
         </Row>
       )}
+
+      <Row
+        label="Detect meetings from mic activity"
+        description={
+          micDetect && !micDetect.supported
+            ? "Requires macOS 14 or later — this Mac's version can't attribute mic use to a specific app reliably."
+            : "Also offer to record when a meeting app (Zoom, Teams, Meet, Slack, a browser call…) opens the mic, even with nothing on your calendar. Uses the mode above. Off by default."
+        }
+        control={
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={micDetect?.enabled ?? false}
+              disabled={!micDetect || !micDetect.supported}
+              onChange={(e) => void toggleMicDetect(e.target.checked)}
+            />
+            <span className="text-sm">{micDetect?.enabled ? "On" : "Off"}</span>
+          </label>
+        }
+      />
 
       {connected && (
         <Row label="Upcoming meetings">

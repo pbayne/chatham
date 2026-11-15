@@ -26,9 +26,6 @@ mod google_docs;
 mod google_gmail;
 mod gmail_read;
 mod gmail_auth;
-// Pure decision core for mic-based meeting detection. The sidecar spawn + record
-// trigger (which consume these) land in a follow-up; allow dead_code until then.
-#[allow(dead_code)]
 mod mic_detect;
 mod triage;
 // Public so the `humla-mcp` binary (#172) can drive it. Everything below it —
@@ -95,6 +92,9 @@ pub struct AppState {
     pub transcribing: Arc<Mutex<std::collections::HashSet<String>>>,
     /// Calendar auto-record: Google connection + scheduler state (autopilot.rs).
     pub autopilot: autopilot::Autopilot,
+    /// Mic-based meeting detection watcher (mic_detect.rs). Guards against a
+    /// second watcher and lets the settings toggle (re)start it.
+    pub mic_watcher: mic_detect::MicWatcher,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -226,6 +226,7 @@ where
                 chat_cancels: Arc::new(Mutex::new(std::collections::HashMap::new())),
                 transcribing: Arc::new(Mutex::new(std::collections::HashSet::new())),
                 autopilot: autopilot::Autopilot::default(),
+                mic_watcher: mic_detect::MicWatcher::default(),
             });
             let menu = build_menu(app.handle())?;
             app.set_menu(menu)?;
@@ -329,6 +330,21 @@ where
             // mode is Off or no Google account is connected, so it's safe to
             // always spawn.
             autopilot::spawn(app.handle().clone());
+            // Mic-based meeting detection. Starts the native mic-monitor watcher
+            // only if the user enabled it (opt-in) and the OS supports it
+            // (macOS 14+). Safe to always call — it self-gates and is a no-op
+            // otherwise. The settings toggle calls start_watcher again on enable.
+            {
+                let app_handle = app.handle().clone();
+                let enabled = {
+                    let state = app_handle.state::<AppState>();
+                    let conn = state.db.lock();
+                    mic_detect::is_enabled(&conn)
+                };
+                if enabled {
+                    mic_detect::start_watcher(app_handle);
+                }
+            }
             // Tray + global hotkey. Last in setup so a failure here can't stop
             // the app from coming up — the menu bar is an extra surface, not a
             // precondition for using Humla.
@@ -378,6 +394,8 @@ where
             commands::autopilot_disconnect_google,
             commands::autopilot_upcoming,
             commands::autopilot_tick,
+            commands::mic_detect_status,
+            commands::mic_detect_set_enabled,
             commands::send_to_google_docs,
             commands::generate_followup_email,
             commands::inbox_status,

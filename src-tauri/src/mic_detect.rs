@@ -14,6 +14,11 @@
 //! the native binary.
 
 use serde::Deserialize;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use parking_lot::Mutex;
+use tauri::{AppHandle, Emitter, Manager};
 
 /// One line of the mic-monitor sidecar's stdout. The sidecar emits one JSON
 /// object per line: `{"event":"start","app_id":"us.zoom.xos","app_name":"zoom.us","pid":1234,"ts":...}`.
@@ -148,6 +153,217 @@ impl Debouncer {
     pub fn reset(&mut self) {
         self.last_fired_at = None;
     }
+}
+
+// ─── Runtime: sidecar watcher ────────────────────────────────────────────────
+// Everything below drives the native mic-monitor sidecar and ties a detected
+// meeting to the autopilot record path. It is NOT unit-tested here (needs the
+// native binary + a real mic + the Tauri app); the testable decision core above
+// is what the tests exercise. Kept in this module so the policy and the wiring
+// that applies it live together.
+
+const SETTING_MIC_DETECT: &str = "mic_detect_enabled";
+/// Cooldown so one call's mute/unmute churn can't re-prompt. 5 minutes.
+const MIC_DETECT_COOLDOWN_SECS: i64 = 300;
+
+/// Whether mic-based detection is switched on (persisted). Off by default —
+/// like stenoai, this is opt-in.
+pub fn is_enabled(conn: &rusqlite::Connection) -> bool {
+    crate::db::get_setting(conn, SETTING_MIC_DETECT)
+        .ok()
+        .flatten()
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false)
+}
+
+/// Shared watcher handle on `AppState`, so the toggle can start it and a second
+/// start is a no-op.
+#[derive(Default)]
+pub struct MicWatcher {
+    running: Arc<Mutex<bool>>,
+}
+
+impl MicWatcher {
+    fn try_claim(&self) -> bool {
+        let mut g = self.running.lock();
+        if *g {
+            return false;
+        }
+        *g = true;
+        true
+    }
+    fn release(&self) {
+        *self.running.lock() = false;
+    }
+}
+
+/// Resolve the mic-monitor sidecar: next to the executable in production, under
+/// `src-tauri/binaries/` in dev. Mirrors `diarize::sidecar_path`.
+fn sidecar_path() -> Option<PathBuf> {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            for name in [
+                "mic-monitor",
+                "mic-monitor-aarch64-apple-darwin",
+                "mic-monitor-x86_64-apple-darwin",
+            ] {
+                let p = dir.join(name);
+                if p.exists() {
+                    return Some(p);
+                }
+            }
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        for triple in ["aarch64-apple-darwin", "x86_64-apple-darwin"] {
+            for base in ["src-tauri/binaries", "binaries"] {
+                let p = cwd.join(format!("{base}/mic-monitor-{triple}"));
+                if p.exists() {
+                    return Some(p);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Start the mic-monitor watcher if the OS supports it and it isn't already
+/// running. Spawns the sidecar, reads its JSON line stream, and triggers the
+/// autopilot record path on a detected meeting. Idempotent.
+pub fn start_watcher(app: AppHandle) {
+    let major = parse_major(&os_version_string());
+    if !os_supported(major) {
+        eprintln!("mic-detect: OS unsupported (needs macOS 14+), not starting");
+        return;
+    }
+    let state = app.state::<crate::AppState>();
+    if !state.mic_watcher.try_claim() {
+        return;
+    }
+    let allow_device_level = matches!(major, Some(m) if m < 14);
+
+    tokio::spawn(async move {
+        run_watch_loop(app.clone(), allow_device_level).await;
+        app.state::<crate::AppState>().mic_watcher.release();
+    });
+}
+
+fn os_version_string() -> String {
+    std::process::Command::new("sw_vers")
+        .arg("-productVersion")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default()
+}
+
+/// Whether this running OS supports mic-based detection (macOS 14+). Used by
+/// the Settings command to disable the toggle with an explanation.
+pub fn os_supported_here() -> bool {
+    os_supported(parse_major(&os_version_string()))
+}
+
+async fn run_watch_loop(app: AppHandle, allow_device_level: bool) {
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    use tokio::process::Command;
+
+    let Some(path) = sidecar_path() else {
+        eprintln!("mic-detect: mic-monitor sidecar not found; watcher idle");
+        return;
+    };
+
+    let mut child = match Command::new(&path)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("mic-detect: spawn mic-monitor: {e}");
+            return;
+        }
+    };
+    let Some(stdout) = child.stdout.take() else {
+        return;
+    };
+
+    let mut debounce = Debouncer::new(MIC_DETECT_COOLDOWN_SECS);
+    let mut reader = BufReader::new(stdout).lines();
+    while let Ok(Some(line)) = reader.next_line().await {
+        // Honor the live setting each event — the user may toggle it off.
+        let enabled = {
+            let state = app.state::<crate::AppState>();
+            let conn = state.db.lock();
+            is_enabled(&conn)
+        };
+        if !enabled {
+            break; // turned off: exit; re-enabling restarts the watcher
+        }
+        let Some(event) = parse_line(&line) else {
+            continue;
+        };
+        if !event.is_start() || !is_meeting_app(&event, allow_device_level) {
+            continue;
+        }
+        if !debounce.allow(now_secs()) {
+            continue;
+        }
+        trigger_for_event(&app, &event).await;
+    }
+
+    let _ = child.kill().await;
+}
+
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// A meeting app opened the mic. In Auto mode start recording now; in Ask mode
+/// prompt the frontend; in Off do nothing. Reuses the autopilot mode so mic +
+/// calendar detection share one user preference.
+async fn trigger_for_event(app: &AppHandle, event: &MicEvent) {
+    let mode = {
+        let state = app.state::<crate::AppState>();
+        let conn = state.db.lock();
+        crate::autopilot::Mode::parse(
+            &crate::db::get_setting(&conn, "autopilot_mode")
+                .ok()
+                .flatten()
+                .unwrap_or_default(),
+        )
+    };
+    let app_name = event
+        .app_name
+        .clone()
+        .or_else(|| event.app_id.clone())
+        .unwrap_or_else(|| "A meeting app".to_string());
+
+    match mode {
+        crate::autopilot::Mode::Off => {}
+        crate::autopilot::Mode::Ask => {
+            notify(app, "Meeting detected", &format!("{app_name} opened the mic — record?"));
+            let payload = serde_json::json!({
+                "source": "mic",
+                "app_id": event.app_id,
+                "app_name": event.app_name,
+            });
+            let _ = app.emit("autopilot://prompt-record", payload);
+        }
+        crate::autopilot::Mode::Auto => {
+            if let Err(e) = crate::autopilot::start_ambient_recording(app, &app_name).await {
+                eprintln!("mic-detect: auto-start failed: {e}");
+            }
+        }
+    }
+}
+
+fn notify(app: &AppHandle, title: &str, body: &str) {
+    use tauri_plugin_notification::NotificationExt;
+    let _ = app.notification().builder().title(title).body(body).show();
 }
 
 #[cfg(test)]

@@ -448,6 +448,53 @@ async fn start_recording_for_event(app: &AppHandle, ev: &CalendarEvent) -> anyho
     Ok(())
 }
 
+/// Mic-detect Auto mode: create a bare note (no calendar event) and start
+/// recording. Used when the mic-monitor sidecar sees a meeting app open the
+/// mic with no matching calendar entry. Reuses the same `recording_start`
+/// command as calendar autopilot; the note is titled from the detected app so
+/// the user can tell where it came from.
+pub async fn start_ambient_recording(app: &AppHandle, app_name: &str) -> anyhow::Result<()> {
+    // Don't start a second session if one is already recording.
+    if app.state::<crate::AppState>().autopilot.active_event.lock().is_some() {
+        return Ok(());
+    }
+
+    let note_id = {
+        let state = app.state::<crate::AppState>();
+        let conn = state.db.lock();
+        let default_language = crate::db::get_setting(&conn, "language")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "en".to_string());
+        let note = crate::db::create_note(&conn, &default_language, "meeting", "")?;
+        let patch = crate::db::NotePatch {
+            title: Some(format!("Meeting via {app_name}")),
+            ..Default::default()
+        };
+        let _ = crate::db::update_note(&conn, &note.id, &patch);
+        note.id
+    };
+
+    // Claim the single-session slot. No scheduled end — a mic-detected meeting
+    // has no calendar time, so autopilot's calendar stop won't fire; the user
+    // stops it, exactly like a manual recording.
+    *app.state::<crate::AppState>().autopilot.active_event.lock() = Some(ActiveRecording {
+        event_id: format!("mic:{note_id}"),
+        note_id: note_id.clone(),
+        scheduled_end: None,
+    });
+
+    let state = app.state::<crate::AppState>();
+    crate::commands::recording_start(app.clone(), state, note_id.clone())
+        .await
+        .map_err(|e| anyhow::anyhow!("recording_start: {e}"))?;
+
+    notify(app, "Recording started", &format!("Recording a meeting detected in {app_name}."));
+    let _ = app.emit("autopilot://recording-started", &note_id);
+    Ok(())
+}
+
+
 /// Auto mode stop: if the active recording belongs to this ended event, stop it.
 async fn maybe_stop_for_event(app: &AppHandle, ev: &CalendarEvent) -> anyhow::Result<()> {
     let is_ours = {

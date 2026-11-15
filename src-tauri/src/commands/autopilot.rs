@@ -111,3 +111,40 @@ pub async fn autopilot_upcoming(app: AppHandle) -> Result<Vec<UpcomingMeeting>, 
 pub async fn autopilot_tick(app: AppHandle) -> Result<(), String> {
     autopilot::tick(&app).await.map_err(err)
 }
+
+/// Mic-based meeting detection status for the Settings panel.
+#[derive(Serialize)]
+pub struct MicDetectStatus {
+    pub enabled: bool,
+    /// Whether this OS can run it (macOS 14+). The UI disables the toggle and
+    /// explains when false.
+    pub supported: bool,
+}
+
+#[tauri::command]
+pub fn mic_detect_status(state: State<AppState>) -> Result<MicDetectStatus, String> {
+    let enabled = {
+        let conn = state.db.lock();
+        crate::mic_detect::is_enabled(&conn)
+    };
+    Ok(MicDetectStatus {
+        enabled,
+        supported: crate::mic_detect::os_supported_here(),
+    })
+}
+
+/// Enable/disable mic-based detection. On enable, start the watcher immediately
+/// (no restart needed); on disable, the running watcher notices the flipped
+/// setting on its next event and exits.
+#[tauri::command]
+pub fn mic_detect_set_enabled(app: AppHandle, state: State<AppState>, enabled: bool) -> Result<bool, String> {
+    {
+        let conn = state.db.lock();
+        db::set_setting(&conn, "mic_detect_enabled", if enabled { "true" } else { "false" })
+            .map_err(err)?;
+    }
+    if enabled {
+        crate::mic_detect::start_watcher(app);
+    }
+    Ok(enabled)
+}
