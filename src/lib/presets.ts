@@ -67,6 +67,41 @@ export const SUMMARY_PRESETS: PresetSpec[] = [
     prompt_no: `Du rydder opp i et stemmenotat fra [Notater] (brukerens) og [Transkripsjon] (automatisk). Behold brukerens stemme. Skriv på norsk i Markdown.`,
     prompt_en: `You clean up a voice memo from [Notater] (user-written) and [Transkripsjon] (auto). Preserve the user's voice. Reply in {LANGUAGE} using Markdown.`,
   },
+  {
+    value: "sales_call",
+    label_no: "Kundesamtale (salg)",
+    label_en: "Sales call",
+    prompt_no: `Du lager notater fra en kundesamtale (salg) fra [Notater] (brukerens) og [Transkripsjon] (automatisk). Ta med: kundens situasjon og behov, smertepunkter, innvendinger, konkurrenter nevnt, neste steg og eiere. Skriv på norsk i Markdown.`,
+    prompt_en: `You produce sales-call notes from [Notater] (user-written) and [Transkripsjon] (auto). Capture: the customer's situation and needs, pain points, objections, any competitors mentioned, and clear next steps with owners. Reply in {LANGUAGE} using Markdown.`,
+  },
+  {
+    value: "discovery_call",
+    label_no: "Kartleggingssamtale",
+    label_en: "Discovery call",
+    prompt_no: `Du lager notater fra en kartleggingssamtale fra [Notater] (brukerens) og [Transkripsjon] (automatisk). Ta med: mål og ønsket utfall, nåværende tilstand og utfordringer, tekniske krav, beslutningstakere og tidslinje. Skriv på norsk i Markdown.`,
+    prompt_en: `You produce discovery-call notes from [Notater] (user-written) and [Transkripsjon] (auto). Capture: goals and desired outcomes, current state and challenges, technical requirements, decision-makers, and timeline. Reply in {LANGUAGE} using Markdown.`,
+  },
+  {
+    value: "technical_review",
+    label_no: "Teknisk gjennomgang",
+    label_en: "Technical review",
+    prompt_no: `Du lager notater fra en teknisk gjennomgang fra [Notater] (brukerens) og [Transkripsjon] (automatisk). Ta med: arkitektur og tekniske beslutninger, åpne spørsmål, risikoer og oppfølgingspunkter med eiere. Skriv på norsk i Markdown.`,
+    prompt_en: `You produce technical-review notes from [Notater] (user-written) and [Transkripsjon] (auto). Capture: architecture and technical decisions, open questions, risks, and follow-up items with owners. Reply in {LANGUAGE} using Markdown.`,
+  },
+  {
+    value: "qbr",
+    label_no: "Kvartalsgjennomgang (QBR)",
+    label_en: "Quarterly business review",
+    prompt_no: `Du lager notater fra en kvartalsgjennomgang (QBR) fra [Notater] (brukerens) og [Transkripsjon] (automatisk). Ta med: oppnådd verdi og måltall, status mot mål, risikoer, og avtalte neste steg med eiere. Skriv på norsk i Markdown.`,
+    prompt_en: `You produce quarterly-business-review (QBR) notes from [Notater] (user-written) and [Transkripsjon] (auto). Capture: value delivered and metrics, status against goals, risks, and agreed next steps with owners. Reply in {LANGUAGE} using Markdown.`,
+  },
+  {
+    value: "standup",
+    label_no: "Standup",
+    label_en: "Standup",
+    prompt_no: `Du lager notater fra en standup fra [Notater] (brukerens) og [Transkripsjon] (automatisk). Grupper per person: hva som er gjort, hva som er planlagt, og blokkeringer. Skriv på norsk i Markdown.`,
+    prompt_en: `You produce standup notes from [Notater] (user-written) and [Transkripsjon] (auto). Group per person: done, planned, and blockers. Reply in {LANGUAGE} using Markdown.`,
+  },
 ];
 
 const LANGUAGE_LABELS: Record<string, string> = {
