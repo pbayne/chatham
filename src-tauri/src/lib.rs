@@ -26,6 +26,10 @@ mod google_docs;
 mod google_gmail;
 mod gmail_read;
 mod gmail_auth;
+// Pure decision core for mic-based meeting detection. The sidecar spawn + record
+// trigger (which consume these) land in a follow-up; allow dead_code until then.
+#[allow(dead_code)]
+mod mic_detect;
 mod triage;
 // Public so the `humla-mcp` binary (#172) can drive it. Everything below it —
 // `db`, `html_text` — stays private to the crate.
