@@ -68,7 +68,8 @@ fn backfill_now(conn: &rusqlite::Connection) -> Result<usize, String> {
     let workspace = crate::commands::cloud::active_workspace(conn);
     let notes = db::list_notes(conn, &workspace).map_err(err)?;
     let folders = db::list_folders(conn, &workspace).map_err(err)?;
-    Ok(obsidian::backfill(conn, &notes, &folders))
+    let clients = db::list_clients(conn, &workspace).unwrap_or_default();
+    Ok(obsidian::backfill(conn, &notes, &folders, &clients))
 }
 
 /// Best-effort: mirror one note to the vault after a save. Called from the note
@@ -86,7 +87,8 @@ pub(crate) fn sync_one_best_effort(conn: &rusqlite::Connection, note_id: &str) {
     }
     let workspace = crate::commands::cloud::active_workspace(conn);
     let folders = db::list_folders(conn, &workspace).unwrap_or_default();
-    let _ = obsidian::sync_note(conn, &note, &folders);
+    let clients = db::list_clients(conn, &workspace).unwrap_or_default();
+    let _ = obsidian::sync_note(conn, &note, &folders, &clients);
 }
 
 /// Best-effort: remove one note's vault copy after a delete.

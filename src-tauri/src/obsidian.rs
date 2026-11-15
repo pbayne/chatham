@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::db::{Folder, Note};
+use crate::db::{Client, Folder, Note};
 
 const SETTING_ENABLED: &str = "obsidian_sync_enabled";
 const SETTING_VAULT: &str = "obsidian_vault_path";
@@ -141,9 +141,9 @@ fn yaml_quote(v: &str) -> String {
 }
 
 /// Build the Markdown the vault copy should contain, from a note + its folder
-/// name. Frontmatter (title/date/folder/source/humla_id) + summary + typed
-/// notes. Transcript deliberately omitted.
-pub fn render_vault_markdown(note: &Note, folder_name: Option<&str>, date: &str) -> String {
+/// and client names. Frontmatter (title/date/folder/customer/source/humla_id) +
+/// summary + typed notes. Transcript deliberately omitted.
+pub fn render_vault_markdown(note: &Note, folder_name: Option<&str>, client_name: Option<&str>, date: &str) -> String {
     let mut fm = vec!["---".to_string(), format!("title: {}", yaml_quote(&note.title))];
     if !date.is_empty() {
         fm.push(format!("date: {date}"));
@@ -151,6 +151,11 @@ pub fn render_vault_markdown(note: &Note, folder_name: Option<&str>, date: &str)
     if let Some(f) = folder_name {
         if !f.is_empty() {
             fm.push(format!("folder: {}", yaml_quote(f)));
+        }
+    }
+    if let Some(c) = client_name {
+        if !c.is_empty() {
+            fm.push(format!("customer: {}", yaml_quote(c)));
         }
     }
     fm.push("source: Humla".to_string());
@@ -260,30 +265,40 @@ fn is_externally_edited(abs: &Path, entry: &Entry) -> bool {
     }
 }
 
-/// Sync one note's vault copy from the DB. The folder list resolves the note's
-/// folder id to a name for the subfolder. Returns a status; never panics.
-pub fn sync_note(conn: &rusqlite::Connection, note: &Note, folders: &[Folder]) -> SyncStatus {
+/// Sync one note's vault copy from the DB. The folder/client lists resolve the
+/// note's folder id / client id to a name for the subfolder. Returns a status;
+/// never panics.
+pub fn sync_note(conn: &rusqlite::Connection, note: &Note, folders: &[Folder], clients: &[Client]) -> SyncStatus {
     let (enabled, vault) = config(conn);
     if !enabled || vault.trim().is_empty() {
         return SyncStatus::Disabled;
     }
     let mut state = load_state(&vault);
-    let status = sync_one(&vault, note, folders, &mut state);
+    let status = sync_one(&vault, note, folders, clients, &mut state);
     save_state(&vault, &state);
     status
 }
 
-fn sync_one(vault: &str, note: &Note, folders: &[Folder], state: &mut SyncState) -> SyncStatus {
+fn sync_one(vault: &str, note: &Note, folders: &[Folder], clients: &[Client], state: &mut SyncState) -> SyncStatus {
+    // A client-tagged note files under the client's name; otherwise under its
+    // folder's name; otherwise at the vault root. Customer routing wins because
+    // "all my Fisher Investments notes in one place" is the point of the tag.
+    let client_name = note
+        .client_id
+        .as_ref()
+        .and_then(|cid| clients.iter().find(|c| &c.id == cid))
+        .map(|c| c.name.clone());
     let folder_name = note
         .folder_id
         .as_ref()
         .and_then(|fid| folders.iter().find(|f| &f.id == fid))
         .map(|f| f.name.clone());
+    let subfolder_name = client_name.clone().or_else(|| folder_name.clone());
     let date = date_str(note.created_at);
-    let body = render_vault_markdown(note, folder_name.as_deref(), &date);
+    let body = render_vault_markdown(note, folder_name.as_deref(), client_name.as_deref(), &date);
     let new_hash = sha256_hex(body.as_bytes());
 
-    let sub = folder_name
+    let sub = subfolder_name
         .as_deref()
         .map(|f| sanitize_filename(f, f))
         .unwrap_or_default();
@@ -387,7 +402,7 @@ pub fn remove_note(conn: &rusqlite::Connection, note_id: &str) -> SyncStatus {
 }
 
 /// Export every live note when the user turns sync on (or switches vault).
-pub fn backfill(conn: &rusqlite::Connection, notes: &[Note], folders: &[Folder]) -> usize {
+pub fn backfill(conn: &rusqlite::Connection, notes: &[Note], folders: &[Folder], clients: &[Client]) -> usize {
     let (enabled, vault) = config(conn);
     if !enabled || vault.trim().is_empty() {
         return 0;
@@ -398,7 +413,7 @@ pub fn backfill(conn: &rusqlite::Connection, notes: &[Note], folders: &[Folder])
         if note.deleted_at.is_some() {
             continue;
         }
-        let st = sync_one(&vault, note, folders, &mut state);
+        let st = sync_one(&vault, note, folders, clients, &mut state);
         if matches!(st, SyncStatus::Synced) {
             count += 1;
         }
@@ -465,7 +480,7 @@ mod tests {
 
     #[test]
     fn transcript_never_reaches_vault() {
-        let md = render_vault_markdown(&note("n1", "Standup"), None, "2023-11-14");
+        let md = render_vault_markdown(&note("n1", "Standup"), None, None, "2023-11-14");
         assert!(!md.contains("SECRET TRANSCRIPT"));
         assert!(md.contains("## Summary"));
         assert!(md.contains("## Notes"));
@@ -487,9 +502,12 @@ mod tests {
     #[test]
     fn folder_absent_means_no_subdir_segment() {
         // render doesn't place the file; just confirm folder omitted from frontmatter.
-        let md = render_vault_markdown(&note("n1", "T"), None, "2023-11-14");
+        let md = render_vault_markdown(&note("n1", "T"), None, None, "2023-11-14");
         assert!(!md.contains("folder:"));
-        let md2 = render_vault_markdown(&note("n1", "T"), Some("Clients"), "2023-11-14");
+        assert!(!md.contains("customer:"));
+        let md2 = render_vault_markdown(&note("n1", "T"), Some("Clients"), None, "2023-11-14");
         assert!(md2.contains("folder: \"Clients\""));
+        let md3 = render_vault_markdown(&note("n1", "T"), None, Some("Fisher Investments"), "2023-11-14");
+        assert!(md3.contains("customer: \"Fisher Investments\""));
     }
 }

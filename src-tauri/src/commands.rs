@@ -28,6 +28,7 @@ mod clients;
 // creates a note for a headless recording.
 pub(crate) mod cloud;
 pub(crate) mod cloud_auth;
+mod customer;
 mod export;
 // Live cloud-sync worker glue. Behind the `cloud` feature; `pub` so `run()` can
 // reach `cloud_worker::install`. Not a #[tauri::command] group, so no glob
@@ -69,6 +70,7 @@ pub use menubar::*;
 pub use models::*;
 pub use obsidian::*;
 pub use silence::*;
+pub use customer::*;
 pub use notes::*;
 pub use permissions::*;
 pub use settings::*;

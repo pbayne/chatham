@@ -532,6 +532,9 @@ export const ipc = {
   silenceStatus: () => invoke<SilenceStatus>("silence_status"),
   silenceSetEnabled: (enabled: boolean) => invoke<void>("silence_set_enabled", { enabled }),
   silenceSetMinutes: (minutes: number) => invoke<number>("silence_set_minutes", { minutes }),
+  // Auto customer tagging (customer.rs). Learns the account from each meeting.
+  autoCustomerTaggingStatus: () => invoke<boolean>("auto_customer_tagging_status"),
+  autoCustomerTaggingSet: (enabled: boolean) => invoke<void>("auto_customer_tagging_set", { enabled }),
 
   // One-click export of a note to a formatted Google Doc. Returns the doc URL.
   sendToGoogleDocs: (

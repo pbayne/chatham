@@ -405,6 +405,8 @@ where
             commands::silence_status,
             commands::silence_set_enabled,
             commands::silence_set_minutes,
+            commands::auto_customer_tagging_status,
+            commands::auto_customer_tagging_set,
             commands::send_to_google_docs,
             commands::generate_followup_email,
             commands::inbox_status,

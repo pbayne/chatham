@@ -101,6 +101,7 @@ export function IntegrationsSection({
 // backfill of every existing note.
 export function ObsidianSection() {
   const [status, setStatus] = useState<import("../../../lib/ipc").ObsidianStatus | null>(null);
+  const [autoTag, setAutoTag] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -114,6 +115,7 @@ export function ObsidianSection() {
 
   useEffect(() => {
     void refresh();
+    ipc.autoCustomerTaggingStatus().then(setAutoTag).catch(() => {});
   }, []);
 
   const pickVault = async () => {
@@ -151,6 +153,20 @@ export function ObsidianSection() {
 
   return (
     <Section title="Obsidian sync">
+      <Row
+        label="Auto-tag the customer from each meeting"
+        description="After a recording is summarized, Humla reads it to identify which customer the meeting was with and tags the note — learning your account list as you go. Client-tagged notes are filed under the customer's name in your vault."
+        control={
+          <Toggle
+            checked={autoTag ?? true}
+            onChange={(next) => {
+              setAutoTag(next);
+              void ipc.autoCustomerTaggingSet(next);
+            }}
+            label="Auto-tag the customer from each meeting"
+          />
+        }
+      />
       <Row
         label="Mirror notes to an Obsidian vault"
         description="Write each note (summary + your notes, no transcript) into a vault folder as Markdown, organised by folder. One-way: edits you make in Obsidian are never read back, and a note you've edited there is never overwritten."
