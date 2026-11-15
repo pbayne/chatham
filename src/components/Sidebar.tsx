@@ -131,7 +131,8 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
   const noteMatches = (n: Note) =>
     n.title.toLowerCase().includes(needle) ||
     n.body.toLowerCase().includes(needle) ||
-    n.transcript.toLowerCase().includes(needle);
+    n.transcript.toLowerCase().includes(needle) ||
+    n.summary.toLowerCase().includes(needle);
 
   // When searching, surface a flat list of all matching notes regardless
   // of folder — folder context shows as a small chip on each row. When
