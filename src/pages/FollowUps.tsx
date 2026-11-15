@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
-import { CheckCircle2, Circle, ListTodo } from "lucide-react";
+import { Check, CheckCircle2, Circle, Copy, ListTodo } from "lucide-react";
 import { ipc, type OpenActionItem } from "../lib/ipc";
 import { byDue, dueColorVar, dueLabel, dueState } from "../lib/due";
+import { followupsText } from "../lib/followups";
 
 // Follow-ups (#followups): one running list of every open action item across
 // all meetings, grouped by customer so "what do I owe Fisher Investments?" is
@@ -63,6 +64,17 @@ export function FollowUps() {
     [items],
   );
 
+  const [copiedGroup, setCopiedGroup] = useState<string | null>(null);
+  const copyGroup = (heading: string, groupItems: OpenActionItem[]) => {
+    navigator.clipboard?.writeText(followupsText(heading, groupItems)).then(
+      () => {
+        setCopiedGroup(heading);
+        window.setTimeout(() => setCopiedGroup((c) => (c === heading ? null : c)), 1500);
+      },
+      () => {},
+    );
+  };
+
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
       <div className="max-w-3xl mx-auto px-6 py-8">
@@ -92,7 +104,7 @@ export function FollowUps() {
           <div className="flex flex-col gap-7">
             {groups.map((g) => (
               <div key={g.name}>
-                <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-2.5">
+                <h2 className="flex items-center text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-2.5">
                   {g.id ? (
                     <button
                       type="button"
@@ -105,6 +117,19 @@ export function FollowUps() {
                     g.name
                   )}
                   <span className="ml-2 font-normal normal-case">{g.items.length}</span>
+                  <button
+                    type="button"
+                    onClick={() => copyGroup(g.name, g.items)}
+                    className="ml-auto inline-flex items-center gap-1 normal-case font-normal hover:text-[var(--color-interactive)] transition-colors"
+                    title={`Copy ${g.name} follow-ups for a status email`}
+                  >
+                    {copiedGroup === g.name ? (
+                      <Check size={12} strokeWidth={1.8} />
+                    ) : (
+                      <Copy size={12} strokeWidth={1.7} />
+                    )}
+                    {copiedGroup === g.name ? "Copied" : "Copy"}
+                  </button>
                 </h2>
                 <ul className="flex flex-col">
                   {g.items.map((it) => (

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Building2, Check, Circle, Copy, ListTodo } from "lucide-react";
 import { ipc, type OpenActionItem } from "../lib/ipc";
 import { byDue, dueColorVar, dueLabel, dueState } from "../lib/due";
+import { followupsText } from "../lib/followups";
 import { useNotesStore } from "../lib/store";
 import { indexById } from "../lib/noteList";
 import { NoteCard } from "../components/NoteCard";
@@ -43,15 +44,7 @@ export function Customer() {
 
   const [copied, setCopied] = useState(false);
   const copyFollowups = () => {
-    // Plain-text list for a status email: "- <task> (<owner>) [due <label>]".
-    const lines = open.map((it) => {
-      const bits = [it.text.trim()];
-      const meta: string[] = [];
-      if (it.owner.trim()) meta.push(it.owner.trim());
-      if (it.due) meta.push(`due ${dueLabel(it.due)}`);
-      return `- ${bits[0]}${meta.length ? ` (${meta.join(", ")})` : ""}`;
-    });
-    const text = `${client?.name ?? "Customer"} — open follow-ups\n${lines.join("\n")}`;
+    const text = followupsText(client?.name ?? "Customer", open);
     navigator.clipboard?.writeText(text).then(
       () => {
         setCopied(true);
