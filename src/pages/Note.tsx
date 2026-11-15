@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Clock,
   ListTodo,
+  Mic,
   Plus,
   Circle,
   Cloud,
@@ -42,7 +43,7 @@ import { useDownloadStore, useNotesStore, useRecordingStore } from "../lib/store
 import { computeSetupStatus } from "../lib/setupStatus";
 import { useOwnerName, useCloudStore } from "../lib/cloud";
 import { billingCta, planIsLive } from "../lib/billing";
-import { extractSpeakerLabels, renameSpeakerInTranscript } from "../lib/speakers";
+import { extractSpeakerLabels, renameSpeakerInTranscript, isNamedPerson } from "../lib/speakers";
 import { harvestSpeakerNames } from "../lib/speakerNames";
 import { NEMOTRON_MAX_SPEAKERS } from "../lib/diarizeEngine";
 import { SPEAKER_COUNT_OPTIONS, speakerCountLabel } from "../lib/speakerCount";
@@ -1708,6 +1709,7 @@ export function Note() {
                   <>
                     {!readOnly && (
                       <DetectedSpeakerNames
+                        noteId={draft.id}
                         transcript={draft.transcript}
                         onAccept={(oldLabel, newLabel) => {
                           if (readOnlyRef.current) return;
@@ -1719,6 +1721,15 @@ export function Note() {
                             .noteTimelineRename(draft.id, oldLabel, newLabel)
                             .then(() => void ipc.uploadNoteSessions(draft.id))
                             .catch((err) => console.error("noteTimelineRename failed", err));
+                          // Enroll the confirmed name's voiceprint from this
+                          // note's audio, so future meetings auto-recognize them.
+                          // Enroll under the NEW name but embed the OLD label's
+                          // segments (the timeline still has them until the
+                          // rename above propagates to disk — enroll reads by the
+                          // label we embed from, so use oldLabel for the lookup).
+                          void ipc
+                            .voiceprintEnroll(draft.id, oldLabel, newLabel)
+                            .catch((err) => console.error("voiceprintEnroll failed", err));
                         }}
                       />
                     )}
@@ -2825,21 +2836,83 @@ function SuggestTemplateButton({
 // is the "attach a name the first time" step that later lets a voiceprint be
 // enrolled under a real name.
 function DetectedSpeakerNames({
+  noteId,
   transcript,
   onAccept,
 }: {
+  noteId: string;
   transcript: string;
   onAccept: (oldLabel: string, newLabel: string) => void;
 }) {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-  const guesses = useMemo(() => {
+  const [voiceMatches, setVoiceMatches] = useState<
+    { label: string; name: string; strength: "auto" | "suggest" }[]
+  >([]);
+
+  // Labels still generic enough to offer a name for.
+  const genericLabels = useMemo(
+    () => extractSpeakerLabels(transcript).filter((l) => !isNamedPerson(l)),
+    [transcript],
+  );
+
+  // Transcript-harvested guesses (self-intros, vocatives).
+  const harvested = useMemo(() => {
     const labels = new Set(extractSpeakerLabels(transcript));
     return harvestSpeakerNames(transcript).filter(
-      // Only offer for labels still present as a placeholder-ish label, and not
-      // already equal to the guessed name (nothing to change).
       (g) => labels.has(g.label) && g.label.trim() !== g.name && !labels.has(g.name),
     );
   }, [transcript]);
+
+  // Voiceprint matches from this note's audio against enrolled speakers. Only
+  // for still-generic labels; runs once per (note, label set). Best-effort —
+  // a missing sidecar or no enrolled prints just yields nothing.
+  useEffect(() => {
+    let alive = true;
+    if (genericLabels.length === 0) {
+      setVoiceMatches([]);
+      return;
+    }
+    ipc
+      .voiceprintMatchNote(noteId, genericLabels)
+      .then((ms) => {
+        if (alive) {
+          setVoiceMatches(
+            (Array.isArray(ms) ? ms : []).map((m) => ({
+              label: m.label,
+              name: m.name,
+              strength: m.strength,
+            })),
+          );
+        }
+      })
+      .catch(() => {
+        if (alive) setVoiceMatches([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [noteId, genericLabels.join("|")]);
+
+  // Merge: a voiceprint match (acoustic evidence) wins over a transcript guess
+  // for the same label; otherwise the harvested guess stands. One entry/label.
+  const guesses = useMemo(() => {
+    const byLabel = new Map<
+      string,
+      { label: string; name: string; confidence: "high" | "medium"; voice?: boolean }
+    >();
+    for (const g of harvested) {
+      byLabel.set(g.label, { label: g.label, name: g.name, confidence: g.confidence });
+    }
+    for (const m of voiceMatches) {
+      byLabel.set(m.label, {
+        label: m.label,
+        name: m.name,
+        confidence: m.strength === "auto" ? "high" : "medium",
+        voice: true,
+      });
+    }
+    return [...byLabel.values()];
+  }, [harvested, voiceMatches]);
 
   const visible = guesses.filter((g) => !dismissed.has(g.label));
   if (visible.length === 0) return null;
@@ -2860,8 +2933,11 @@ function DetectedSpeakerNames({
               type="button"
               onClick={() => onAccept(g.label, g.name)}
               className="px-2.5 py-1 hover:bg-[var(--color-surface-hover)] transition-colors"
-              title={`Rename ${g.label} to ${g.name}${g.confidence === "medium" ? " (less certain)" : ""}`}
+              title={`Rename ${g.label} to ${g.name}${g.voice ? " (recognized by voice)" : ""}${g.confidence === "medium" ? " — less certain" : ""}`}
             >
+              {g.voice && (
+                <Mic size={10} strokeWidth={1.9} className="mr-1 text-[var(--color-interactive)]" />
+              )}
               <span className="text-[var(--color-text-muted)]">{g.label}</span>
               <span className="mx-1.5 text-[var(--color-text-faint)]">→</span>
               <span className="font-medium">{g.name}</span>

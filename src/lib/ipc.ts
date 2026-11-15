@@ -470,6 +470,14 @@ export type OpenActionItem = NoteActionItem & {
   note_created_at: number;
 };
 
+// A voiceprint name suggestion for a diarized label (#voiceprints Phase D).
+export type LabelSuggestion = {
+  label: string;
+  name: string;
+  score: number;
+  strength: "auto" | "suggest";
+};
+
 export type UpcomingMeeting = {
   id: string;
   title: string;
@@ -642,6 +650,15 @@ export const ipc = {
     patch: { text?: string; owner?: string; due?: string; done?: boolean },
   ) => invoke<NoteActionItem>("action_items_update", { id, ...patch }),
   actionItemsDelete: (id: string) => invoke<void>("action_items_delete", { id }),
+
+  // Speaker voiceprints (#voiceprints Phase D). Enroll a confirmed name from a
+  // note's audio; match a note's diarized labels against enrolled prints.
+  voiceprintEnroll: (noteId: string, label: string, name: string) =>
+    invoke<void>("voiceprint_enroll", { noteId, label, name }),
+  voiceprintMatchNote: (noteId: string, labels: string[]) =>
+    invoke<LabelSuggestion[]>("voiceprint_match_note", { noteId, labels }),
+  voiceprintNames: () => invoke<string[]>("voiceprint_names"),
+  voiceprintForget: (name: string) => invoke<number>("voiceprint_forget", { name }),
 
   // One-click export of a note to a formatted Google Doc. Returns the doc URL.
   sendToGoogleDocs: (

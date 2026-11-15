@@ -386,6 +386,51 @@ fn withdraw_warm_markers(dir: &Path) {
     }
 }
 
+/// Run the sidecar's `embed` command: one 256-d L2-normalized voiceprint for a
+/// speaker, from `audio_path` restricted to `ranges` (ms start/end of that
+/// speaker's turns). Empty ranges embed the whole file. Voiceprints Phase C/D.
+pub async fn embed_speaker(
+    app: &AppHandle,
+    audio_path: &Path,
+    ranges: &[(i64, i64)],
+) -> Result<Vec<f32>> {
+    let sidecar = sidecar_path(app)?;
+    let path_str = audio_path
+        .to_str()
+        .ok_or_else(|| anyhow!("non-utf8 audio path"))?;
+
+    let mut cmd = Command::new(&sidecar);
+    cmd.arg("embed").arg(path_str);
+    if !ranges.is_empty() {
+        let joined = ranges
+            .iter()
+            .map(|(a, b)| format!("{a}:{b}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        cmd.arg("--ranges").arg(joined);
+    }
+    let output = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .map_err(|e| anyhow!("spawn speaker-diarize embed: {e}"))?;
+
+    if !output.status.success() {
+        let clean = sidecar_error(&String::from_utf8_lossy(&output.stderr), output.status);
+        return Err(anyhow!("{clean}"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    #[derive(serde::Deserialize)]
+    struct EmbedPayload {
+        embedding: Vec<f32>,
+    }
+    let payload: EmbedPayload = serde_json::from_str(stdout.trim())
+        .map_err(|e| anyhow!("parse embed JSON: {e} -- {stdout}"))?;
+    Ok(payload.embedding)
+}
+
 pub async fn diarize_file(
     app: &AppHandle,
     audio_path: &Path,

@@ -32,6 +32,7 @@ pub(crate) mod cloud_auth;
 mod customer;
 mod reports;
 mod action_items;
+mod voiceprints;
 mod export;
 // Live cloud-sync worker glue. Behind the `cloud` feature; `pub` so `run()` can
 // reach `cloud_worker::install`. Not a #[tauri::command] group, so no glob
@@ -77,6 +78,7 @@ pub use silence::*;
 pub use customer::*;
 pub use reports::*;
 pub use action_items::*;
+pub use voiceprints::*;
 pub use notes::*;
 pub use permissions::*;
 pub use settings::*;
