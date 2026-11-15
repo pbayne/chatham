@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ListTodo, Plus } from "lucide-react";
 import { ipc, type OpenActionItem } from "../lib/ipc";
+import { dueColorVar, dueState } from "../lib/due";
 import { useNotesStore } from "../lib/store";
 import { NemotronOffer } from "../components/NemotronOffer";
 import { ReleaseNotes } from "../components/ReleaseNotes";
@@ -59,6 +60,7 @@ export function Home() {
   }, [open]);
 
   const notesLabel = total === 1 ? "1 note" : `${total} notes`;
+  const overdue = useMemo(() => open.filter((i) => dueState(i.due) === "overdue").length, [open]);
 
   async function newNote() {
     const note = await ipc.createNote();
@@ -128,6 +130,9 @@ export function Home() {
                 >
                   <ListTodo size={13} strokeWidth={1.7} />
                   {open.length} open
+                  {overdue > 0 && (
+                    <span style={{ color: dueColorVar("overdue") }}>· {overdue} overdue</span>
+                  )}
                 </button>
               </div>
               {open.length === 0 ? (

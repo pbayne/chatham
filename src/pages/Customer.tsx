@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Building2, Circle, ListTodo } from "lucide-react";
 import { ipc, type OpenActionItem } from "../lib/ipc";
+import { byDue, dueColorVar, dueLabel, dueState } from "../lib/due";
 import { useNotesStore } from "../lib/store";
 import { indexById } from "../lib/noteList";
 import { NoteCard } from "../components/NoteCard";
@@ -31,7 +32,7 @@ export function Customer() {
 
   useEffect(() => {
     ipc.actionItemsOpen()
-      .then((rs) => setOpen((Array.isArray(rs) ? rs : []).filter((i) => i.client_id === id)))
+      .then((rs) => setOpen((Array.isArray(rs) ? rs : []).filter((i) => i.client_id === id).sort(byDue)))
       .catch(() => setOpen([]));
   }, [id, notes.length]);
 
@@ -85,6 +86,9 @@ export function Customer() {
                     <p className="text-sm leading-snug">{it.text}</p>
                     <div className="flex flex-wrap items-center gap-x-2.5 text-xs text-[var(--color-text-muted)] mt-0.5">
                       {it.owner && <span>{it.owner}</span>}
+                      {it.due && (
+                        <span style={{ color: dueColorVar(dueState(it.due)) }}>· {dueLabel(it.due)}</span>
+                      )}
                       <button
                         type="button"
                         onClick={() => navigate(`/note/${it.note_id}`)}

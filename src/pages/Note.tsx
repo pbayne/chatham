@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { ipc, onSummary, onSummaryThinkingDelta, onSummaryContentDelta, type NoteActionItem, type Note as TNote, type NoteReport, type NoteRevision, type NoteSession, type SummaryPrompt, type TimelineEntry } from "../lib/ipc";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { dueState, dueLabel, dueColorVar } from "../lib/due";
 import { SUMMARY_CAPABLE, type SummaryProvider } from "../lib/providers";
 import { useLiveSetting } from "../lib/settingsBus";
 import { useDownloadStore, useNotesStore, useRecordingStore } from "../lib/store";
@@ -2844,6 +2845,10 @@ function NoteActionItems({ noteId, readOnly }: { noteId: string; readOnly: boole
     if (owner.trim() === it.owner) return;
     void ipc.actionItemsUpdate(it.id, { owner: owner.trim() }).then(load).catch(load);
   };
+  const saveDue = (it: NoteActionItem, due: string) => {
+    if (due === it.due) return;
+    void ipc.actionItemsUpdate(it.id, { due }).then(load).catch(load);
+  };
   const remove = (id: string) => {
     setItems((cur) => cur.filter((x) => x.id !== id));
     void ipc.actionItemsDelete(id).catch(load);
@@ -2895,14 +2900,31 @@ function NoteActionItems({ noteId, readOnly }: { noteId: string; readOnly: boole
                   (it.done ? "line-through text-[var(--color-text-muted)]" : "")
                 }
               />
-              {(it.owner || !readOnly) && (
-                <input
-                  defaultValue={it.owner}
-                  readOnly={readOnly}
-                  placeholder={readOnly ? "" : "owner"}
-                  onBlur={(e) => !readOnly && saveOwner(it, e.target.value)}
-                  className="mt-0.5 bg-transparent text-xs text-[var(--color-text-muted)] outline-none w-40 placeholder:text-[var(--color-text-faint)]"
-                />
+              {(it.owner || it.due || !readOnly) && (
+                <div className="mt-0.5 flex items-center gap-2">
+                  <input
+                    defaultValue={it.owner}
+                    readOnly={readOnly}
+                    placeholder={readOnly ? "" : "owner"}
+                    onBlur={(e) => !readOnly && saveOwner(it, e.target.value)}
+                    className="bg-transparent text-xs text-[var(--color-text-muted)] outline-none w-32 placeholder:text-[var(--color-text-faint)]"
+                  />
+                  {readOnly ? (
+                    it.due && (
+                      <span className="text-xs" style={{ color: dueColorVar(dueState(it.due)) }}>
+                        {dueLabel(it.due)}
+                      </span>
+                    )
+                  ) : (
+                    <input
+                      type="date"
+                      defaultValue={it.due}
+                      onChange={(e) => saveDue(it, e.target.value)}
+                      className="bg-transparent text-xs outline-none w-[8.5rem]"
+                      style={{ color: it.due ? dueColorVar(dueState(it.due)) : "var(--color-text-faint)" }}
+                    />
+                  )}
+                </div>
               )}
             </div>
             {!readOnly && (

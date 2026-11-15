@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
 import { CheckCircle2, Circle, ListTodo } from "lucide-react";
 import { ipc, type OpenActionItem } from "../lib/ipc";
+import { byDue, dueColorVar, dueLabel, dueState } from "../lib/due";
 
 // Follow-ups (#followups): one running list of every open action item across
 // all meetings, grouped by customer so "what do I owe Fisher Investments?" is
@@ -45,6 +46,8 @@ export function FollowUps() {
       byClient.get(key)!.items.push(it);
     }
     const arr = [...byClient.values()];
+    // Within each customer, dated-and-soonest first (overdue at the top).
+    for (const g of arr) g.items.sort(byDue);
     // Customers alphabetical; the "No customer" bucket always last.
     arr.sort((a, b) => {
       if (a.name === "No customer") return 1;
@@ -55,6 +58,10 @@ export function FollowUps() {
   }, [items]);
 
   const total = items?.length ?? 0;
+  const overdue = useMemo(
+    () => (items ?? []).filter((i) => dueState(i.due) === "overdue").length,
+    [items],
+  );
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
@@ -67,6 +74,9 @@ export function FollowUps() {
           {total === 0
             ? "You're all caught up — no open action items."
             : `${total} open item${total === 1 ? "" : "s"} across your meetings, by customer.`}
+          {overdue > 0 && (
+            <span style={{ color: dueColorVar("overdue") }}> · {overdue} overdue</span>
+          )}
         </p>
 
         {items === null ? (
@@ -114,7 +124,11 @@ export function FollowUps() {
                         <p className="text-sm leading-snug">{it.text}</p>
                         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 mt-0.5 text-xs text-[var(--color-text-muted)]">
                           {it.owner && <span>{it.owner}</span>}
-                          {it.due && <span>· due {it.due}</span>}
+                          {it.due && (
+                            <span style={{ color: dueColorVar(dueState(it.due)) }}>
+                              · {dueLabel(it.due)}
+                            </span>
+                          )}
                           <button
                             type="button"
                             onClick={() => navigate(`/note/${it.note_id}`)}
