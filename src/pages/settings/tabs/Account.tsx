@@ -13,7 +13,7 @@ import type { SettingsHook } from "../useSettings";
 const inputCls =
   "w-full text-sm px-3 py-2 rounded-md border border-[var(--color-line-visible)] bg-[var(--color-surface)] focus:border-[var(--color-text-muted)] transition-colors";
 
-// Account section: connect to a Humla Cloud server, sign in/out. The server
+// Account section: connect to a Parley Cloud server, sign in/out. The server
 // URL + credentials drive everything else (workspace management renders
 // below, from Organization.tsx, once signed in). Local-only use needs none
 // of this — it's entirely opt-in.
@@ -52,7 +52,7 @@ export function AccountTab({ s, update }: Pick<SettingsHook, "s" | "update">) {
     }
   }
 
-  // One-click path for downloaders: point at the hosted Humla Cloud and continue
+  // One-click path for downloaders: point at the hosted Parley Cloud and continue
   // to sign in / create an account — no URL to type.
   async function useHumlaCloud() {
     setBusy(true);
@@ -288,10 +288,10 @@ export function AccountTab({ s, update }: Pick<SettingsHook, "s" | "update">) {
     <Section title="Connect to sync">
       <div className="py-3.5 flex flex-col gap-3">
         <p className="text-sm text-[var(--color-text-muted)]">
-          Humla works fully offline. Your notes always live on your Mac first.
+          Parley works fully offline. Your notes always live on your Mac first.
         </p>
         {error && <div className="text-xs text-[var(--color-danger)]">{error}</div>}
-        {/* Humla Cloud pitch: the one place the hosted offer gets to sell
+        {/* Parley Cloud pitch: the one place the hosted offer gets to sell
             itself — accent-washed so it stands out from the surrounding
             settings chrome without shouting. */}
         {/* Borderless, matching the create-team-workspace sheet's pitch panel —
@@ -301,7 +301,7 @@ export function AccountTab({ s, update }: Pick<SettingsHook, "s" | "update">) {
             rather than decoration. */}
         <div className="rounded-lg bg-[var(--color-accent-soft)] p-4 flex flex-col gap-1.5">
           <div className="flex items-center gap-1.5 text-sm font-medium">
-            <Cloud size={15} strokeWidth={1.7} /> Humla Cloud
+            <Cloud size={15} strokeWidth={1.7} /> Parley Cloud
           </div>
           <p className="text-sm text-[var(--color-text-muted)]">
             Share notes across your team — synced to every device, backed up,
@@ -320,7 +320,7 @@ export function AccountTab({ s, update }: Pick<SettingsHook, "s" | "update">) {
               disabled={busy}
               className="nd-btn nd-btn-primary"
             >
-              {busy ? "Connecting…" : "Upgrade to Humla Cloud"}
+              {busy ? "Connecting…" : "Upgrade to Parley Cloud"}
             </button>
             <span className="text-xs text-[var(--color-text-muted)] whitespace-nowrap">
               14-day free trial · cancel anytime

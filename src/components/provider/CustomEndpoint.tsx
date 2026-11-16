@@ -68,7 +68,7 @@ export function CustomEndpointCard({
         <div className="min-w-0">
           <div className="text-sm">Base URL</div>
           <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-            Used exactly as typed: Humla adds <code>/chat/completions</code>, <code>/models</code>{" "}
+            Used exactly as typed: Parley adds <code>/chat/completions</code>, <code>/models</code>{" "}
             or <code>/audio/transcriptions</code> to it. Shared by summaries, chat and transcription.
           </p>
         </div>

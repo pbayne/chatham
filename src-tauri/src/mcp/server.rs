@@ -36,12 +36,12 @@ use serde_json::{Map, Value};
 
 use super::tools;
 
-/// The `humla://note/<id>` scheme notes are exposed under.
-const RESOURCE_PREFIX: &str = "humla://note/";
+/// The `parley://note/<id>` scheme notes are exposed under.
+const RESOURCE_PREFIX: &str = "parley://note/";
 /// The one resource offered while the integration is switched off. Deliberately NOT
 /// under [`RESOURCE_PREFIX`]: it is not a note, it names none, and reading it must
 /// not go anywhere near the library.
-const RESOURCE_DISABLED: &str = "humla://disabled";
+const RESOURCE_DISABLED: &str = "parley://disabled";
 /// How many notes to advertise as resources. An `@` menu is a picker, not an
 /// archive — the tools are the way to reach anything older, and a list of every
 /// note in a years-old library would cost the client more than it is worth.

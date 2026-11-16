@@ -24,14 +24,14 @@ export function shouldAdoptRemoteBody(
 }
 
 /**
- * May Humla overwrite this title with a generated one? (#90)
+ * May Parley overwrite this title with a generated one? (#90)
  *
  * MIRRORS `menubar::is_replaceable_title` in Rust — change both. The backend is
  * the authority (it re-checks under the DB lock before writing), but the open
  * Note view has to answer the same question locally to decide whether a title
  * arriving from the store may replace the one in its draft.
  *
- * Three titles are Humla's own: an empty one, a `Recording 19 Aug 14:32`
+ * Three titles are Parley's own: an empty one, a `Recording 19 Aug 14:32`
  * timestamp, and the `Imported audio` fallback for a file with no usable name.
  * Anything else — including a real filename stem — is the user's.
  */

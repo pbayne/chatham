@@ -1,4 +1,4 @@
-// Shared setup-status predicate — the ONE source of truth for "is Humla
+// Shared setup-status predicate — the ONE source of truth for "is Parley
 // actually usable?" (design/ONBOARDING.md § "You're all set" + § "Nag chip").
 //
 // Four consumers evaluate the SAME computed picture and MUST NOT drift:

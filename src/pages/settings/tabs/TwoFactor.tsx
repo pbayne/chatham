@@ -273,7 +273,7 @@ function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void 
   async function saveToFile() {
     try {
       const path = await save({
-        defaultPath: "Humla recovery codes.txt",
+        defaultPath: "Parley recovery codes.txt",
         filters: [{ name: "Text", extensions: ["txt"] }],
       });
       if (!path) return;

@@ -7,11 +7,11 @@ beforeEach(() => {
 
 describe("parseDeepLink", () => {
   it("reads the new-workspace route and its source", () => {
-    expect(parseDeepLink("humla://new-workspace?source=email")).toEqual({
+    expect(parseDeepLink("parley://new-workspace?source=email")).toEqual({
       kind: "new-workspace",
       source: "email",
     });
-    expect(parseDeepLink("humla://new-workspace?source=web")).toEqual({
+    expect(parseDeepLink("parley://new-workspace?source=web")).toEqual({
       kind: "new-workspace",
       source: "web",
     });
@@ -19,19 +19,19 @@ describe("parseDeepLink", () => {
 
   it("accepts the route with a trailing slash, in the path, or in another case", () => {
     for (const raw of [
-      "humla://new-workspace/?source=web",
-      "humla:///new-workspace?source=web",
-      "humla:new-workspace?source=web",
-      "HUMLA://New-Workspace?source=web",
+      "parley://new-workspace/?source=web",
+      "parley:///new-workspace?source=web",
+      "parley:new-workspace?source=web",
+      "PARLEY://New-Workspace?source=web",
     ]) {
       expect(parseDeepLink(raw)).toEqual({ kind: "new-workspace", source: "web" });
     }
   });
 
   it("leaves the source unset when it is missing or not allowed", () => {
-    expect(parseDeepLink("humla://new-workspace")).toEqual({ kind: "new-workspace", source: undefined });
+    expect(parseDeepLink("parley://new-workspace")).toEqual({ kind: "new-workspace", source: undefined });
     for (const s of ["onboarding", "note_banner", "EMAIL", "web ", "", "email&x=1"]) {
-      expect(parseDeepLink(`humla://new-workspace?source=${encodeURIComponent(s)}`)).toEqual({
+      expect(parseDeepLink(`parley://new-workspace?source=${encodeURIComponent(s)}`)).toEqual({
         kind: "new-workspace",
         source: undefined,
       });
@@ -39,9 +39,9 @@ describe("parseDeepLink", () => {
   });
 
   it("turns an unknown route into a plain focus", () => {
-    expect(parseDeepLink("humla://")).toEqual({ kind: "focus" });
-    expect(parseDeepLink("humla://settings?tab=account")).toEqual({ kind: "focus" });
-    expect(parseDeepLink("humla://new-workspace/extra")).toEqual({ kind: "focus" });
+    expect(parseDeepLink("parley://")).toEqual({ kind: "focus" });
+    expect(parseDeepLink("parley://settings?tab=account")).toEqual({ kind: "focus" });
+    expect(parseDeepLink("parley://new-workspace/extra")).toEqual({ kind: "focus" });
   });
 
   it("rejects anything that isn't a humla link", () => {
@@ -61,13 +61,13 @@ describe("linkSource", () => {
 
 describe("handleDeepLinks", () => {
   it("queues a create request until something takes it", () => {
-    handleDeepLinks(["humla://new-workspace?source=email"]);
+    handleDeepLinks(["parley://new-workspace?source=email"]);
     expect(useDeepLinkStore.getState().take()).toEqual({ source: "email" });
     expect(useDeepLinkStore.getState().take()).toBeNull();
   });
 
   it("queues nothing for other links or no links", () => {
-    handleDeepLinks(["humla://something-else", "https://example.com"]);
+    handleDeepLinks(["parley://something-else", "https://example.com"]);
     handleDeepLinks(null);
     expect(useDeepLinkStore.getState().newWorkspace).toBeNull();
   });

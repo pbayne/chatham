@@ -2,7 +2,7 @@
 //
 // This list is the interface between a theme file and the rest of the app: the
 // structural CSS in globals.css reads only these names, so a theme that
-// declares all of them can restate Humla's typeface, type scale, control
+// declares all of them can restate Parley's typeface, type scale, control
 // metrics and colours without a component knowing. themes.contract.test.ts
 // walks the theme files and names anything missing, which is what makes adding
 // a fourth theme a mechanical job rather than an archaeology one.

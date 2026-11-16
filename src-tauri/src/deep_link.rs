@@ -1,4 +1,4 @@
-//! What a `humla://` link asks the backend to do (#91). A recording link starts
+//! What a `parley://` link asks the backend to do (#91). A recording link starts
 //! or stops a recording through the menu bar's headless path; any other link
 //! only brings the window forward, and the frontend reads it
 //! (`src/lib/deepLink.ts`).
@@ -113,7 +113,7 @@ pub(crate) enum RecordLink {
 
 /// Reads the route as `parseDeepLink` (src/lib/deepLink.ts) does; change both.
 pub(crate) fn parse(url: &Url) -> Option<RecordLink> {
-    if url.scheme() != "humla" {
+    if url.scheme() != "parley" {
         return None;
     }
     let route = format!("{}{}", url.host_str().unwrap_or(""), url.path());
@@ -212,27 +212,27 @@ mod tests {
 
     #[test]
     fn a_start_link_starts_a_recording() {
-        assert_eq!(link("humla://record/start"), Some(RecordLink::Start { name: None }));
+        assert_eq!(link("parley://record/start"), Some(RecordLink::Start { name: None }));
     }
 
     #[test]
     fn a_start_link_carries_its_name_decoded() {
         let named = |name: &str| Some(RecordLink::Start { name: Some(name.to_string()) });
-        assert_eq!(link("humla://record/start?name=Daily%20Standup"), named("Daily Standup"));
-        assert_eq!(link("humla://record/start?name=Daily+Standup"), named("Daily Standup"));
-        assert_eq!(link("humla://record/start?name=1%3A1%20%C3%98yvind"), named("1:1 Øyvind"));
+        assert_eq!(link("parley://record/start?name=Daily%20Standup"), named("Daily Standup"));
+        assert_eq!(link("parley://record/start?name=Daily+Standup"), named("Daily Standup"));
+        assert_eq!(link("parley://record/start?name=1%3A1%20%C3%98yvind"), named("1:1 Øyvind"));
     }
 
     #[test]
     fn a_stop_link_stops_the_recording() {
-        assert_eq!(link("humla://record/stop"), Some(RecordLink::Stop));
-        assert_eq!(link("humla://record/stop?name=Ignored"), Some(RecordLink::Stop));
+        assert_eq!(link("parley://record/stop"), Some(RecordLink::Stop));
+        assert_eq!(link("parley://record/stop?name=Ignored"), Some(RecordLink::Stop));
     }
 
     // The spellings `parseDeepLink` (src/lib/deepLink.ts) accepts for its routes.
     #[test]
     fn a_route_reads_the_same_however_the_link_spells_it() {
-        for raw in ["humla:///record/stop", "humla:record/stop", "HUMLA://Record/Stop/"] {
+        for raw in ["parley:///record/stop", "parley:record/stop", "PARLEY://Record/Stop/"] {
             assert_eq!(link(raw), Some(RecordLink::Stop), "{raw}");
         }
     }
@@ -240,10 +240,10 @@ mod tests {
     #[test]
     fn any_other_link_is_not_a_recording_link() {
         for raw in [
-            "humla://new-workspace?source=web",
-            "humla://record",
-            "humla://record/pause",
-            "humla://",
+            "parley://new-workspace?source=web",
+            "parley://record",
+            "parley://record/pause",
+            "parley://",
             "https://record/start",
         ] {
             assert_eq!(link(raw), None, "{raw}");

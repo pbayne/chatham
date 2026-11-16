@@ -1604,7 +1604,7 @@ function ActivationPane({
               Prefer not to manage a key? The managed add-on
               {addon.price_cents != null &&
                 ` (${formatSeatPrice(addon.price_cents, addon.currency)}/mo)`}{" "}
-              runs chat on Humla's key — set it up in Organization → Workspace chat.
+              runs chat on Parley's key — set it up in Organization → Workspace chat.
             </p>
           )}
         </>

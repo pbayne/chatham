@@ -84,7 +84,7 @@ export function IntegrationsSection({
           <Row label="Anything else">
             <p className="text-xs text-[var(--color-text-muted)]">
               Any MCP client that speaks stdio can run this command directly. It
-              works whether or not Humla is open, and reads whichever workspace
+              works whether or not Parley is open, and reads whichever workspace
               you're currently in.
             </p>
           </Row>
@@ -155,7 +155,7 @@ export function ObsidianSection() {
     <Section title="Obsidian sync">
       <Row
         label="Auto-tag the customer from each meeting"
-        description="After a recording is summarized, Humla reads it to identify which customer the meeting was with and tags the note — learning your account list as you go. Client-tagged notes are filed under the customer's name in your vault."
+        description="After a recording is summarized, Parley reads it to identify which customer the meeting was with and tags the note — learning your account list as you go. Client-tagged notes are filed under the customer's name in your vault."
         control={
           <Toggle
             checked={autoTag ?? true}
@@ -181,7 +181,7 @@ export function ObsidianSection() {
       />
       <Row
         label="Vault folder"
-        description={vault ? vault : "Pick the folder Humla should write notes into (your vault, or a subfolder of it)."}
+        description={vault ? vault : "Pick the folder Parley should write notes into (your vault, or a subfolder of it)."}
         control={
           <button
             type="button"

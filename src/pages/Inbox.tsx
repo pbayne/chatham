@@ -213,7 +213,7 @@ function AuthModePill({
     <select
       value={mode}
       onChange={(e) => onChange(e.target.value as "oauth" | "gcloud")}
-      title="How Humla reaches Gmail. gcloud uses your machine's authorized Google Cloud credentials — works on corp accounts that block third-party OAuth apps."
+      title="How Parley reaches Gmail. gcloud uses your machine's authorized Google Cloud credentials — works on corp accounts that block third-party OAuth apps."
       className="no-drag text-[12px] bg-[var(--color-surface)] border border-[var(--color-line-visible)] rounded-[var(--radius)] px-2 py-1 text-[var(--color-text-muted)] mr-2"
     >
       <option value="oauth">Auth: OAuth</option>

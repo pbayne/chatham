@@ -148,7 +148,7 @@ function PricingPanel({
       style={{ background: "var(--color-accent-soft)" }}
     >
       <div className="flex items-center gap-1.5 text-sm font-medium">
-        <Cloud size={15} strokeWidth={1.7} /> Humla Cloud
+        <Cloud size={15} strokeWidth={1.7} /> Parley Cloud
       </div>
       <ul className="flex flex-col gap-2">
         {[
@@ -204,7 +204,7 @@ function ConnectStage({ onClose }: { onClose: () => void }) {
       <Body>
         <Head
           title="Create a team workspace"
-          blurb="Humla works fully offline and your notes live on your Mac. A workspace is how you share them with other people."
+          blurb="Parley works fully offline and your notes live on your Mac. A workspace is how you share them with other people."
         />
         <PricingPanel trial />
         <Err>{error}</Err>
@@ -217,7 +217,7 @@ function ConnectStage({ onClose }: { onClose: () => void }) {
           className="nd-btn nd-btn-primary"
         >
           <Cloud size={14} strokeWidth={2} />
-          {busy ? "Connecting…" : "Use Humla Cloud"}
+          {busy ? "Connecting…" : "Use Parley Cloud"}
         </button>
         <span className="flex-1" />
         <button
@@ -324,7 +324,7 @@ function AuthStage() {
         <p className="text-xs text-[var(--color-text-muted)]">
           {status.billing_enabled
             ? `${formatSeatPrice(status.seat_price_cents ?? 500, status.seat_currency)} per seat/mo after a 14-day free trial · cancel anytime`
-            : "Your own server — Humla bills nothing for it."}
+            : "Your own server — Parley bills nothing for it."}
         </p>
       </Body>
       <Footer>

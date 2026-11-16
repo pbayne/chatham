@@ -83,7 +83,7 @@ describe("the create-workspace sheet", () => {
     // The complaint this replaces: a bare textbox that explained nothing.
     expect(screen.getByText(/per seat, per month/i)).toBeInTheDocument();
     expect(screen.getByText(/14-day free trial/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /use humla cloud/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /use parley cloud/i })).toBeInTheDocument();
   });
 
   it("asks for an account first when signed out, instead of sending you to Settings", async () => {

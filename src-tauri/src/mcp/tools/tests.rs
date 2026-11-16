@@ -906,7 +906,7 @@ fn no_tool_returns_an_audio_path() {
     let id = seed(&conn, "Recorded", "the budget came up");
     conn.execute(
         "UPDATE notes SET audio_path = ?1 WHERE id = ?2",
-        rusqlite::params!["/Users/someone/Library/Application Support/no.humla.app/recordings/x/playback.wav", id],
+        rusqlite::params!["/Users/someone/Library/Application Support/no.parley.app/recordings/x/playback.wav", id],
     )
     .unwrap();
 

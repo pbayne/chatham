@@ -9188,7 +9188,7 @@ mod diarize_tests {
         let wav = CancelledMicWav::write(&[3277; 1600]).await.expect("written");
         let path = wav.path().to_path_buf();
         assert!(path.starts_with(std::env::temp_dir()), "{}", path.display());
-        assert!(!path.components().any(|c| c.as_os_str() == "no.humla.app"));
+        assert!(!path.components().any(|c| c.as_os_str() == "no.parley.app"));
         assert_eq!(wav::read_i16_mono_16k(&path).await.unwrap(), vec![3277; 1600]);
         let other = CancelledMicWav::write(&[0; 16]).await.unwrap();
         assert_ne!(other.path(), path, "two diarizes never share one file");

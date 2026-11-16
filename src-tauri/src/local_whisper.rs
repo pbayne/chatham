@@ -579,7 +579,7 @@ mod model_tests {
     fn installed_model() -> PathBuf {
         let home = std::env::var("HOME").unwrap();
         let model = PathBuf::from(format!(
-            "{home}/Library/Application Support/no.humla.app/models/{}",
+            "{home}/Library/Application Support/no.parley.app/models/{}",
             default_model().filename
         ));
         assert!(model.exists(), "model not downloaded: {}", model.display());

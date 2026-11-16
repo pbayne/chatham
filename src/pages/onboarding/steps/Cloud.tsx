@@ -1,10 +1,10 @@
-// Step 6 — Humla Cloud (design/ONBOARDING.md § 6. Humla Cloud).
+// Step 6 — Parley Cloud (design/ONBOARDING.md § 6. Parley Cloud).
 //
 // Cloud = teams only. Every cloud feature sits behind the workspace
 // subscription, so the pitch is honest about that up front. The whole point of
 // this screen is that it must NOT smell like a paywall: the FREE path is the
 // preselected default, and Continue on it does zero network work. Nobody who
-// just wants Humla on their Mac is ever nudged toward an account.
+// just wants Parley on their Mac is ever nudged toward an account.
 //
 // The step is a fork with three deliberate options plus a subordinate
 // self-hosted escape hatch:
@@ -39,7 +39,7 @@
 //   - "team"/"existing": a funnel whose STAGE is DERIVED from live cloud
 //     status (not stored), so it's inherently resumable and can't drift out of
 //     sync with the backend:
-//       not configured        → show connect (auto one-click Humla Cloud, or
+//       not configured        → show connect (auto one-click Parley Cloud, or
 //                                the self-hosted URL if that link was opened)
 //       configured, !loggedIn → auth form (signup for "team", login for
 //                                "existing")
@@ -115,8 +115,8 @@ export function CloudStep({ ctx }: { ctx: StepContext }) {
     return (
       <StepShell
         icon={<Cloud size={26} strokeWidth={1.6} />}
-        title="Humla Cloud"
-        subtitle="Humla is free on your Mac — Cloud is for teams: $5 per seat/mo after a 14-day trial."
+        title="Parley Cloud"
+        subtitle="Parley is free on your Mac — Cloud is for teams: $5 per seat/mo after a 14-day trial."
       />
     );
   }
@@ -124,8 +124,8 @@ export function CloudStep({ ctx }: { ctx: StepContext }) {
   return (
     <StepShell
       icon={<Cloud size={26} strokeWidth={1.6} />}
-      title="Humla Cloud"
-      subtitle="Humla is free on your Mac — Cloud is for teams: $5 per seat/mo after a 14-day trial."
+      title="Parley Cloud"
+      subtitle="Parley is free on your Mac — Cloud is for teams: $5 per seat/mo after a 14-day trial."
     >
       <div className="w-full max-w-md flex flex-col gap-3 text-left">
         {/* Option 1 — Just me (free, preselected). */}
@@ -148,11 +148,11 @@ export function CloudStep({ ctx }: { ctx: StepContext }) {
           {option === "team" && <TeamFunnel ctx={ctx} mode="signup" />}
         </OptionCard>
 
-        {/* Option 3 — Join a team that already uses Humla (account or not). */}
+        {/* Option 3 — Join a team that already uses Parley (account or not). */}
         <OptionCard
           icon={<LogIn size={18} strokeWidth={1.8} />}
           title="Join an existing team"
-          blurb="Your team already uses Humla Cloud. Sign in — or create an account and get added by your workspace admin."
+          blurb="Your team already uses Parley Cloud. Sign in — or create an account and get added by your workspace admin."
           selected={option === "existing"}
           onSelect={() => setOption("existing")}
         >
@@ -271,7 +271,7 @@ function TeamFunnel({
 }
 
 // ── Stage: connect the server ────────────────────────────────────────────────
-// Mirrors Account.tsx's one-click "Use Humla Cloud". The self-hosted case is a
+// Mirrors Account.tsx's one-click "Use Parley Cloud". The self-hosted case is a
 // subordinate text link that reveals a URL input (visually below the primary
 // action, never a card).
 
@@ -306,7 +306,7 @@ function ConnectStage() {
         className="nd-btn nd-btn-primary self-start"
       >
         <Cloud size={14} strokeWidth={2} />
-        {busy ? "Connecting…" : "Use Humla Cloud"}
+        {busy ? "Connecting…" : "Use Parley Cloud"}
       </button>
 
       {error && <p className="text-xs text-[var(--color-danger)] break-all">{error}</p>}
@@ -324,7 +324,7 @@ function ConnectStage() {
       ) : (
         <div className="flex flex-col gap-2 pt-1">
           <p className="text-xs text-[var(--color-text-muted)]">
-            Point Humla at your own server:
+            Point Parley at your own server:
           </p>
           <div className="flex gap-2">
             <input

@@ -170,7 +170,7 @@ describe("ChatKeyPanel — owner (#75)", () => {
       chat_usage: () => ({ used: 5, cap: 100, periodEnd: 0 }),
     });
     renderPanel("owner");
-    expect(await screen.findByText(/Humla's managed key/)).toBeInTheDocument();
+    expect(await screen.findByText(/Parley's managed key/)).toBeInTheDocument();
     expect(screen.getByText(/5\/100 turns this period/)).toBeInTheDocument();
   });
 });

@@ -89,7 +89,7 @@ pub const SETTING_ENABLED: &str = "mcp_enabled";
 const SETTING_WORKSPACE: &str = "cloud_workspace_id";
 
 /// macOS bundle id, which is also the application-support directory name.
-const BUNDLE_ID: &str = "no.humla.app";
+const BUNDLE_ID: &str = "no.parley.app";
 
 /// What the client is told this server is for, at `initialize`.
 ///

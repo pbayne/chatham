@@ -13,7 +13,7 @@ use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub const SERVICE: &str = "no.humla.app";
+pub const SERVICE: &str = "no.parley.app";
 
 /// What this session has read or written, per account. `None` is a cached
 /// absence: a missing entry stays missing until this session writes one.

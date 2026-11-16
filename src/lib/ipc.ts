@@ -690,7 +690,7 @@ export const ipc = {
     invoke<void>("inbox_set_action_items", { messageId, items }),
   inboxSetProvider: (provider: "local" | "openai" | "anthropic") =>
     invoke<string>("inbox_set_provider", { provider }),
-  // Switch Gmail auth: "oauth" (Humla's own) or "gcloud" (machine ADC — works
+  // Switch Gmail auth: "oauth" (Parley's own) or "gcloud" (machine ADC — works
   // on corp accounts that block third-party OAuth consents).
   inboxSetAuthMode: (mode: "oauth" | "gcloud") =>
     invoke<string>("inbox_set_auth_mode", { mode }),
@@ -706,7 +706,7 @@ export const ipc = {
    *  the combination — another app already owns it — leaving the previous one
    *  in place. */
   recordHotkeySet: (accel: string) => invoke<void>("record_hotkey_set", { accel }),
-  /** Whether Humla's own login item is installed (#207). */
+  /** Whether Parley's own login item is installed (#207). */
   launchAtLoginGet: () => invoke<boolean>("launch_at_login_get"),
   launchAtLoginSet: (on: boolean) => invoke<void>("launch_at_login_set", { on }),
   appDataDir: () => invoke<string>("app_data_dir"),

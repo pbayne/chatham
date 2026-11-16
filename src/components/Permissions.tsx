@@ -11,7 +11,7 @@ const HELP: Record<PermissionKind, string> = {
   microphone: "Required to record your voice.",
   screen: "Required to capture system audio (the other side of meetings).",
   notifications:
-    "Lets Humla tell you when a recording started from the menu bar or a link begins, is saved, or can't start.",
+    "Lets Parley tell you when a recording started from the menu bar or a link begins, is saved, or can't start.",
 };
 
 function statusLabel(s: PermissionStatus): { text: string; tone: "ok" | "bad" | "muted" } {

@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Parley",
   "version": "0.75.0",
-  "identifier": "no.humla.app",
+  "identifier": "no.parley.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -49,7 +49,7 @@
   },
   "plugins": {
     "deep-link": {
-      "desktop": { "schemes": ["humla"] }
+      "desktop": { "schemes": ["parley"] }
     },
     "updater": {
       "endpoints": [

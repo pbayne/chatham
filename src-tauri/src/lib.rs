@@ -143,7 +143,7 @@ where
         // argument is how `menubar::present_at_launch` recognises the launch.
         .plugin(
             tauri_plugin_autostart::Builder::new()
-                .app_name("no.humla.app")
+                .app_name("no.parley.app")
                 .arg(menubar::LOGIN_LAUNCH_ARG)
                 .build(),
         )

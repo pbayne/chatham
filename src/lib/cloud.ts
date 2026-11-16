@@ -170,7 +170,7 @@ export type CheckoutSource =
    *  question a hint raises is whether it produces trials or just noise. */
   | "team_hint_switcher"
   | "team_hint_export"
-  /** A `humla://new-workspace?source=…` link from an email or the website. */
+  /** A `parley://new-workspace?source=…` link from an email or the website. */
   | "email"
   | "web";
 
