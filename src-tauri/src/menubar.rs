@@ -358,7 +358,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
         // Pure black plus this flag: a macOS template image is read through its
         // alpha channel only, and the system tints the glyph for the bar.
         .icon_as_template(true)
-        .tooltip("Humla")
+        .tooltip("Parley")
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id().as_ref() {
