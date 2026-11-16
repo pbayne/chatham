@@ -37,6 +37,12 @@ export const PALETTE_REGISTRY = [
     description: "SF Pro on white, DM Mono commands, compact ink chrome.",
     mode: "light",
   },
+  {
+    id: "paper",
+    label: "Paper",
+    description: "Paper + ink: warm off-white canvas, serif titles, all-neutral accent.",
+    mode: "light",
+  },
 ] as const satisfies readonly PaletteDef[];
 
 export type Palette = (typeof PALETTE_REGISTRY)[number]["id"];

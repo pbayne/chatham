@@ -40,7 +40,7 @@
     "macOS": {
       "minimumSystemVersion": "13.0",
       "entitlements": "entitlements.plist",
-      "signingIdentity": "Developer ID Application: MICHAEL MEHLUM WILHELMSEN (NBUP88JQ35)"
+      "signingIdentity": "-"
     },
     "externalBin": ["binaries/audio-capture", "binaries/speaker-diarize", "binaries/mic-monitor", "binaries/humla-mcp"],
     "resources": {

@@ -8,6 +8,7 @@
    component. See src/styles/themes/README.md for how to add one. */
 @import "./themes/warm.css";
 @import "./themes/graphite.css";
+@import "./themes/paper.css";
 
 /* The @theme block is Tailwind's utility generator, not the source of truth for
    any value: `font-sans`, `font-code` and `rounded-card` exist as utilities
@@ -341,6 +342,7 @@ input::placeholder, textarea::placeholder {
 
   /* The note title: the largest type in the app. */
   .nd-title {
+    font-family: var(--font-display, var(--font-sans));
     font-size: var(--text-title-size);
     font-weight: var(--text-title-weight);
     line-height: var(--text-title-line);
@@ -351,6 +353,7 @@ input::placeholder, textarea::placeholder {
   /* A view's h1 (All notes, Folder, Chat). One step below the note title in
      `warm`; the same size in themes whose recipe names a single heading size. */
   .nd-heading {
+    font-family: var(--font-display, var(--font-sans));
     font-size: var(--text-heading-size);
     font-weight: var(--text-title-weight);
     line-height: 1.2;
