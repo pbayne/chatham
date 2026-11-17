@@ -29,24 +29,26 @@ import { ChatConversations } from "./ChatConversations";
 import { useCloudStore } from "../lib/cloud";
 import { trafficLightSpacerCssPx, useZoomStore } from "../lib/zoom";
 
-// Humla mark sourced from humla-small.svg — single-path silhouette of
-// the bee's head + antennae arc. Uses currentColor so it inherits text
-// color from its parent (set on the brand row).
-function HumlaMark({ size = 18 }: { size?: number }) {
+// Parley mark — the "P" monogram with a speech-bubble tail, matching the app
+// icon (icons/parley-icon.svg). Monochrome via currentColor so it inherits the
+// brand row's text colour; the icon's red record dot is dropped here to keep
+// the sidebar wordmark calm. Hollow bowl via even-odd fill.
+function ParleyMark({ size = 18 }: { size?: number }) {
   return (
     <svg
       width={size}
-      height={(size * 92) / 120}
-      viewBox="0 0 120 92"
+      height={size}
+      viewBox="0 0 100 100"
       aria-hidden="true"
       className="shrink-0"
     >
       <path
         fillRule="evenodd"
         clipRule="evenodd"
-        d="M20.3123 1.16238C14.6123 4.36238 15.5123 7.96238 23.7123 15.6624C30.1123 21.5624 38.7123 32.4624 37.7123 33.3624C37.5123 33.4624 34.4123 35.1624 30.8123 37.0624C17.0123 44.3624 4.21234 61.7624 0.912338 77.7624C-0.787662 85.8624 -1.08766 85.4624 8.91234 87.3624C40.2123 93.3624 76.5123 93.5624 108.112 87.8624C121.712 85.3624 121.512 85.6624 117.712 73.3624C112.812 57.3624 104.212 46.1624 90.2123 37.6624C86.8123 35.6624 83.5123 33.9624 82.9123 33.9624C82.3123 33.9624 81.8123 33.5624 81.8123 33.0624C81.8123 31.0624 90.9123 19.9624 96.7123 14.9624C103.412 9.06238 104.512 5.66238 100.812 1.96238C97.6123 -1.23762 94.0123 -0.537622 89.5123 4.16238C85.3123 8.56238 74.4123 24.6624 73.3123 27.8624C72.8123 29.4624 71.5123 29.6624 60.2123 29.6624H47.7123L44.2123 23.5624C39.4123 15.4624 31.2123 4.46238 28.1123 1.96238C25.2123 -0.337619 23.2123 -0.537622 20.3123 1.16238Z"
+        d="M26 16 H60 C75 16 86 27 86 42 C86 57 75 68 60 68 H38 V86 C38 89.3 35.3 92 32 92 C28.7 92 26 89.3 26 86 Z M38 28 V56 H60 C68 56 74 50 74 42 C74 34 68 28 60 28 Z"
         fill="currentColor"
       />
+      <path d="M66 64 L74 78 L80 66 Z" fill="currentColor" />
     </svg>
   );
 }
@@ -189,7 +191,7 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
         className="flex items-center justify-between pl-2 pr-0 pb-3"
       >
         <div className="no-drag flex items-center gap-2 select-none text-[var(--color-text)]">
-          <HumlaMark size={18} />
+          <ParleyMark size={18} />
           <span className="text-[15px] font-semibold tracking-[-0.01em]">Parley</span>
         </div>
         <button
