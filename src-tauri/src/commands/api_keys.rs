@@ -1,0 +1,170 @@
+//! Per-provider API key commands + helpers. Stores keys in the macOS
+//! Keychain (service `no.humla.app`), caches them on `AppState`, and
+//! tests them with a lightweight authenticated GET. Commands are
+//! surfaced to the frontend via `commands::provider_key_*` (re-exported
+//! from the parent module). `read_provider_api_key` is also called by
+//! the recording / transcribe / summary paths that stay in the parent
+//! module, hence `pub(crate)`.
+
+use super::err;
+use crate::db;
+use crate::keychain;
+use crate::openai;
+use crate::providers::ProviderId;
+use crate::AppState;
+use tauri::State;
+
+// Legacy SQLite row that used to hold the OpenAI API key. New installs
+// never touch it; existing installs migrate it forward to Keychain on
+// first read (see `read_openai_api_key`) and blank the row so a future
+// DB export / backup doesn't leak the secret.
+const API_KEY: &str = "__openai_api_key__";
+
+/// Read the API key for the given provider from the macOS Keychain.
+/// Returns Ok(None) if no key is stored or the provider doesn't take one
+/// (e.g. local Whisper). Cached on AppState (`keychain::read`); first call
+/// per provider per session triggers exactly one Keychain prompt.
+///
+/// On first call for OpenAI after upgrading from a pre-Keychain build,
+/// migrates the legacy plaintext row from SQLite into the Keychain and
+/// blanks the SQLite copy. Other providers were never stored anywhere
+/// else, so they have no migration path.
+pub(crate) fn read_provider_api_key(
+    state: &State<AppState>,
+    provider_id: &'static str,
+) -> Result<Option<String>, String> {
+    let Some(account) = crate::stt::keychain_account_for(provider_id) else {
+        return Ok(None);
+    };
+    keychain::read_or(&state.keychain_cache, account, |entry| {
+        if provider_id == "openai" {
+            migrate_legacy_api_key(state, entry)
+        } else {
+            Ok(None)
+        }
+    })
+}
+
+fn migrate_legacy_api_key(
+    state: &State<AppState>,
+    entry: &keyring::Entry,
+) -> Result<Option<String>, String> {
+    let legacy = {
+        let conn = state.db.lock();
+        db::get_setting(&conn, API_KEY).map_err(err)?.unwrap_or_default()
+    };
+    let trimmed = legacy.trim().to_string();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    entry
+        .set_password(&trimmed)
+        .map_err(|e| format!("keychain migrate: {e}"))?;
+    let conn = state.db.lock();
+    let _ = db::set_setting(&conn, API_KEY, "");
+    Ok(Some(trimmed))
+}
+
+/// Write the API key for the given provider to the macOS Keychain.
+/// Empty input deletes the entry. For OpenAI, also blanks the legacy
+/// SQLite row in lockstep. `keychain::write` updates the cache, so
+/// subsequent reads return the new value without a fresh Keychain prompt.
+fn set_provider_api_key(
+    state: &State<AppState>,
+    provider_id: &'static str,
+    key: &str,
+) -> Result<(), String> {
+    let account = crate::stt::keychain_account_for(provider_id)
+        .ok_or_else(|| format!("provider {provider_id} has no Keychain slot"))?;
+    keychain::write(&state.keychain_cache, account, Some(key))?;
+    if provider_id == "openai" {
+        let conn = state.db.lock();
+        let _ = db::set_setting(&conn, API_KEY, "");
+    }
+    Ok(())
+}
+
+#[derive(serde::Serialize)]
+pub struct TestResult {
+    ok: bool,
+    status: u16,
+    error: Option<String>,
+}
+
+/// Map a frontend-supplied provider string to a static id we trust.
+/// Rejecting unknown ids prevents the frontend from probing arbitrary
+/// Keychain accounts via the Tauri bridge.
+fn canonical_provider_id(s: &str) -> Option<&'static str> {
+    ProviderId::parse(s).map(ProviderId::as_str)
+}
+
+#[tauri::command]
+pub fn provider_key_get(
+    state: State<AppState>,
+    provider: String,
+) -> Result<Option<String>, String> {
+    let id = canonical_provider_id(&provider)
+        .ok_or_else(|| format!("unknown provider: {provider}"))?;
+    Ok(read_provider_api_key(&state, id)?.map(|_| "stored".to_string()))
+}
+
+#[tauri::command]
+pub fn provider_key_set(
+    state: State<AppState>,
+    provider: String,
+    key: String,
+) -> Result<(), String> {
+    let id = canonical_provider_id(&provider)
+        .ok_or_else(|| format!("unknown provider: {provider}"))?;
+    set_provider_api_key(&state, id, &key)
+}
+
+#[tauri::command]
+pub async fn provider_key_test(
+    state: State<'_, AppState>,
+    provider: String,
+) -> Result<TestResult, String> {
+    let id = canonical_provider_id(&provider)
+        .ok_or_else(|| format!("unknown provider: {provider}"))?;
+    let key = read_provider_api_key(&state, id)?
+        .ok_or_else(|| "No API key stored".to_string())?;
+
+    let test = ProviderId::parse(id)
+        .and_then(|p| p.spec().key_test)
+        .ok_or_else(|| format!("provider {id} doesn't support test"))?;
+    let mut req = openai::client().get(test.url);
+    for (name, value) in test.auth.headers(&key) {
+        req = req.header(name, value);
+    }
+    let r = req
+        .send()
+        .await
+        .map_err(|e| format!("network: {e}"))?;
+    let status = r.status();
+    if status.is_success() {
+        return Ok(TestResult { ok: true, status: status.as_u16(), error: None });
+    }
+    let body = r.text().await.unwrap_or_default();
+    let error = if id == "anthropic" {
+        crate::anthropic::readable_error(status.as_u16(), &body)
+    } else {
+        body.chars().take(300).collect()
+    };
+    Ok(TestResult { ok: false, status: status.as_u16(), error: Some(error) })
+}
+
+/// Settings' Test for the custom endpoint, which has no fixed URL to test: the
+/// listing, and a completion with `model` (the model of the surface being
+/// tested), each reported on its own.
+#[tauri::command]
+pub async fn custom_endpoint_test(
+    state: State<'_, AppState>,
+    model: Option<String>,
+) -> Result<crate::custom_endpoint::Check, String> {
+    let base_url = {
+        let conn = state.db.lock();
+        crate::custom_endpoint::base_url(&conn).map_err(err)?
+    };
+    let key = read_provider_api_key(&state, "custom")?;
+    Ok(crate::custom_endpoint::check(&base_url, key.as_deref(), model.as_deref()).await)
+}

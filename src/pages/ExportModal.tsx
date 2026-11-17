@@ -1,0 +1,253 @@
+import { useState } from "react";
+import { save } from "@tauri-apps/plugin-dialog";
+import { X } from "lucide-react";
+import { ipc, type ExportFormat, type Note } from "../lib/ipc";
+import { useRecordingStore } from "../lib/store";
+import { useCloudStore } from "../lib/cloud";
+import { Modal } from "./settings/components/Modal";
+import { Segmented } from "./settings/components/Segmented";
+import { Toggle } from "./settings/components/Toggle";
+import { Btn } from "./settings/components/Btn";
+
+// Export a note's summary / transcript / typed notes as ONE combined
+// Markdown, plain-text or PDF file (issue #18). The kit modal supplies only the
+// chrome; this component owns the body. Confirming opens the native save
+// panel (dialog plugin) and hands the chosen path to `export_note`.
+
+// Slugify a note title into a filename stem. Unicode-letter/number aware so
+// non-ASCII titles still produce a readable name; empty → "note".
+const FORMATS: Record<ExportFormat, { label: string; filter: string; extensions: string[] }> = {
+  markdown: { label: "Markdown", filter: "Markdown", extensions: ["md", "markdown"] },
+  txt: { label: "Plain text", filter: "Plain text", extensions: ["txt"] },
+  pdf: { label: "PDF", filter: "PDF document", extensions: ["pdf"] },
+};
+
+export function slug(title: string): string {
+  const s = title
+    .toLowerCase()
+    .trim()
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
+  return s || "note";
+}
+
+// Cheap "does the typed body have any text" check for the checkbox
+// enable/disable state. The authoritative HTML→text conversion happens
+// backend; this only needs to know whether the section is worth offering.
+function hasText(html: string): boolean {
+  return html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim() !== "";
+}
+
+function Check({
+  checked,
+  onChange,
+  disabled,
+  label,
+  hint,
+}: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+  label: string;
+  hint?: string;
+}) {
+  return (
+    <label
+      className={
+        "flex items-center gap-2.5 py-1.5 text-sm " +
+        (disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer")
+      }
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-4 w-4 accent-[var(--color-accent)]"
+      />
+      <span>{label}</span>
+      {hint && <span className="text-[var(--color-text-muted)] text-xs">{hint}</span>}
+    </label>
+  );
+}
+
+// Contextual team hint. Manually exporting a note to hand it to someone is the
+// one moment where a team workspace is the literal answer to what the user is
+// already doing, which is why this is the only place the pitch appears outside
+// Settings. Shown only on Personal — someone already in a workspace does not
+// need telling — and gone for good on the first dismiss. It sits BELOW the
+// action row so it can never compete with Export, and says nothing about price:
+// the trial copy stays next to the button that starts one.
+//
+// The CTA hands straight to the create sheet rather than pointing at Settings.
+// A hint that answers "here is a thing that exists" with "now go find it
+// yourself" spends the one moment of intent it had; the sheet leads with the
+// same pitch Settings would have shown and carries on to a working workspace.
+const HINT_KEY = "humla.teamHint.exportDismissed";
+
+function TeamHint({ onLeave, onCreateTeam }: { onLeave: () => void; onCreateTeam: () => void }) {
+  const inWorkspace = useCloudStore((s) => s.status.current_workspace !== null);
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem(HINT_KEY) === "1");
+
+  if (inWorkspace || dismissed) return null;
+
+  return (
+    <div className="flex items-start gap-2 pt-3 border-t border-[var(--color-line)]">
+      {/* Not `nd-meta`: that class is a nowrap meta-bar pill, and this is a
+          sentence that has to wrap once the window is narrow. */}
+      <p className="flex-1 text-xs leading-relaxed text-[var(--color-text-muted)]">
+        Exporting to share it? A team workspace syncs notes to teammates
+        automatically.{" "}
+        <button
+          onClick={() => {
+            // Closing first, and the sheet belongs to the PARENT: this modal is
+            // about to unmount, and a sheet rendered in here would go with it.
+            onLeave();
+            onCreateTeam();
+          }}
+          className="underline text-[var(--color-accent-text)] hover:no-underline"
+        >
+          Create one
+        </button>
+      </p>
+      <button
+        onClick={() => {
+          localStorage.setItem(HINT_KEY, "1");
+          setDismissed(true);
+        }}
+        title="Don't show this again"
+        aria-label="Dismiss team workspace hint"
+        className="shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+      >
+        <X size={13} strokeWidth={1.5} />
+      </button>
+    </div>
+  );
+}
+
+export function ExportModal({
+  note,
+  open,
+  onClose,
+  onCreateTeam,
+  flushEdits,
+}: {
+  note: Note;
+  open: boolean;
+  onClose: () => void;
+  /** Saves the note's queued edits. `export_note` reads the note from the
+   *  database, so it waits for this before writing the file. */
+  flushEdits: () => Promise<void>;
+  /** The team hint's CTA. Required rather than optional: the alternative is a
+   *  hint that renders a link doing nothing, which is worse than no hint. The
+   *  sheet has to live in the parent — see TeamHint. */
+  onCreateTeam: () => void;
+}) {
+  const pushError = useRecordingStore((s) => s.pushError);
+
+  const hasSummary = note.summary.trim() !== "";
+  const hasTranscript = note.transcript.trim() !== "";
+  const hasNotes = hasText(note.body);
+
+  const [format, setFormat] = useState<ExportFormat>("markdown");
+  // Defaults: Summary + Transcript checked (when they have content); Notes off.
+  const [includeSummary, setIncludeSummary] = useState(hasSummary);
+  const [includeTranscript, setIncludeTranscript] = useState(hasTranscript);
+  const [includeNotes, setIncludeNotes] = useState(false);
+  const [includeSpeakerLabels, setIncludeSpeakerLabels] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  const nothingSelected =
+    !(includeSummary && hasSummary) &&
+    !(includeTranscript && hasTranscript) &&
+    !(includeNotes && hasNotes);
+
+  async function onExport() {
+    setBusy(true);
+    try {
+      const { filter, extensions } = FORMATS[format];
+      const path = await save({
+        defaultPath: `${slug(note.title)}.${extensions[0]}`,
+        filters: [{ name: filter, extensions }],
+      });
+      if (!path) return; // user cancelled the panel
+      await flushEdits();
+      await ipc.exportNote(note.id, {
+        path,
+        format,
+        includeSummary: includeSummary && hasSummary,
+        includeTranscript: includeTranscript && hasTranscript,
+        includeNotes: includeNotes && hasNotes,
+        includeSpeakerLabels,
+      });
+      onClose();
+    } catch (e) {
+      pushError({ noteId: note.id, message: String(e), kind: "export" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Export note">
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-1">
+          <div className="nd-label">Include</div>
+          <Check
+            checked={includeSummary && hasSummary}
+            disabled={!hasSummary}
+            onChange={setIncludeSummary}
+            label="Summary"
+            hint={hasSummary ? undefined : "empty"}
+          />
+          <Check
+            checked={includeTranscript && hasTranscript}
+            disabled={!hasTranscript}
+            onChange={setIncludeTranscript}
+            label="Transcript"
+            hint={hasTranscript ? undefined : "empty"}
+          />
+          <Check
+            checked={includeNotes && hasNotes}
+            disabled={!hasNotes}
+            onChange={setIncludeNotes}
+            label="Notes"
+            hint={hasNotes ? undefined : "empty"}
+          />
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-sm">Speaker labels in transcript</span>
+          <Toggle
+            checked={includeSpeakerLabels}
+            onChange={setIncludeSpeakerLabels}
+            disabled={!(includeTranscript && hasTranscript)}
+            label="Include speaker labels in transcript"
+          />
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-sm">Format</span>
+          <Segmented<ExportFormat>
+            label="Export format"
+            value={format}
+            onChange={setFormat}
+            options={(Object.keys(FORMATS) as ExportFormat[]).map((value) => ({
+              value,
+              label: FORMATS[value].label,
+            }))}
+          />
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Btn onClick={onClose}>Cancel</Btn>
+          <Btn onClick={onExport} disabled={nothingSelected || busy}>
+            {busy ? "Exporting…" : "Export…"}
+          </Btn>
+        </div>
+
+        <TeamHint onLeave={onClose} onCreateTeam={onCreateTeam} />
+      </div>
+    </Modal>
+  );
+}

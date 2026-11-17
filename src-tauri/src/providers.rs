@@ -1,0 +1,285 @@
+//! The one list of providers Humla knows: Keychain account, key test and
+//! capabilities per id. `src/lib/providers.ts` mirrors `REGISTRY` and
+//! `providers.test.ts` reads this file to keep the two aligned.
+
+use std::fmt;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ProviderId {
+    OpenAi,
+    Anthropic,
+    /// GitHub Copilot, through the user's subscription and the Copilot CLI.
+    /// Signed in by OAuth rather than a pasted key (`copilot::auth`).
+    Copilot,
+    Deepgram,
+    Groq,
+    /// Local Whisper for transcription; any OpenAI-compatible server (Ollama,
+    /// LM Studio, llama-server) for summaries and chat.
+    Local,
+    /// One OpenAI-compatible endpoint the user names: their own base URL and an
+    /// optional key, for summaries, chat and transcription alike.
+    Custom,
+}
+
+/// How a provider's key rides on a request.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum AuthScheme {
+    Bearer,
+    Token,
+    /// Anthropic: the key rides in `x-api-key`, and the API version header is
+    /// mandatory on every request.
+    AnthropicKey,
+}
+
+impl AuthScheme {
+    /// Every header the scheme needs, so a caller can send a key without
+    /// knowing which provider it belongs to.
+    pub fn headers(self, key: &str) -> Vec<(&'static str, String)> {
+        match self {
+            AuthScheme::Bearer => vec![("Authorization", format!("Bearer {key}"))],
+            AuthScheme::Token => vec![("Authorization", format!("Token {key}"))],
+            AuthScheme::AnthropicKey => crate::anthropic::headers(key),
+        }
+    }
+}
+
+/// A cheap authenticated GET that proves a key works.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct KeyTest {
+    pub url: &'static str,
+    pub auth: AuthScheme,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct Capabilities {
+    pub summarize: bool,
+    pub chat: bool,
+    pub transcribe: bool,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct ProviderSpec {
+    pub id: ProviderId,
+    pub id_str: &'static str,
+    /// Display name for user-facing copy.
+    pub label: &'static str,
+    /// Keychain account under `keychain::SERVICE`; `None` for a provider that
+    /// takes no key.
+    pub keychain_account: Option<&'static str>,
+    pub key_test: Option<KeyTest>,
+    pub capabilities: Capabilities,
+}
+
+pub const REGISTRY: &[ProviderSpec] = &[
+    ProviderSpec {
+        id: ProviderId::OpenAi,
+        id_str: "openai",
+        label: "OpenAI",
+        keychain_account: Some("openai_api_key"),
+        key_test: Some(KeyTest {
+            url: "https://api.openai.com/v1/models",
+            auth: AuthScheme::Bearer,
+        }),
+        capabilities: Capabilities { summarize: true, chat: true, transcribe: true },
+    },
+    ProviderSpec {
+        id: ProviderId::Anthropic,
+        id_str: "anthropic",
+        label: "Anthropic",
+        keychain_account: Some("anthropic_api_key"),
+        key_test: Some(KeyTest {
+            url: "https://api.anthropic.com/v1/models",
+            auth: AuthScheme::AnthropicKey,
+        }),
+        capabilities: Capabilities { summarize: true, chat: true, transcribe: false },
+    },
+    ProviderSpec {
+        id: ProviderId::Copilot,
+        id_str: "copilot",
+        label: "GitHub Copilot",
+        keychain_account: None,
+        key_test: None,
+        capabilities: Capabilities { summarize: true, chat: true, transcribe: false },
+    },
+    ProviderSpec {
+        id: ProviderId::Deepgram,
+        id_str: "deepgram",
+        label: "Deepgram",
+        keychain_account: Some("deepgram_api_key"),
+        key_test: Some(KeyTest {
+            url: "https://api.deepgram.com/v1/projects",
+            auth: AuthScheme::Token,
+        }),
+        capabilities: Capabilities { summarize: false, chat: false, transcribe: true },
+    },
+    ProviderSpec {
+        id: ProviderId::Groq,
+        id_str: "groq",
+        label: "Groq",
+        keychain_account: Some("groq_api_key"),
+        key_test: Some(KeyTest {
+            url: "https://api.groq.com/openai/v1/models",
+            auth: AuthScheme::Bearer,
+        }),
+        capabilities: Capabilities { summarize: false, chat: false, transcribe: true },
+    },
+    ProviderSpec {
+        id: ProviderId::Local,
+        id_str: "local",
+        label: "Local",
+        keychain_account: None,
+        key_test: None,
+        capabilities: Capabilities { summarize: true, chat: true, transcribe: true },
+    },
+    ProviderSpec {
+        id: ProviderId::Custom,
+        id_str: "custom",
+        label: "Custom",
+        keychain_account: Some("custom_api_key"),
+        key_test: None,
+        capabilities: Capabilities { summarize: true, chat: true, transcribe: true },
+    },
+];
+
+/// The chat setting stores the local provider as `ollama` from before the
+/// vocabularies were unified; stored rows are never rewritten, so it parses.
+const LOCAL_ALIASES: &[&str] = &["ollama"];
+
+impl ProviderId {
+    pub fn parse(s: &str) -> Option<Self> {
+        if let Some(spec) = REGISTRY.iter().find(|p| p.id_str == s) {
+            return Some(spec.id);
+        }
+        if LOCAL_ALIASES.contains(&s) {
+            return Some(ProviderId::Local);
+        }
+        None
+    }
+
+    pub fn spec(self) -> &'static ProviderSpec {
+        REGISTRY
+            .iter()
+            .find(|p| p.id == self)
+            .expect("every ProviderId has a REGISTRY row")
+    }
+
+    pub fn as_str(self) -> &'static str {
+        self.spec().id_str
+    }
+
+    pub fn keychain_account(self) -> Option<&'static str> {
+        self.spec().keychain_account
+    }
+
+    pub fn capabilities(self) -> Capabilities {
+        self.spec().capabilities
+    }
+
+    pub fn label(self) -> &'static str {
+        self.spec().label
+    }
+}
+
+impl fmt::Display for ProviderId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_id_has_exactly_one_row_and_round_trips() {
+        for spec in REGISTRY {
+            assert_eq!(ProviderId::parse(spec.id_str), Some(spec.id));
+            assert_eq!(spec.id.as_str(), spec.id_str);
+            assert_eq!(REGISTRY.iter().filter(|p| p.id == spec.id).count(), 1);
+        }
+    }
+
+    #[test]
+    fn unknown_ids_are_none_and_nothing_is_trimmed() {
+        assert_eq!(ProviderId::parse("nonsense"), None);
+        assert_eq!(ProviderId::parse(""), None);
+        assert_eq!(ProviderId::parse(" groq "), None);
+    }
+
+    #[test]
+    fn ollama_is_the_stored_alias_for_local() {
+        assert_eq!(ProviderId::parse("ollama"), Some(ProviderId::Local));
+        assert_eq!(ProviderId::Local.as_str(), "local");
+    }
+
+    #[test]
+    fn keychain_accounts_are_unchanged() {
+        assert_eq!(ProviderId::OpenAi.keychain_account(), Some("openai_api_key"));
+        assert_eq!(ProviderId::Anthropic.keychain_account(), Some("anthropic_api_key"));
+        assert_eq!(ProviderId::Deepgram.keychain_account(), Some("deepgram_api_key"));
+        assert_eq!(ProviderId::Groq.keychain_account(), Some("groq_api_key"));
+        assert_eq!(ProviderId::Local.keychain_account(), None);
+        assert_eq!(ProviderId::Copilot.keychain_account(), None);
+    }
+
+    #[test]
+    fn copilot_summarises_and_chats_but_does_not_transcribe() {
+        assert_eq!(ProviderId::parse("copilot"), Some(ProviderId::Copilot));
+        assert_eq!(
+            ProviderId::Copilot.capabilities(),
+            Capabilities { summarize: true, chat: true, transcribe: false }
+        );
+    }
+
+    #[test]
+    fn custom_does_everything_on_an_optional_key_of_its_own() {
+        assert_eq!(ProviderId::parse("custom"), Some(ProviderId::Custom));
+        assert_eq!(ProviderId::Custom.keychain_account(), Some("custom_api_key"));
+        assert_eq!(
+            ProviderId::Custom.capabilities(),
+            Capabilities { summarize: true, chat: true, transcribe: true }
+        );
+        // `local` keeps its "stays on your Mac" promise; a hosted endpoint is
+        // never reached through it.
+        assert_eq!(ProviderId::Local.keychain_account(), None);
+    }
+
+    #[test]
+    fn a_fixed_key_test_exists_wherever_a_key_does_but_custom() {
+        for spec in REGISTRY {
+            // Custom has no fixed URL to test; its test reads the endpoint
+            // from settings (`custom_endpoint::check`).
+            if spec.id == ProviderId::Custom {
+                assert!(spec.key_test.is_none());
+                continue;
+            }
+            assert_eq!(spec.key_test.is_some(), spec.keychain_account.is_some(), "{}", spec.id_str);
+        }
+    }
+
+    #[test]
+    fn openai_key_test_sits_under_the_summary_base_url() {
+        let url = ProviderId::OpenAi.spec().key_test.unwrap().url;
+        assert_eq!(url, format!("{}/models", crate::openai::BASE));
+    }
+
+    #[test]
+    fn anthropic_key_test_hits_the_models_listing() {
+        let test = ProviderId::Anthropic.spec().key_test.unwrap();
+        assert_eq!(test.url, format!("{}/models", crate::anthropic::BASE));
+        assert_eq!(test.auth, AuthScheme::AnthropicKey);
+    }
+
+    #[test]
+    fn auth_header_values() {
+        assert_eq!(AuthScheme::Bearer.headers("k"), vec![("Authorization", "Bearer k".to_string())]);
+        assert_eq!(AuthScheme::Token.headers("k"), vec![("Authorization", "Token k".to_string())]);
+        assert_eq!(
+            AuthScheme::AnthropicKey.headers("k"),
+            vec![
+                ("x-api-key", "k".to_string()),
+                ("anthropic-version", crate::anthropic::VERSION.to_string()),
+            ]
+        );
+    }
+}

@@ -1,0 +1,2540 @@
+use anyhow::{anyhow, Result};
+use serde::{Deserialize, Serialize};
+use std::path::Path;
+
+pub const BASE: &str = "https://api.openai.com/v1";
+
+// Walk a reqwest::Error's source chain into a single readable string. The
+// outer Display on `Kind::Request` only says "error sending request for url
+// (...)" — the actual cause (DNS, TLS, hyper) is buried in `.source()`.
+pub(crate) fn error_chain(err: &(dyn std::error::Error + 'static)) -> String {
+    let mut parts = vec![err.to_string()];
+    let mut src = err.source();
+    while let Some(e) = src {
+        let s = e.to_string();
+        if !parts.iter().any(|p| p == &s) {
+            parts.push(s);
+        }
+        src = e.source();
+    }
+    parts.join(" -> ")
+}
+
+pub fn client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .expect("reqwest client")
+}
+
+// Local LLM servers (Ollama especially) cold-load the model on first request
+// (~10s on a 9B), then generate at ~30 tok/s on Apple Silicon. A long-meeting
+// summary can run 60s. 10 minutes is generous enough that genuine slow paths
+// complete, while still surfacing a wedged server as an error rather than
+// hanging the UI indefinitely.
+fn local_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(600))
+        .build()
+        .expect("reqwest client")
+}
+
+// Cloud OpenAI summary path. Separate from `client()` (which is shared with
+// transcription, ping, list_models — all short ops) because a long meeting
+// transcript through a reasoning model can legitimately need 2–3 minutes,
+// and the default 120s timeout was tripping on those.
+fn summary_cloud_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .expect("reqwest client")
+}
+
+pub(crate) const MAX_SEND_RETRIES: u32 = 2;
+
+/// Backoff before retry `attempt` (1-based). Lengthens each time so a stale
+/// pooled connection isn't reused immediately and a brief network blip has
+/// time to clear.
+pub(crate) fn retry_backoff_ms(attempt: u32) -> u64 {
+    500u64.saturating_mul(attempt as u64).max(500)
+}
+
+/// Send a request, retrying the send-side failures that a half-closed pooled
+/// connection produces. Shared with the Anthropic transport so the two can't
+/// drift; a timeout or a connect failure is never retried, and the error is
+/// returned raw for the caller to phrase.
+pub(crate) async fn send_with_retries<F>(
+    make: F,
+    started: std::time::Instant,
+) -> std::result::Result<reqwest::Response, reqwest::Error>
+where
+    F: Fn() -> reqwest::RequestBuilder,
+{
+    let mut attempt: u32 = 0;
+    loop {
+        match make().send().await {
+            Ok(resp) => return Ok(resp),
+            Err(e) => {
+                let retryable = !e.is_timeout() && !e.is_connect() && attempt < MAX_SEND_RETRIES;
+                eprintln!(
+                    "[llm] send error after {:?}: timeout={} connect={} attempt={} retrying={} body={} source={}",
+                    started.elapsed(),
+                    e.is_timeout(),
+                    e.is_connect(),
+                    attempt,
+                    retryable,
+                    e,
+                    error_chain(&e),
+                );
+                if !retryable {
+                    return Err(e);
+                }
+                attempt += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(retry_backoff_ms(attempt)))
+                    .await;
+            }
+        }
+    }
+}
+
+pub async fn ping(api_key: &str) -> Result<bool> {
+    let r = client()
+        .get(format!("{BASE}/models"))
+        .bearer_auth(api_key)
+        .send()
+        .await?;
+    Ok(r.status().is_success())
+}
+
+#[derive(Deserialize)]
+struct TranscribeResponse {
+    text: String,
+}
+
+#[derive(Deserialize)]
+struct VerboseTranscribeResponse {
+    text: String,
+    #[serde(default)]
+    words: Vec<VerboseWord>,
+}
+
+#[derive(Deserialize)]
+struct VerboseWord {
+    word: String,
+    start: f64,
+    end: f64,
+}
+
+/// One word's display text + chunk-relative ms bounds. Mirrors the local-
+/// Whisper `Word` type so callers can plumb either provider's output through
+/// the same downstream path. Empty for OpenAI models that don't return
+/// word-level timing.
+#[derive(Clone, Debug, Default)]
+pub struct TranscribeWord {
+    pub text: String,
+    pub start_ms: u64,
+    pub end_ms: u64,
+}
+
+/// True iff the OpenAI transcribe model returns word-level timestamps when
+/// asked for `verbose_json` + `timestamp_granularities[]=word`. Only the
+/// classic `whisper-1` endpoint supports that combination — the gpt-4o
+/// transcribe family rejects `verbose_json` outright, and the `-diarize`
+/// variant has its own segment-shaped response. Gating here keeps the cloud
+/// path single-codepath while still extracting word timings when the model
+/// is capable of producing them.
+fn supports_verbose_words(model: &str) -> bool {
+    model == "whisper-1"
+}
+
+pub async fn transcribe_file(
+    api_key: &str,
+    model: &str,
+    language: Option<&str>,
+    prompt: Option<&str>,
+    audio_path: &Path,
+) -> Result<(String, Vec<TranscribeWord>)> {
+    let bytes = tokio::fs::read(audio_path).await?;
+    let file_name = audio_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("chunk.wav")
+        .to_string();
+    let part = reqwest::multipart::Part::bytes(bytes)
+        .file_name(file_name)
+        .mime_str("audio/wav")?;
+
+    let want_words = supports_verbose_words(model);
+    let response_format = if want_words { "verbose_json" } else { "json" };
+
+    let mut form = reqwest::multipart::Form::new()
+        .part("file", part)
+        .text("model", model.to_string())
+        .text("response_format", response_format.to_string())
+        // Force deterministic decoding so Whisper doesn't hallucinate filler
+        // phrases and silently drift to a different language on short audio.
+        .text("temperature", "0".to_string());
+    if want_words {
+        // The API expects an array — multipart `timestamp_granularities[]`
+        // is the documented name for the per-element field. Word grain
+        // alone is enough; segment grain comes back implicitly.
+        form = form.text("timestamp_granularities[]", "word".to_string());
+    }
+    if let Some(l) = language {
+        if l != "auto" {
+            form = form.text("language", l.to_string());
+        }
+    }
+    // Per OpenAI docs, gpt-4o-transcribe-diarize does not accept prompt.
+    if let Some(p) = prompt {
+        if !p.is_empty() && model != "gpt-4o-transcribe-diarize" {
+            form = form.text("prompt", p.to_string());
+        }
+    }
+
+    let r = client()
+        .post(format!("{BASE}/audio/transcriptions"))
+        .bearer_auth(api_key)
+        .multipart(form)
+        .send()
+        .await?;
+
+    if !r.status().is_success() {
+        let s = r.status();
+        let body = r.text().await.unwrap_or_default();
+        return Err(anyhow!("OpenAI {s}: {body}"));
+    }
+
+    if want_words {
+        let body: VerboseTranscribeResponse = r.json().await?;
+        let words = body
+            .words
+            .into_iter()
+            .filter_map(|w| {
+                let text = w.word.trim().to_string();
+                if text.is_empty() {
+                    return None;
+                }
+                // OpenAI returns float seconds; clamp negatives to 0 and saturate
+                // on overflow. Anything > u64::MAX ms is six hundred million
+                // years of audio so the floor is fine.
+                let start_ms = (w.start.max(0.0) * 1000.0).round() as u64;
+                let end_ms = (w.end.max(0.0) * 1000.0).round() as u64;
+                Some(TranscribeWord {
+                    text,
+                    start_ms,
+                    end_ms: end_ms.max(start_ms),
+                })
+            })
+            .collect();
+        Ok((body.text, words))
+    } else {
+        let body: TranscribeResponse = r.json().await?;
+        Ok((body.text, Vec::new()))
+    }
+}
+
+#[derive(Serialize)]
+struct ChatRequest<'a> {
+    model: &'a str,
+    messages: Vec<ChatMessage<'a>>,
+    // Reasoning models (gpt-5 and later + o-series) reject custom temperature
+    // values with a 400 error; only the default (1) is allowed. Traditional
+    // chat models (gpt-4o, gpt-4, gpt-3.5) accept it. `skip_serializing_if`
+    // lets us send the right shape per model without a per-model payload.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
+}
+
+#[derive(Serialize)]
+struct ChatMessage<'a> {
+    role: &'a str,
+    content: &'a str,
+}
+
+#[derive(Deserialize)]
+struct ChatResponse {
+    choices: Vec<ChatChoice>,
+}
+
+#[derive(Deserialize)]
+struct ChatChoice {
+    message: ChatMessageOwned,
+    #[serde(default)]
+    finish_reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ChatMessageOwned {
+    // `mlx_lm.server` sends `null` when the reply holds no text.
+    #[serde(default)]
+    content: Option<String>,
+    // Qwen 3+ via Ollama puts internal reasoning here (extension to the
+    // OpenAI schema). If `content` is empty but this is set, the model
+    // ran out of tokens or context inside the thinking phase and never
+    // produced an answer — surface that as a clear error.
+    #[serde(default)]
+    reasoning_content: Option<String>,
+    // `mlx_lm.server`'s name for the same thing.
+    #[serde(default)]
+    reasoning: Option<String>,
+}
+
+/// The error for a reply that carried no answer and no tool call. A
+/// `finish_reason` of `length` means the server's output limit ended the reply,
+/// which on a thinking model is usually spent before the answer begins.
+fn empty_answer_error(model: &str, finish_reason: Option<&str>, reasoning_chars: usize) -> anyhow::Error {
+    if finish_reason == Some("length") {
+        return anyhow!(
+            "{model} hit its output limit before it answered ({reasoning_chars} reasoning chars). \
+             Raise the server's output token limit, or use a model that reasons less."
+        );
+    }
+    if reasoning_chars > 0 {
+        return anyhow!(
+            "{model} produced reasoning but no final answer ({reasoning_chars} reasoning chars). \
+             Try a non-thinking model or shorten the input."
+        );
+    }
+    anyhow!("{model} returned an empty response")
+}
+
+/// Reasoning models: gpt-5 and every later generation, plus the o-series.
+/// They reject the `temperature` parameter and accept extra knobs like
+/// `reasoning_effort` (which we leave at the API default).
+pub(crate) fn is_reasoning_model(model: &str) -> bool {
+    if let Some(rest) = model.strip_prefix("gpt-") {
+        // "gpt-5", "gpt-5.4-mini", "gpt-6", "gpt-6.1-nano", … — a major
+        // version of 5 or above. "gpt-4o" and "gpt-4.1" stay below it.
+        let digits = rest.len() - rest.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+        let tail = &rest[digits..];
+        rest[..digits].parse::<u32>().is_ok_and(|major| major >= 5)
+            && (tail.is_empty() || tail.starts_with('.') || tail.starts_with('-'))
+    } else if let Some(rest) = model.strip_prefix('o') {
+        // "o1", "o3", "o4-mini" — but not "openai-something" or other
+        // o-prefixed names that aren't reasoning models.
+        rest.chars().next().is_some_and(|c| c.is_ascii_digit())
+    } else {
+        false
+    }
+}
+
+#[derive(Serialize)]
+struct ChatStreamRequest<'a> {
+    model: &'a str,
+    messages: Vec<ChatMessage<'a>>,
+    stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f32>,
+}
+
+// One Server-Sent-Events frame from OpenAI's streaming /chat/completions.
+// Each `data:` line (except the terminal `[DONE]`) is one of these; the
+// answer is assembled from `choices[0].delta.content`.
+#[derive(Deserialize)]
+struct ChatStreamFrame {
+    #[serde(default)]
+    choices: Vec<ChatStreamChoice>,
+}
+
+#[derive(Deserialize)]
+struct ChatStreamChoice {
+    #[serde(default)]
+    delta: ChatStreamDelta,
+}
+
+#[derive(Deserialize, Default)]
+struct ChatStreamDelta {
+    #[serde(default)]
+    content: Option<String>,
+}
+
+/// Byte-level line buffer for newline-delimited streaming bodies — OpenAI SSE
+/// frames and Ollama NDJSON both arrive this way.
+///
+/// Buffering at the **byte** level is the whole point. Decoding each network
+/// chunk with `from_utf8_lossy` as it arrives corrupts any multi-byte character
+/// split across two reads: a Norwegian `ø` (2 bytes) landing on the boundary
+/// becomes two U+FFFD replacement chars, permanently, in the saved summary or
+/// chat answer. Nothing replays the prefix. Buffering bytes and decoding only
+/// at `\n` is safe, because a complete line never ends mid-character.
+#[derive(Default)]
+struct LineBuf {
+    buf: Vec<u8>,
+}
+
+impl LineBuf {
+    fn extend(&mut self, chunk: &[u8]) {
+        self.buf.extend_from_slice(chunk);
+    }
+
+    /// Take the next complete line (including its trailing newline, which
+    /// callers trim). `None` while the buffer holds only a partial line.
+    fn next_line(&mut self) -> Option<String> {
+        let idx = self.buf.iter().position(|&b| b == b'\n')?;
+        let raw: Vec<u8> = self.buf.drain(..=idx).collect();
+        Some(String::from_utf8_lossy(&raw).into_owned())
+    }
+}
+
+/// Incremental parser for an OpenAI `/chat/completions` SSE body.
+///
+/// SSE is newline-delimited `data: {json}` frames terminated by `data: [DONE]`.
+/// A frame can split across *any* byte-chunk boundary, so the tail of an
+/// incomplete line stays buffered until its newline arrives. Pure and
+/// synchronous on purpose — it's what the streaming summary path now depends
+/// on, and this way it's unit-testable without a mock HTTP server.
+#[derive(Default)]
+struct ChatSseParser {
+    lines: LineBuf,
+    answer: String,
+}
+
+impl ChatSseParser {
+    /// Feed one raw network chunk. Fires `on_delta` once per non-empty content
+    /// delta and appends the same text to the assembled answer.
+    fn push<F: FnMut(&str)>(&mut self, chunk: &[u8], on_delta: &mut F) {
+        self.lines.extend(chunk);
+        while let Some(line) = self.lines.next_line() {
+            let line = line.trim();
+            let Some(data) = line.strip_prefix("data:") else {
+                continue;
+            };
+            let data = data.trim();
+            if data == "[DONE]" {
+                break;
+            }
+            let frame: ChatStreamFrame = match serde_json::from_str(data) {
+                Ok(v) => v,
+                // Skip keep-alive comments / unparseable heartbeats rather than
+                // aborting the whole answer over one odd frame.
+                Err(_) => continue,
+            };
+            if let Some(delta) = frame
+                .choices
+                .into_iter()
+                .next()
+                .and_then(|c| c.delta.content)
+            {
+                if !delta.is_empty() {
+                    self.answer.push_str(&delta);
+                    on_delta(&delta);
+                }
+            }
+        }
+    }
+}
+
+/// Consume an OpenAI `/chat/completions` SSE body, assembling
+/// `choices[0].delta.content` into the full answer and firing `on_delta` once
+/// per non-empty delta. Shared by the chat and summary streaming paths.
+async fn consume_chat_sse<F>(
+    ep: &Endpoint<'_>,
+    r: reqwest::Response,
+    mut on_delta: F,
+) -> Result<String>
+where
+    F: FnMut(&str) + Send,
+{
+    use futures_util::StreamExt;
+    let started = std::time::Instant::now();
+    let mut byte_stream = r.bytes_stream();
+    let mut parser = ChatSseParser::default();
+    while let Some(chunk_res) = byte_stream.next().await {
+        // A mid-stream read error means the connection died after headers
+        // arrived. Two very different causes, so don't give one piece of
+        // advice for both: the client's own timeout covers body reads too, so
+        // a genuinely slow model lands here and deserves the timeout message,
+        // while an abrupt drop is a VPN/proxy reaping the tunnel.
+        //
+        // Either way we keep nothing — a truncated summary saved as if
+        // complete is worse than a visible failure.
+        let bytes = chunk_res.map_err(|e| {
+            if e.is_timeout() {
+                return ep.timeout_error(started.elapsed().as_secs());
+            }
+            anyhow!(
+                "Connection dropped mid-response after {} chars: {}. \
+                 Check your VPN / proxy and try again.",
+                parser.answer.len(),
+                error_chain(&e),
+            )
+        })?;
+        parser.push(&bytes, &mut on_delta);
+    }
+    Ok(parser.answer)
+}
+
+/// Stream a multi-turn chat completion from cloud OpenAI. `on_delta` fires
+/// once per content delta; the full assembled answer is returned.
+pub(crate) async fn openai_chat_stream<F>(
+    base_url: &str,
+    api_key: &str,
+    model: &str,
+    messages: &[(&str, &str)],
+    on_delta: F,
+) -> Result<String>
+where
+    F: FnMut(&str) + Send,
+{
+    let req = ChatStreamRequest {
+        model,
+        messages: messages
+            .iter()
+            .map(|(role, content)| ChatMessage { role, content })
+            .collect(),
+        stream: true,
+        // Reasoning models (gpt-5 and later / o-series) reject a custom temperature.
+        temperature: if is_reasoning_model(model) { None } else { Some(0.3) },
+    };
+    // Shares `post_chat` with the summary path, so chat inherits its retry on
+    // transient send failures — the half-closed-pooled-connection case hits a
+    // chat turn exactly as readily as a summary.
+    let ep = Endpoint::from_base(base_url);
+    let started = std::time::Instant::now();
+    let r = post_chat(&ep, api_key, &req, started).await?;
+    let answer = consume_chat_sse(&ep, r, on_delta).await?;
+    eprintln!(
+        "[llm] openai chat stream done in {:?}, {} chars",
+        started.elapsed(),
+        answer.len()
+    );
+    if answer.trim().is_empty() {
+        return Err(anyhow!("{model} returned an empty response"));
+    }
+    Ok(answer)
+}
+
+pub async fn summarize(
+    api_key: &str,
+    model: &str,
+    system_prompt: &str,
+    transcript: &str,
+) -> Result<String> {
+    summarize_with_base(BASE, api_key, model, false, system_prompt, transcript, |_| {}).await
+}
+
+/// Which `/chat/completions` endpoint a call is talking to.
+///
+/// Everything that differs between cloud OpenAI and a local OpenAI-compatible
+/// server hangs off here: the client's timeout budget, the URL, and — the part
+/// worth having a type for — the vocabulary of its failure messages. Telling a
+/// user to restart `ollama serve` when their internet is down is worse than
+/// saying nothing, and the reverse is equally unhelpful.
+enum Endpoint<'a> {
+    Cloud,
+    /// Base URL of a local OpenAI-compat server (Ollama, LM Studio,
+    /// llama-server, vLLM).
+    Local(&'a str),
+    /// The user's own endpoint (#173), used exactly as typed. Nothing about it
+    /// is inferred from its URL or its model names, so requests to it carry no
+    /// optional parameter at all.
+    Custom(&'a str),
+}
+
+impl<'a> Endpoint<'a> {
+    fn from_base(base_url: &'a str) -> Self {
+        if base_url == BASE {
+            Self::Cloud
+        } else {
+            Self::Local(base_url)
+        }
+    }
+
+    fn base(&self) -> &str {
+        match self {
+            Self::Cloud => BASE,
+            Self::Local(base) | Self::Custom(base) => base,
+        }
+    }
+
+    fn url(&self) -> String {
+        format!("{}/chat/completions", self.base())
+    }
+
+    fn client(&self) -> reqwest::Client {
+        match self {
+            Self::Cloud => summary_cloud_client(),
+            Self::Local(_) | Self::Custom(_) => local_client(),
+        }
+    }
+
+    fn timeout_error(&self, secs: u64) -> anyhow::Error {
+        let base = self.base();
+        match self {
+            Self::Cloud => anyhow!(
+                "Timed out after {secs}s waiting for {base}. \
+                 OpenAI's response was unusually slow — try again, \
+                 or switch the summary provider to Local."
+            ),
+            Self::Local(_) => anyhow!(
+                "Timed out after {secs}s waiting for {base}. \
+                 The local model may be stuck — restart your \
+                 local-LLM server (e.g. `pkill ollama && ollama serve`)."
+            ),
+            Self::Custom(_) => anyhow!(
+                "Timed out after {secs}s waiting for {}. Try again, or pick a faster model.",
+                self.url()
+            ),
+        }
+    }
+
+    fn connect_error(&self) -> anyhow::Error {
+        let base = self.base();
+        match self {
+            Self::Cloud => anyhow!(
+                "Couldn't reach {base}. Check your internet connection and try again."
+            ),
+            Self::Local(_) => anyhow!(
+                "Couldn't reach {base}. Is your local-LLM server running? (ollama serve, etc.)"
+            ),
+            Self::Custom(_) => anyhow!(
+                "Couldn't reach {}. Check the base URL in Settings and your connection.",
+                self.url()
+            ),
+        }
+    }
+
+    /// Attach the key. A custom endpoint's key is optional, and one that takes
+    /// none gets no Authorization header rather than an empty bearer.
+    fn authorize(&self, req: reqwest::RequestBuilder, api_key: &str) -> reqwest::RequestBuilder {
+        match self {
+            Self::Custom(_) if api_key.is_empty() => req,
+            _ => req.bearer_auth(api_key),
+        }
+    }
+
+    fn status_error(&self, status: reqwest::StatusCode, body: &str, api_key: &str) -> anyhow::Error {
+        match self {
+            Self::Custom(_) => {
+                crate::custom_endpoint::status_error(status.as_u16(), &self.url(), body, !api_key.is_empty())
+            }
+            _ => anyhow!("HTTP {status} from {}: {body}", self.base()),
+        }
+    }
+
+    fn network_error(&self, cause: &str) -> anyhow::Error {
+        let base = self.base();
+        match self {
+            Self::Cloud => anyhow!(
+                "Network error talking to OpenAI: {cause}. \
+                 Check your internet connection (DNS / VPN / proxy) and try again."
+            ),
+            Self::Local(_) => anyhow!(
+                "Network error talking to {base}: {cause}. \
+                 Check that your local-LLM server is reachable."
+            ),
+            Self::Custom(_) => anyhow!("Network error talking to {}: {cause}.", self.url()),
+        }
+    }
+}
+
+/// POST a chat-completions body and hand back a **successful** response,
+/// retrying transient send-side failures and turning a non-2xx into an error
+/// carrying the server's body (which is where the useful part lives — bad model
+/// name, quota, context-length overflow).
+///
+/// reqwest reuses HTTP/2 connections from its pool; OpenAI's edge silently
+/// half-closes idle ones, so a long-running app's first request after a quiet
+/// period can fail with Kind::Request ("error sending request for url") before
+/// any bytes leave the wire. A fresh connection usually succeeds, but in the
+/// wild we've seen the second attempt also fail (brief DNS / TLS hiccups), so
+/// allow up to two retries. Don't retry on timeout (genuine slowness — a retry
+/// just doubles the wait) or connect-refused (the server is unreachable).
+///
+/// Note this only covers failures *before* response headers. A connection
+/// reaped while the model thinks lands here too but is not fixable by
+/// retrying — see the streaming note in `summarize_with_base`.
+async fn post_chat(
+    ep: &Endpoint<'_>,
+    api_key: &str,
+    body: &impl Serialize,
+    started: std::time::Instant,
+) -> Result<reqwest::Response> {
+    let r = send_chat(ep, api_key, body, started).await?;
+    check_chat_status(ep, r, api_key, started).await
+}
+
+/// Asked of every local OpenAI-compat server as `max_tokens`. It guards against a
+/// runaway generation and is not a budget: a request without one gets the
+/// server's own default, which on `mlx_lm.server` is 512 tokens — too few for a
+/// thinking model to reach its answer.
+pub(crate) const LOCAL_MAX_TOKENS: u32 = 32_768;
+
+/// [`post_chat`] with the output ceiling a local server needs. `body` builds the
+/// request around the `max_tokens` to send. A server that refuses the ceiling
+/// with a 400 is asked once more without it — vLLM rejects any `max_tokens` the
+/// context left after the prompt can't hold.
+async fn post_chat_lifting_limit<B: Serialize>(
+    ep: &Endpoint<'_>,
+    api_key: &str,
+    started: std::time::Instant,
+    body: impl Fn(Option<u32>) -> B,
+) -> Result<reqwest::Response> {
+    if let Endpoint::Local(base) = ep {
+        let r = send_chat(ep, api_key, &body(Some(LOCAL_MAX_TOKENS)), started).await?;
+        if r.status() != reqwest::StatusCode::BAD_REQUEST {
+            return check_chat_status(ep, r, api_key, started).await;
+        }
+        let refusal = r.text().await.unwrap_or_default();
+        eprintln!("[llm] {base} refused max_tokens={LOCAL_MAX_TOKENS} ({refusal}); retrying without it");
+    }
+    post_chat(ep, api_key, &body(None), started).await
+}
+
+async fn send_chat(
+    ep: &Endpoint<'_>,
+    api_key: &str,
+    body: &impl Serialize,
+    started: std::time::Instant,
+) -> Result<reqwest::Response> {
+    let http = ep.client();
+    let url = ep.url();
+    match send_with_retries(|| ep.authorize(http.post(&url).json(body), api_key), started).await {
+        Ok(resp) => Ok(resp),
+        Err(e) if e.is_timeout() => Err(ep.timeout_error(started.elapsed().as_secs())),
+        Err(e) if e.is_connect() => Err(ep.connect_error()),
+        Err(e) => Err(ep.network_error(&error_chain(&e))),
+    }
+}
+
+async fn check_chat_status(
+    ep: &Endpoint<'_>,
+    r: reqwest::Response,
+    api_key: &str,
+    started: std::time::Instant,
+) -> Result<reqwest::Response> {
+    let status = r.status();
+    eprintln!("[llm] response {status} after {:?}", started.elapsed());
+    if !status.is_success() {
+        let body = r.text().await.unwrap_or_default();
+        eprintln!("[llm] error body: {body}");
+        return Err(ep.status_error(status, &body, api_key));
+    }
+    Ok(r)
+}
+
+/// Cloud-OpenAI or custom-endpoint summary, streamed. Same contract as
+/// `summarize_with_base` — returns the assembled summary — but fires
+/// `on_chunk` per content delta so the UI shows tokens landing, and, crucially,
+/// keeps bytes moving on the wire so no middlebox reaps the connection while a
+/// reasoning model thinks.
+///
+/// Cloud `/chat/completions` doesn't expose reasoning tokens in its SSE
+/// deltas, so `StreamChunk::Thinking` is never emitted here — only the Ollama
+/// native path produces those.
+async fn summarize_stream<F>(
+    ep: Endpoint<'_>,
+    api_key: &str,
+    model: &str,
+    system_prompt: &str,
+    transcript: &str,
+    mut on_chunk: F,
+) -> Result<String>
+where
+    F: FnMut(StreamChunk) + Send,
+{
+    let req = ChatStreamRequest {
+        model,
+        messages: vec![
+            ChatMessage { role: "system", content: system_prompt },
+            ChatMessage { role: "user", content: transcript },
+        ],
+        stream: true,
+        // Reasoning models (gpt-5 and later / o-series) reject a custom
+        // temperature, and a custom endpoint is sent none at all.
+        temperature: match ep {
+            Endpoint::Cloud if !is_reasoning_model(model) => Some(0.2),
+            _ => None,
+        },
+    };
+    let started = std::time::Instant::now();
+    eprintln!(
+        "[llm] POST {} (stream) model={model} system_chars={} user_chars={}",
+        ep.url(),
+        system_prompt.len(),
+        transcript.len()
+    );
+    let r = post_chat(&ep, api_key, &req, started).await?;
+    let summary = consume_chat_sse(&ep, r, |delta| on_chunk(StreamChunk::Content(delta))).await?;
+    eprintln!(
+        "[llm] stream success in {:?}, content {} chars",
+        started.elapsed(),
+        summary.len()
+    );
+    if summary.trim().is_empty() {
+        // 200 OK, frames arrived, no content in any of them. Cloud SSE deltas
+        // carry no reasoning, so we genuinely can't tell whether the model
+        // burned its budget thinking or something else went wrong — don't
+        // assert a cause we can't observe.
+        return Err(anyhow!("{model} returned an empty response"));
+    }
+    Ok(summary)
+}
+
+/// A summary from the user's own endpoint (#173), streamed like cloud OpenAI.
+/// `api_key` is optional; without one the request carries no Authorization
+/// header.
+pub async fn summarize_custom<F>(
+    base_url: &str,
+    api_key: Option<&str>,
+    model: &str,
+    system_prompt: &str,
+    transcript: &str,
+    on_chunk: F,
+) -> Result<String>
+where
+    F: FnMut(StreamChunk) + Send,
+{
+    let ep = Endpoint::Custom(base_url);
+    summarize_stream(ep, api_key.unwrap_or(""), model, system_prompt, transcript, on_chunk).await
+}
+
+/// Same shape as `summarize` but takes an explicit base URL. Used to route
+/// summary calls at any OpenAI-compatible HTTP endpoint — most local-LLM
+/// runtimes (Ollama, LM Studio, llama-server, vLLM) implement this exact
+/// schema, so a one-line change in the caller flips between cloud OpenAI
+/// and a local server.
+///
+/// `api_key` is forwarded as a bearer token regardless of base URL; local
+/// servers typically ignore it but Ollama accepts any non-empty string.
+pub async fn summarize_with_base<F>(
+    base_url: &str,
+    api_key: &str,
+    model: &str,
+    think: bool,
+    system_prompt: &str,
+    transcript: &str,
+    on_chunk: F,
+) -> Result<String>
+where
+    F: FnMut(StreamChunk) + Send,
+{
+    let ep = Endpoint::from_base(base_url);
+    let is_local = matches!(ep, Endpoint::Local(_));
+    // For Ollama, route through the native /api/chat endpoint so we can
+    // pass an explicit `think` flag and reliably control Qwen 3+'s
+    // thinking mode. The OpenAI-compat endpoint renders the chat template
+    // internally and strips user-message /no_think directives. The native
+    // path also streams, so the callback fires per-frame while the model
+    // works.
+    if is_local {
+        if let Some(native_base) = ollama_native_url(base_url) {
+            return ollama_native_chat(
+                &native_base, model, think, system_prompt, transcript, on_chunk,
+            )
+            .await;
+        }
+    }
+    // Cloud OpenAI streams. It must: a non-streaming reasoning-model call
+    // (gpt-5.x on a long transcript) sits with zero bytes on the wire for
+    // minutes while the model thinks, and anything stateful in the path — a
+    // VPN tunnel, a corporate proxy, NAT — reaps the idle connection and
+    // sends a bare FIN. reqwest surfaces that as Kind::Request
+    // ("peer closed connection without sending TLS close_notify") *before*
+    // response headers, so it reads as a send-side failure and the retry
+    // loop below can't help: every attempt goes silent for minutes too.
+    // Streaming keeps frames flowing, so nothing looks idle. Confirmed in
+    // the wild — summaries failed under NordVPN and succeeded with it off.
+    //
+    // Caveat worth knowing before trusting this: `/chat/completions` does not
+    // stream reasoning tokens, so on a gpt-5.x model the body can still be
+    // quiet for the whole thinking phase. Headers now return promptly and any
+    // reap lands mid-stream instead of pre-headers, but if the tunnel reaps on
+    // TCP idle rather than time-to-first-byte, the window is narrowed rather
+    // than closed.
+    if !is_local {
+        return summarize_stream(Endpoint::Cloud, api_key, model, system_prompt, transcript, on_chunk)
+            .await;
+    }
+    // Local OpenAI-compat servers (LM Studio, llama-server, vLLM) stay
+    // non-streaming — they're on localhost, with no middlebox to reap the
+    // connection. Ollama already took the native streaming path above.
+    let _ = on_chunk;
+    let req = |max_tokens| ChatRequest {
+        model,
+        // Local OpenAI-compat servers accept temperature; reasoning-model
+        // suppression only applies when the actual server is OpenAI's.
+        temperature: if is_local || !is_reasoning_model(model) {
+            Some(0.2)
+        } else {
+            None
+        },
+        messages: vec![
+            ChatMessage { role: "system", content: system_prompt },
+            ChatMessage { role: "user", content: transcript },
+        ],
+        max_tokens,
+    };
+    let started = std::time::Instant::now();
+    eprintln!(
+        "[llm] POST {} model={model} system_chars={} user_chars={}",
+        ep.url(),
+        system_prompt.len(),
+        transcript.len()
+    );
+    let r = post_chat_lifting_limit(&ep, api_key, started, req).await?;
+    // Read the body once so we can log it on parse failure (Ollama's error
+    // shape on quirky responses isn't always OpenAI-compat).
+    let body_text = r.text().await?;
+    let body: ChatResponse = match serde_json::from_str(&body_text) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!(
+                "[llm] could not parse response as ChatResponse: {e}\n\
+                 [llm] body (first 500 chars): {}",
+                &body_text.chars().take(500).collect::<String>()
+            );
+            return Err(anyhow!("unexpected response shape from {base_url}: {e}"));
+        }
+    };
+    let first = body.choices.into_iter().next();
+    let reasoning_chars = first
+        .as_ref()
+        .and_then(|c| c.message.reasoning_content.as_deref().or(c.message.reasoning.as_deref()))
+        .map(str::len)
+        .unwrap_or(0);
+    let finish_reason = first.as_ref().and_then(|c| c.finish_reason.clone());
+    let content = first.and_then(|c| c.message.content).unwrap_or_default();
+    eprintln!(
+        "[llm] success in {:?}, content {} chars, reasoning {} chars",
+        started.elapsed(),
+        content.len(),
+        reasoning_chars
+    );
+    if content.trim().is_empty() {
+        return Err(empty_answer_error(model, finish_reason.as_deref(), reasoning_chars));
+    }
+    Ok(content)
+}
+
+/// Try to derive the Ollama native API base URL from an OpenAI-compat URL.
+/// Ollama exposes its own API at `/api/...` and an OpenAI-compat shim at
+/// `/v1/...`; the convention is the same host:port. Returns None for non-
+/// Ollama-shaped URLs (LM Studio at :1234, llama-server, vLLM) — those keep
+/// the OpenAI-compat path.
+pub(crate) fn ollama_native_url(openai_compat_url: &str) -> Option<String> {
+    // Heuristic: Ollama's default port is 11434. If the URL doesn't mention
+    // it, assume the user is on a different runtime (LM Studio :1234, etc.)
+    // and stay on OpenAI-compat. Users can override by pointing
+    // local_llm_base_url at any host:11434.
+    if !openai_compat_url.contains(":11434") {
+        return None;
+    }
+    let trimmed = openai_compat_url.trim_end_matches('/');
+    let stripped = trimmed.strip_suffix("/v1")?;
+    Some(format!("{stripped}/api"))
+}
+
+#[derive(Serialize)]
+struct OllamaChatRequest<'a> {
+    model: &'a str,
+    messages: Vec<ChatMessage<'a>>,
+    stream: bool,
+    // Ollama 0.6+: bool toggles reasoning for most models (Qwen 3+,
+    // DeepSeek-R1, etc). GPT-OSS is the exception — it expects a string
+    // ("low" | "medium" | "high") and silently ignores booleans. If we
+    // ever default to a GPT-OSS local model we'll need to make this
+    // serde-untagged with both shapes; for Qwen 3.5 / DeepSeek users a
+    // bool is correct.
+    think: bool,
+    // Seconds to keep the model resident after the response finishes.
+    // 0 = unload immediately; default would be 300 (5 min). With
+    // num_ctx=65536 the KV cache is multi-GB, so leaving it warm pins a
+    // big chunk of RAM and keeps the OS memory compressor busy long
+    // after the summary completes. Trade-off: the next summary in the
+    // same session reloads the model (~5-15s).
+    keep_alive: i32,
+    options: OllamaOptions,
+}
+
+// Per Qwen team's HuggingFace model cards for Qwen 3.5 (9B/4B/2B/0.8B):
+//   thinking, general:   temp=1.0, top_p=0.95, top_k=20, min_p=0.0,
+//                        presence_penalty=1.5, repetition_penalty=1.0
+//   non-thinking, general: temp=0.7, top_p=0.8,  top_k=20, min_p=0.0,
+//                        presence_penalty=1.5, repetition_penalty=1.0
+//
+// presence_penalty=1.5 breaks *thinking-phase* loops (the "Wait, I need to
+// check the language. Okay, let's write." cycle) because the cycle alternates
+// between distinct constraint phrases — penalizing each token's first
+// reappearance is enough to push the sampler off-track.
+//
+// presence_penalty does NOT reliably stop *content-phase* token loops like
+// "Note: Wilma sa nei. Note: Michael tilbød yoghurt." repeating 100×. Once
+// every token in the looped phrase has appeared once, presence_penalty
+// applies a uniform constant — no differential pressure remains. For that
+// case we add frequency_penalty (scales with token count, so each loop
+// iteration further suppresses the looped tokens) and a final post-processing
+// pass in `trim_runaway_repetition()`. Qwen team's recs leave
+// frequency_penalty at default 0; we override only because their tuning
+// targets benchmark prompts where content runaway is rare. Long structured
+// summaries on small models hit it more often.
+/// The model-family-dependent sampling knobs (issue #51). `num_predict` /
+/// `num_ctx` are sized adaptively at the call site and are NOT part of this —
+/// only the family-specific tuning lives here.
+struct SamplingProfile {
+    temperature: f32,
+    top_p: f32,
+    top_k: i32,
+    min_p: f32,
+    presence_penalty: f32,
+    frequency_penalty: f32,
+    repeat_penalty: f32,
+}
+
+/// Whether a model id is from the Qwen family. The loop-breaker sampling below
+/// is tuned specifically for Qwen 3.x's thinking-phase loop class and must not
+/// be applied to other families (issue #51). Case-insensitive substring match
+/// so tags like `qwen3.5:4b` / `Qwen2.5-Instruct` all resolve.
+fn is_qwen_model(model: &str) -> bool {
+    model.to_ascii_lowercase().contains("qwen")
+}
+
+/// Model-aware sampling profile for the Ollama native chat/summary path
+/// (issue #51). Qwen keeps its loop-breaker tuning; every other family (gemma,
+/// llama, …) gets neutral defaults — so a non-Qwen model, e.g. the now-
+/// recommended `gemma4:12b-mlx`, isn't run under penalties chosen for Qwen. The
+/// `think`/non-think split raises temperature + top_p in the thinking phase
+/// (sampling diversity is the escape hatch from deterministic loop branches).
+fn sampling_profile(model: &str, think: bool) -> SamplingProfile {
+    if is_qwen_model(model) {
+        // Qwen 3.5 loop-breaker (unchanged behaviour): presence_penalty=1.5
+        // breaks thinking-phase loops; frequency_penalty=0.5 + repeat_penalty=1.0
+        // handle content-phase token loops. See the module notes above.
+        SamplingProfile {
+            temperature: if think { 1.0 } else { 0.7 },
+            top_p: if think { 0.95 } else { 0.8 },
+            top_k: 20,
+            min_p: 0.0,
+            presence_penalty: 1.5,
+            frequency_penalty: 0.5,
+            repeat_penalty: 1.0,
+        }
+    } else {
+        // Neutral defaults for non-Qwen families: standard repetition handling
+        // (Ollama's default repeat_penalty=1.1), no Qwen-specific penalties.
+        SamplingProfile {
+            temperature: if think { 1.0 } else { 0.7 },
+            top_p: if think { 0.95 } else { 0.9 },
+            top_k: 40,
+            min_p: 0.0,
+            presence_penalty: 0.0,
+            frequency_penalty: 0.0,
+            repeat_penalty: 1.1,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct OllamaOptions {
+    temperature: f32,
+    top_p: f32,
+    top_k: i32,
+    min_p: f32,
+    presence_penalty: f32,
+    frequency_penalty: f32,
+    repeat_penalty: f32,
+    // Hard cap on generated tokens. Without this, Qwen 3+ thinking mode can
+    // burn 5K+ tokens reasoning before answering even on tiny inputs.
+    num_predict: i32,
+    // Input context window. Ollama's default is 2048 tokens — way too small
+    // for meeting transcripts. Anything longer than ~1500 words is silently
+    // truncated from the front. Sized adaptively at the call site based on
+    // actual prompt length + output budget, bounded [8192, 65536]. Caller
+    // computes the value because too-large a window inflates KV-cache RAM
+    // 2-4 GB and OOMs Ollama on tighter machines.
+    num_ctx: i32,
+}
+
+// One JSON object per newline-delimited frame Ollama emits when stream:true.
+// Each frame's `message.thinking` and `message.content` carry the delta since
+// the previous frame; we accumulate content for the return value and forward
+// thinking deltas to the caller's callback for live UI rendering.
+#[derive(Deserialize)]
+struct OllamaStreamChunk {
+    message: OllamaStreamMessage,
+    #[serde(default)]
+    done: bool,
+}
+
+#[derive(Deserialize, Default)]
+struct OllamaStreamMessage {
+    #[serde(default)]
+    content: String,
+    #[serde(default)]
+    thinking: Option<String>,
+}
+
+/// Tagged delta for streaming summary callbacks. `Thinking` is the model's
+/// reasoning trace (only emitted when think:true); `Content` is the actual
+/// answer being assembled. Caller decides what to do with each kind — most
+/// commonly emit Tauri events for live UI rendering.
+#[derive(Clone, Copy, Debug)]
+pub enum StreamChunk<'a> {
+    Thinking(&'a str),
+    Content(&'a str),
+}
+
+async fn ollama_native_chat<F>(
+    native_base: &str,
+    model: &str,
+    think: bool,
+    system_prompt: &str,
+    user_message: &str,
+    on_chunk: F,
+) -> Result<String>
+where
+    F: FnMut(StreamChunk) + Send,
+{
+    // Summaries are always a fixed system+user pair. The streaming core is
+    // shared with chat (which sends a multi-turn history) via a (role, content)
+    // slice so the Qwen sampling tuning + adaptive num_ctx live in one place.
+    ollama_chat_stream(
+        native_base,
+        model,
+        think,
+        &[("system", system_prompt), ("user", user_message)],
+        on_chunk,
+    )
+    .await
+}
+
+/// Stream a multi-turn chat completion from an Ollama server via its native
+/// `/api/chat` endpoint. Each `(role, content)` pair becomes a message in
+/// order. Shared by the summary path (system+user) and the chat command
+/// (system + reference + turns). `num_ctx` is sized adaptively from the total
+/// prompt length so long histories get a bigger KV cache without a flat 65K
+/// pinning multi-GB of RAM on tighter Macs.
+pub(crate) async fn ollama_chat_stream<F>(
+    native_base: &str,
+    model: &str,
+    think: bool,
+    messages: &[(&str, &str)],
+    mut on_chunk: F,
+) -> Result<String>
+where
+    F: FnMut(StreamChunk) + Send,
+{
+    let url = format!("{native_base}/chat");
+    let num_predict: i32 = if think { 8192 } else { 4096 };
+    let prompt_chars: usize = messages.iter().map(|(_, c)| c.len()).sum();
+    // Adaptive num_ctx: size the KV cache to the actual prompt + output
+    // budget, not a fixed 65536. A flat 65K was killing Ollama on tighter
+    // machines ("model runner has unexpectedly stopped") because the KV
+    // cache for that window can run 2-4 GB on top of model weights — fine
+    // on a 32 GB Mac with nothing else running, OOM otherwise. Rough
+    // estimate: ~4 chars/token for English/Norwegian; round up to the
+    // next power of two for clean Ollama allocation; bound to
+    // [8192, 65536]. A typical 2-hour meeting (~20K input tokens) gets
+    // 32K context — half the RAM of the old fixed value, still 10× more
+    // than Ollama's silent-truncating 2048 default.
+    let approx_input_tokens = prompt_chars / 4;
+    let need = approx_input_tokens + (num_predict as usize) + 512;
+    let mut ctx: usize = 8192;
+    while ctx < need && ctx < 65536 {
+        ctx *= 2;
+    }
+    let num_ctx = ctx as i32;
+    // Sampling is model-family-aware (issue #51): Qwen gets its loop-breaker
+    // tuning, other families neutral defaults. Higher temp in thinking mode is
+    // counter-intuitive but deliberate — determinism (low temp) is what locks a
+    // model into the same loop branch each step; sampling diversity is the
+    // escape hatch (with penalties preventing it from wandering into repetition).
+    let profile = sampling_profile(model, think);
+    let req = OllamaChatRequest {
+        model,
+        messages: messages
+            .iter()
+            .map(|(role, content)| ChatMessage { role, content })
+            .collect(),
+        stream: true,
+        think,
+        keep_alive: 0,
+        options: OllamaOptions {
+            temperature: profile.temperature,
+            top_p: profile.top_p,
+            top_k: profile.top_k,
+            min_p: profile.min_p,
+            presence_penalty: profile.presence_penalty,
+            frequency_penalty: profile.frequency_penalty,
+            repeat_penalty: profile.repeat_penalty,
+            // Thinking burns thousands of reasoning tokens before the final
+            // answer; 4096 is enough for the fast path, 8192 gives thinking
+            // headroom while still failing fast on degenerate loops (was
+            // 16384, but a stuck Qwen takes ~9 minutes to hit that — too
+            // long to wait for the timeout to free up Ollama).
+            num_predict,
+            num_ctx,
+        },
+    };
+    let started = std::time::Instant::now();
+    eprintln!(
+        "[llm] POST {url} (ollama-native, streaming) model={model} think={think} messages={} prompt_chars={prompt_chars} num_ctx={num_ctx}",
+        messages.len()
+    );
+    let r = local_client()
+        .post(&url)
+        .json(&req)
+        .send()
+        .await
+        .map_err(|e| {
+            eprintln!(
+                "[llm] ollama send error after {:?}: timeout={} connect={} body={}",
+                started.elapsed(), e.is_timeout(), e.is_connect(), e
+            );
+            if e.is_timeout() {
+                let secs = started.elapsed().as_secs();
+                anyhow!("Timed out after {secs}s waiting for {url}. Restart Ollama and try again.")
+            } else if e.is_connect() {
+                anyhow!("Couldn't reach {url}. Is `ollama serve` running?")
+            } else {
+                anyhow!("network error talking to {url}: {e}")
+            }
+        })?;
+    let status = r.status();
+    eprintln!("[llm] ollama response {status} after {:?}", started.elapsed());
+    if !status.is_success() {
+        let body = r.text().await.unwrap_or_default();
+        eprintln!("[llm] ollama error body: {body}");
+        return Err(anyhow!("HTTP {status} from {url}: {body}"));
+    }
+
+    // Ollama streams newline-delimited JSON. Each chunk frame can land at any
+    // byte boundary, so we accumulate into a buffer and parse on '\n'. Each
+    // frame's content/thinking fields are *deltas* — we accumulate content
+    // for the return value and forward thinking to the caller's callback.
+    use futures_util::StreamExt;
+    let mut byte_stream = r.bytes_stream();
+    let mut lines = LineBuf::default();
+    let mut content = String::new();
+    let mut thinking_chars: usize = 0;
+    let mut chunks_seen: usize = 0;
+
+    while let Some(chunk_res) = byte_stream.next().await {
+        let bytes = chunk_res.map_err(|e| anyhow!("stream read: {e}"))?;
+        lines.extend(&bytes);
+        while let Some(line) = lines.next_line() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let frame: OllamaStreamChunk = match serde_json::from_str(line) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("[llm] could not parse stream frame: {e}\n[llm] frame: {line}");
+                    return Err(anyhow!("unexpected stream frame from {url}: {e}"));
+                }
+            };
+            chunks_seen += 1;
+            if let Some(t) = frame.message.thinking.as_deref() {
+                if !t.is_empty() {
+                    thinking_chars += t.len();
+                    on_chunk(StreamChunk::Thinking(t));
+                }
+            }
+            if !frame.message.content.is_empty() {
+                content.push_str(&frame.message.content);
+                on_chunk(StreamChunk::Content(&frame.message.content));
+            }
+            if frame.done {
+                break;
+            }
+        }
+    }
+
+    eprintln!(
+        "[llm] ollama success in {:?}, content {} chars, thinking {} chars, frames {}",
+        started.elapsed(),
+        content.len(),
+        thinking_chars,
+        chunks_seen
+    );
+    if content.trim().is_empty() {
+        if thinking_chars > 0 {
+            return Err(anyhow!(
+                "{model} spent {thinking_chars} chars thinking and ran out of tokens \
+                 before producing an answer. Disable thinking mode in Settings or \
+                 increase the cap. Thinking is rarely worth the latency for \
+                 summary work."
+            ));
+        }
+        return Err(anyhow!("{model} returned an empty response"));
+    }
+    let trimmed = trim_runaway_repetition(&content);
+    if trimmed.len() < content.len() {
+        eprintln!(
+            "[llm] trimmed runaway repetition: {} → {} chars",
+            content.len(),
+            trimmed.len()
+        );
+    }
+    Ok(trimmed)
+}
+
+// ── Tool-calling steps for agentic chat (issue #47) ─────────────────────────
+// These run ONE step of the loop: offer `tools` (JSON-Schema tool defs already
+// lowered to each provider's envelope by the caller) alongside the full
+// re-lowered conversation, and return the assistant's text plus any tool calls
+// it requested. The caller (`chat::run_chat`) executes the calls and loops.
+// `messages`/`tools` are pre-lowered `serde_json::Value`s so this wire layer
+// stays free of the chat module's types.
+
+use serde_json::{json, Value};
+
+/// A tool call parsed off the wire: provider-supplied (or synthesised) `id`,
+/// tool `name`, and raw JSON `arguments` as a string.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct RawToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: String,
+}
+
+#[derive(Serialize)]
+struct ToolChatRequest<'a> {
+    model: &'a str,
+    messages: &'a [Value],
+    stream: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<&'a [Value]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
+}
+
+/// Whether a failed request is OpenAI refusing function tools alongside the
+/// model's reasoning on `/v1/chat/completions`; such a model takes tools only
+/// through `/v1/responses`.
+fn refuses_tools_beside_reasoning(error: &str) -> bool {
+    let Some(json) = error.find('{').map(|i| &error[i..]) else { return false };
+    serde_json::from_str::<Value>(json)
+        .ok()
+        .and_then(|v| v["error"]["param"].as_str().map(|p| p == "reasoning_effort"))
+        .unwrap_or(false)
+}
+
+/// Models that refused tools on `/v1/chat/completions` this launch, so their
+/// later steps go straight to `/v1/responses`.
+static RESPONSES_FOR_TOOLS: std::sync::LazyLock<parking_lot::Mutex<std::collections::HashSet<String>>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// Chat-completions messages and tools as the Responses API takes them: system
+/// turns become `instructions`, tool calls `function_call` items and tool
+/// results `function_call_output` items.
+fn responses_request_parts(messages: &[Value], tools: &[Value]) -> (String, Vec<Value>, Vec<Value>) {
+    let mut instructions = Vec::new();
+    let mut input = Vec::new();
+    for m in messages {
+        let role = m["role"].as_str().unwrap_or_default();
+        let content = m["content"].as_str().unwrap_or_default();
+        match role {
+            "system" => instructions.push(content.to_string()),
+            "tool" => input.push(json!({
+                "type": "function_call_output",
+                "call_id": m["tool_call_id"],
+                "output": content,
+            })),
+            _ => {
+                let calls = m["tool_calls"].as_array();
+                if !content.is_empty() || calls.is_none() {
+                    input.push(json!({ "role": role, "content": content }));
+                }
+                for call in calls.into_iter().flatten() {
+                    input.push(json!({
+                        "type": "function_call",
+                        "call_id": call["id"],
+                        "name": call["function"]["name"],
+                        "arguments": call["function"]["arguments"],
+                    }));
+                }
+            }
+        }
+    }
+    let tools = tools
+        .iter()
+        .map(|t| {
+            json!({
+                "type": "function",
+                "name": t["function"]["name"],
+                "description": t["function"]["description"],
+                "parameters": t["function"]["parameters"],
+            })
+        })
+        .collect();
+    (instructions.join("\n\n"), input, tools)
+}
+
+/// What a streamed Responses call has produced so far.
+#[derive(Default)]
+struct ResponsesFold {
+    text: String,
+    /// Function calls by output index: call id, name, arguments.
+    calls: std::collections::BTreeMap<u64, (String, String, String)>,
+    done: bool,
+}
+
+impl ResponsesFold {
+    /// Take one stream event; the answer text it adds, if any.
+    fn feed(&mut self, ev: &Value) -> Result<Option<String>> {
+        let index = ev["output_index"].as_u64().unwrap_or_default();
+        match ev["type"].as_str().unwrap_or_default() {
+            "response.output_text.delta" => {
+                let delta = ev["delta"].as_str().unwrap_or_default().to_string();
+                self.text.push_str(&delta);
+                return Ok(Some(delta));
+            }
+            "response.output_item.added" | "response.output_item.done"
+                if ev["item"]["type"] == "function_call" =>
+            {
+                let item = &ev["item"];
+                let slot = self.calls.entry(index).or_default();
+                slot.0 = item["call_id"].as_str().unwrap_or_default().to_string();
+                slot.1 = item["name"].as_str().unwrap_or_default().to_string();
+                let args = item["arguments"].as_str().unwrap_or_default();
+                if !args.is_empty() {
+                    slot.2 = args.to_string();
+                }
+            }
+            "response.function_call_arguments.delta" => {
+                self.calls.entry(index).or_default().2.push_str(ev["delta"].as_str().unwrap_or_default());
+            }
+            "response.completed" | "response.incomplete" => self.done = true,
+            "response.failed" => {
+                let message = ev["response"]["error"]["message"].as_str().unwrap_or("the response failed");
+                return Err(anyhow!("OpenAI: {message}"));
+            }
+            "error" => {
+                let message = ev["message"].as_str().unwrap_or("stream error");
+                return Err(anyhow!("OpenAI: {message}"));
+            }
+            _ => {}
+        }
+        Ok(None)
+    }
+
+    fn tool_calls(&self) -> Vec<RawToolCall> {
+        self.calls
+            .values()
+            .filter(|(_, name, _)| !name.is_empty())
+            .enumerate()
+            .map(|(i, (id, name, arguments))| RawToolCall {
+                id: if id.is_empty() { format!("call_{i}") } else { id.clone() },
+                name: name.clone(),
+                arguments: if arguments.trim().is_empty() { "{}".into() } else { arguments.clone() },
+            })
+            .collect()
+    }
+}
+
+/// One cloud step through `/v1/responses`, for a model that takes tools only
+/// there. Same contract as [`openai_chat_step`].
+async fn openai_responses_step<F>(
+    api_key: &str,
+    model: &str,
+    messages: &[Value],
+    tools: &[Value],
+    mut on_delta: F,
+) -> Result<(String, Vec<RawToolCall>)>
+where
+    F: FnMut(&str) -> bool + Send,
+{
+    use futures_util::StreamExt;
+    let (instructions, input, tools) = responses_request_parts(messages, tools);
+    let mut body = json!({ "model": model, "input": input, "stream": true, "store": false });
+    if !instructions.is_empty() {
+        body["instructions"] = json!(instructions);
+    }
+    if !tools.is_empty() {
+        body["tools"] = json!(tools);
+    }
+    let started = std::time::Instant::now();
+    let ep = Endpoint::Cloud;
+    let http = ep.client();
+    let url = format!("{BASE}/responses");
+    let r = match send_with_retries(|| http.post(&url).bearer_auth(api_key).json(&body), started).await {
+        Ok(r) => r,
+        Err(e) if e.is_timeout() => return Err(ep.timeout_error(started.elapsed().as_secs())),
+        Err(e) if e.is_connect() => return Err(ep.connect_error()),
+        Err(e) => return Err(ep.network_error(&error_chain(&e))),
+    };
+    let r = check_chat_status(&ep, r, api_key, started).await?;
+
+    let mut stream = r.bytes_stream();
+    let mut lines = LineBuf::default();
+    let mut fold = ResponsesFold::default();
+    'read: while let Some(chunk) = stream.next().await {
+        lines.extend(&chunk.map_err(|e| anyhow!("stream read: {e}"))?);
+        while let Some(line) = lines.next_line() {
+            let Some(data) = line.trim().strip_prefix("data:") else { continue };
+            let Ok(ev) = serde_json::from_str::<Value>(data.trim()) else { continue };
+            if let Some(delta) = fold.feed(&ev)? {
+                if !delta.is_empty() && !on_delta(&delta) {
+                    return Ok((fold.text, Vec::new()));
+                }
+            }
+            if fold.done {
+                break 'read;
+            }
+        }
+    }
+    let tool_calls = fold.tool_calls();
+    if fold.text.trim().is_empty() && tool_calls.is_empty() {
+        return Err(empty_answer_error(model, None, 0));
+    }
+    Ok((fold.text, tool_calls))
+}
+
+// Streaming SSE delta shapes for OpenAI tool calls. `tool_calls` arrive as
+// index-keyed fragments: the first fragment for an index carries `id` + name,
+// later ones append `arguments` text. We accumulate by index.
+#[derive(Deserialize, Default)]
+struct ToolStreamDelta {
+    #[serde(default)]
+    content: Option<String>,
+    // Thinking text, under whichever name the server uses for it.
+    #[serde(default)]
+    reasoning: Option<String>,
+    #[serde(default)]
+    reasoning_content: Option<String>,
+    // Some servers send `null` here; a frame that fails to parse loses its
+    // `finish_reason` too.
+    #[serde(default)]
+    tool_calls: Option<Vec<ToolCallFragment>>,
+}
+#[derive(Deserialize)]
+struct ToolCallFragment {
+    index: usize,
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    function: Option<ToolFnFragment>,
+}
+#[derive(Deserialize, Default)]
+struct ToolFnFragment {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    arguments: Option<String>,
+}
+#[derive(Deserialize)]
+struct ToolStreamFrame {
+    #[serde(default)]
+    choices: Vec<ToolStreamChoice>,
+}
+#[derive(Deserialize)]
+struct ToolStreamChoice {
+    #[serde(default)]
+    delta: ToolStreamDelta,
+    #[serde(default)]
+    finish_reason: Option<String>,
+}
+
+/// Run one cloud-OpenAI step with tool-calling. Streams answer tokens via
+/// `on_delta`; buffers streamed tool-call fragments and returns them assembled.
+/// `tools` is a slice of OpenAI tool-def objects (empty = force a text answer).
+///
+/// `on_delta` returns whether to keep reading: `false` stops the stream and
+/// returns the partial answer accumulated so far, which is how a user stop
+/// aborts a turn mid-answer instead of after it (issue #80).
+pub(crate) async fn openai_chat_step<F>(
+    base_url: &str,
+    api_key: &str,
+    model: &str,
+    messages: &[Value],
+    tools: &[Value],
+    on_delta: F,
+) -> Result<(String, Vec<RawToolCall>)>
+where
+    F: FnMut(&str) -> bool + Send,
+{
+    let req = |max_tokens| ToolChatRequest {
+        model,
+        messages,
+        stream: true,
+        tools: if tools.is_empty() { None } else { Some(tools) },
+        temperature: if is_reasoning_model(model) { None } else { Some(0.2) },
+        max_tokens,
+    };
+    // `base_url` may be a local OpenAI-compat server, which needs the longer
+    // timeout and its own failure vocabulary — `Endpoint` owns both.
+    let ep = Endpoint::from_base(base_url);
+    let cloud = matches!(ep, Endpoint::Cloud);
+    if cloud && !tools.is_empty() && RESPONSES_FOR_TOOLS.lock().contains(model) {
+        return openai_responses_step(api_key, model, messages, tools, on_delta).await;
+    }
+    let r = match post_chat_lifting_limit(&ep, api_key, std::time::Instant::now(), req).await {
+        Err(e) if cloud && !tools.is_empty() && refuses_tools_beside_reasoning(&e.to_string()) => {
+            eprintln!("[llm] {model} takes tools only through /v1/responses; using it for this model");
+            RESPONSES_FOR_TOOLS.lock().insert(model.to_string());
+            return openai_responses_step(api_key, model, messages, tools, on_delta).await;
+        }
+        r => r?,
+    };
+    read_tool_stream(r, model, on_delta).await
+}
+
+/// One chat step against the user's own endpoint (#173): `model`, `messages`,
+/// `stream` and the tools, nothing else. Same `on_delta` contract as
+/// [`openai_chat_step`].
+pub(crate) async fn custom_chat_step<F>(
+    base_url: &str,
+    api_key: Option<&str>,
+    model: &str,
+    messages: &[Value],
+    tools: &[Value],
+    on_delta: F,
+) -> Result<(String, Vec<RawToolCall>)>
+where
+    F: FnMut(&str) -> bool + Send,
+{
+    let req = ToolChatRequest {
+        model,
+        messages,
+        stream: true,
+        tools: if tools.is_empty() { None } else { Some(tools) },
+        temperature: None,
+        max_tokens: None,
+    };
+    let ep = Endpoint::Custom(base_url);
+    let r = post_chat(&ep, api_key.unwrap_or(""), &req, std::time::Instant::now()).await?;
+    read_tool_stream(r, model, on_delta).await
+}
+
+/// Read a streamed chat-completions step: answer deltas through `on_delta`
+/// (which returns whether to keep reading), tool-call fragments assembled.
+async fn read_tool_stream<F>(
+    r: reqwest::Response,
+    model: &str,
+    mut on_delta: F,
+) -> Result<(String, Vec<RawToolCall>)>
+where
+    F: FnMut(&str) -> bool + Send,
+{
+    use futures_util::StreamExt;
+    let mut byte_stream = r.bytes_stream();
+    let mut lines = LineBuf::default();
+    let mut answer = String::new();
+    // Accumulate tool-call fragments by index → (id, name, arguments).
+    let mut calls: Vec<(String, String, String)> = Vec::new();
+    let mut reasoning_chars = 0usize;
+    let mut finish_reason: Option<String> = None;
+    // Set when `on_delta` asks to stop; breaks both loops and returns the
+    // partial answer (issue #80).
+    let mut stop = false;
+    while let Some(chunk_res) = byte_stream.next().await {
+        let bytes = chunk_res.map_err(|e| anyhow!("stream read: {e}"))?;
+        lines.extend(&bytes);
+        while let Some(line) = lines.next_line() {
+            let line = line.trim();
+            let Some(data) = line.strip_prefix("data:") else { continue };
+            let data = data.trim();
+            if data == "[DONE]" {
+                break;
+            }
+            let frame: ToolStreamFrame = match serde_json::from_str(data) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            let Some(choice) = frame.choices.into_iter().next() else { continue };
+            if choice.finish_reason.is_some() {
+                finish_reason = choice.finish_reason;
+            }
+            let reasoning = choice.delta.reasoning.as_deref().or(choice.delta.reasoning_content.as_deref());
+            reasoning_chars += reasoning.map_or(0, str::len);
+            if let Some(delta) = choice.delta.content {
+                if !delta.is_empty() {
+                    answer.push_str(&delta);
+                    if !on_delta(&delta) {
+                        stop = true;
+                        break;
+                    }
+                }
+            }
+            for frag in choice.delta.tool_calls.into_iter().flatten() {
+                if calls.len() <= frag.index {
+                    calls.resize(frag.index + 1, (String::new(), String::new(), String::new()));
+                }
+                let slot = &mut calls[frag.index];
+                if let Some(id) = frag.id {
+                    slot.0 = id;
+                }
+                if let Some(f) = frag.function {
+                    if let Some(name) = f.name {
+                        slot.1 = name;
+                    }
+                    if let Some(args) = f.arguments {
+                        slot.2.push_str(&args);
+                    }
+                }
+            }
+        }
+        // Checked here, not at the top of the loop: at the top we'd first await
+        // one more network chunk before noticing the stop.
+        if stop {
+            break;
+        }
+    }
+
+    let tool_calls: Vec<RawToolCall> = calls
+        .into_iter()
+        .enumerate()
+        .filter(|(_, (_, name, _))| !name.is_empty())
+        .map(|(i, (id, name, arguments))| RawToolCall {
+            id: if id.is_empty() { format!("call_{i}") } else { id },
+            name,
+            arguments: if arguments.trim().is_empty() { "{}".into() } else { arguments },
+        })
+        .collect();
+
+    if answer.trim().is_empty() && tool_calls.is_empty() {
+        return Err(empty_answer_error(model, finish_reason.as_deref(), reasoning_chars));
+    }
+    Ok((answer, tool_calls))
+}
+
+// Ollama native `/api/chat` step with tools. Per spike #45 this uses
+// `stream: false` (buffered) — the reliability probe validated tool-calling in
+// exactly this mode, and small local models frame tool calls inconsistently
+// when streamed. The buffered content is delivered to `on_delta` in one piece
+// so the UI still renders the final answer. Ollama tool calls carry no id, so
+// we synthesise one; `arguments` may be an object or a string and is
+// normalised to a JSON string.
+#[derive(Serialize)]
+struct OllamaToolChatRequest<'a> {
+    model: &'a str,
+    messages: &'a [Value],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<&'a [Value]>,
+    stream: bool,
+    think: bool,
+    keep_alive: i32,
+    options: OllamaToolOptions,
+}
+// Tool-calling wants determinism, not the Qwen anti-loop sampling used for
+// long summaries — a low temperature makes tool selection + args reliable
+// (the spike ran at temperature 0).
+#[derive(Serialize)]
+struct OllamaToolOptions {
+    temperature: f32,
+    num_predict: i32,
+    num_ctx: i32,
+}
+#[derive(Deserialize)]
+struct OllamaToolResponse {
+    message: OllamaToolMessage,
+}
+#[derive(Deserialize, Default)]
+struct OllamaToolMessage {
+    #[serde(default)]
+    content: String,
+    #[serde(default)]
+    tool_calls: Vec<OllamaToolCallWire>,
+}
+#[derive(Deserialize)]
+struct OllamaToolCallWire {
+    function: OllamaToolFn,
+}
+#[derive(Deserialize)]
+struct OllamaToolFn {
+    name: String,
+    #[serde(default)]
+    arguments: Value,
+}
+
+/// One Ollama step, via its native `/api/chat`. Unlike the cloud path this is
+/// **not** streamed (`stream: false`) — the answer is buffered and handed to
+/// `on_delta` in one piece, so its return value can't abort anything. A user
+/// stop mid-step is handled a level up, by `agentic_loop` racing this call
+/// against the cancel flag (issue #80); the bool is returned only to keep one
+/// callback shape across both providers.
+pub(crate) async fn ollama_chat_step<F>(
+    native_base: &str,
+    model: &str,
+    messages: &[Value],
+    tools: &[Value],
+    mut on_delta: F,
+) -> Result<(String, Vec<RawToolCall>)>
+where
+    F: FnMut(&str) -> bool + Send,
+{
+    let url = format!("{native_base}/chat");
+    let prompt_chars: usize = messages
+        .iter()
+        .map(|m| m.get("content").and_then(|c| c.as_str()).map(str::len).unwrap_or(0))
+        .sum();
+    let num_predict = 4096i32;
+    let approx_input_tokens = prompt_chars / 4;
+    let need = approx_input_tokens + (num_predict as usize) + 512;
+    let mut ctx: usize = 8192;
+    while ctx < need && ctx < 65536 {
+        ctx *= 2;
+    }
+    let req = OllamaToolChatRequest {
+        model,
+        messages,
+        tools: if tools.is_empty() { None } else { Some(tools) },
+        stream: false,
+        think: false,
+        keep_alive: 0,
+        options: OllamaToolOptions { temperature: 0.0, num_predict, num_ctx: ctx as i32 },
+    };
+    let started = std::time::Instant::now();
+    eprintln!(
+        "[chat] POST {url} (ollama-native, tools={}) model={model} messages={} prompt_chars={prompt_chars} num_ctx={ctx}",
+        tools.len(),
+        messages.len(),
+    );
+    let r = local_client()
+        .post(&url)
+        .json(&req)
+        .send()
+        .await
+        .map_err(|e| {
+            if e.is_timeout() {
+                anyhow!("Timed out waiting for {url}. Restart Ollama and try again.")
+            } else if e.is_connect() {
+                anyhow!("Couldn't reach {url}. Is `ollama serve` running?")
+            } else {
+                anyhow!("network error talking to {url}: {e}")
+            }
+        })?;
+    let status = r.status();
+    if !status.is_success() {
+        let body = r.text().await.unwrap_or_default();
+        return Err(anyhow!("HTTP {status} from {url}: {body}"));
+    }
+    let resp: OllamaToolResponse = r
+        .json()
+        .await
+        .map_err(|e| anyhow!("could not parse Ollama response from {url}: {e}"))?;
+    let tool_calls: Vec<RawToolCall> = resp
+        .message
+        .tool_calls
+        .into_iter()
+        .enumerate()
+        .map(|(i, tc)| {
+            let arguments = match tc.function.arguments {
+                Value::String(s) => s,
+                other => serde_json::to_string(&other).unwrap_or_else(|_| "{}".into()),
+            };
+            RawToolCall { id: format!("call_{i}"), name: tc.function.name, arguments }
+        })
+        .collect();
+    let content = trim_runaway_repetition(&resp.message.content);
+    if !content.is_empty() {
+        let _ = on_delta(&content);
+    }
+    eprintln!(
+        "[chat] ollama step done in {:?}: {} chars, {} tool calls",
+        started.elapsed(),
+        content.len(),
+        tool_calls.len(),
+    );
+    if content.trim().is_empty() && tool_calls.is_empty() {
+        return Err(anyhow!("{model} returned an empty response"));
+    }
+    Ok((content, tool_calls))
+}
+
+/// Detect runaway repetition (the same non-empty line repeated 3+ times
+/// consecutively) and truncate at the first repetition. Qwen 3.5 sometimes
+/// produces a clean summary, then degenerates into "Note: Wilma sa nei.
+/// Note: Michael tilbød yoghurt." for thousands of tokens — sampling
+/// penalties (presence_penalty=1.5, frequency_penalty=0.5) slow this down
+/// but don't always kill it before num_predict expires. Final safety net.
+///
+/// Conservative on purpose: only triggers on *exact* line equality (after
+/// trim) and requires 3+ consecutive copies. False positives (truncating
+/// a list that legitimately repeats a short phrase) are worse than missing
+/// some tail spam.
+fn trim_runaway_repetition(text: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    if lines.len() < 3 {
+        return text.to_string();
+    }
+    let mut i = 0;
+    while i + 2 < lines.len() {
+        let normalized = lines[i].trim();
+        if !normalized.is_empty()
+            && lines[i + 1].trim() == normalized
+            && lines[i + 2].trim() == normalized
+        {
+            return lines[..i].join("\n").trim_end().to_string();
+        }
+        i += 1;
+    }
+    text.to_string()
+}
+
+/// Fetch the list of models a local OpenAI-compat server has loaded. Used by
+/// the Settings UI to populate a model dropdown when the user picks Local
+/// provider. Hits `<base_url>/models` and returns the `id` field for each
+/// entry — the universal OpenAI/Ollama/LM Studio shape.
+/// Ids a listing offers that are no use as a chat model — a different
+/// modality, an embedder, a completion-only or tool-specific model.
+const NON_CHAT_MARKERS: &[&str] = &[
+    "realtime",
+    "audio",
+    "transcribe",
+    "tts",
+    "image",
+    "embedding",
+    "search",
+    "instruct",
+    "moderation",
+    "codex",
+];
+
+/// A dated snapshot (`gpt-5.4-2026-03-01`) — the undated alias points at the
+/// same model and is the one to offer.
+fn is_dated_snapshot(id: &str) -> bool {
+    let b = id.as_bytes();
+    if b.len() < 11 {
+        return false;
+    }
+    let tail = &b[b.len() - 11..];
+    tail[0] == b'-'
+        && tail[5] == b'-'
+        && tail[8] == b'-'
+        && tail[1..5].iter().all(|c| c.is_ascii_digit())
+        && tail[6..8].iter().all(|c| c.is_ascii_digit())
+        && tail[9..].iter().all(|c| c.is_ascii_digit())
+}
+
+/// Narrow a raw OpenAI model listing to what a summary or chat picker should
+/// offer, newest-looking first.
+pub(crate) fn chat_capable_models(ids: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = ids
+        .into_iter()
+        .filter(|id| id.starts_with("gpt-") || is_reasoning_model(id))
+        .filter(|id| !NON_CHAT_MARKERS.iter().any(|m| id.contains(m)))
+        .filter(|id| !is_dated_snapshot(id))
+        .collect();
+    out.sort_by(|a, b| b.cmp(a));
+    out.dedup();
+    out
+}
+
+/// Models a listing offers. `api_key` is `None` for a local server, which
+/// takes no auth.
+pub async fn list_models_with_key(base_url: &str, api_key: Option<&str>) -> Result<Vec<String>> {
+    #[derive(Deserialize)]
+    struct ListResponse {
+        data: Vec<ModelEntry>,
+    }
+    #[derive(Deserialize)]
+    struct ModelEntry {
+        id: String,
+    }
+    let mut req = client().get(format!("{base_url}/models"));
+    if let Some(key) = api_key {
+        req = req.bearer_auth(key);
+    }
+    let r = req.send().await?;
+    if !r.status().is_success() {
+        let s = r.status();
+        return Err(anyhow!("HTTP {s} from {base_url}/models"));
+    }
+    let body: ListResponse = r.json().await?;
+    Ok(body.data.into_iter().map(|m| m.id).collect())
+}
+
+pub async fn list_models(base_url: &str) -> Result<Vec<String>> {
+    list_models_with_key(base_url, None).await
+}
+
+// ── Embeddings (issue #48) ──────────────────────────────────────────────────
+// Cloud OpenAI and Ollama both serve the OpenAI-compatible `/v1/embeddings`
+// shape (`{model, input:[…]}` → `{data:[{embedding, index}]}`), so one function
+// covers both — base_url selects the target. Unlike chat, embeddings have no
+// thinking mode, so the "use Ollama's native /api/chat" caveat doesn't apply.
+
+#[derive(Serialize)]
+struct EmbedRequest<'a> {
+    model: &'a str,
+    input: &'a [String],
+}
+#[derive(Deserialize)]
+struct EmbedResponse {
+    data: Vec<EmbedDatum>,
+}
+#[derive(Deserialize)]
+struct EmbedDatum {
+    embedding: Vec<f32>,
+    #[serde(default)]
+    index: usize,
+}
+
+/// Embed a batch of texts via the OpenAI-compatible embeddings endpoint at
+/// `base_url`. `api_key` is sent as a bearer when present (cloud OpenAI); local
+/// servers ignore it. Returns one vector per input, in input order.
+pub(crate) async fn openai_embed(
+    base_url: &str,
+    api_key: Option<&str>,
+    model: &str,
+    inputs: &[String],
+) -> Result<Vec<Vec<f32>>> {
+    if inputs.is_empty() {
+        return Ok(Vec::new());
+    }
+    let url = format!("{base_url}/embeddings");
+    let mut req = local_client().post(&url).json(&EmbedRequest { model, input: inputs });
+    if let Some(key) = api_key {
+        req = req.bearer_auth(key);
+    }
+    let r = req.send().await.map_err(|e| {
+        if e.is_timeout() {
+            anyhow!("Timed out waiting for embeddings from {url}.")
+        } else if e.is_connect() {
+            anyhow!("Couldn't reach {url} for embeddings.")
+        } else {
+            anyhow!("network error requesting embeddings from {url}: {}", error_chain(&e))
+        }
+    })?;
+    let status = r.status();
+    if !status.is_success() {
+        let body = r.text().await.unwrap_or_default();
+        return Err(anyhow!("HTTP {status} from {url}: {body}"));
+    }
+    let mut body: EmbedResponse = r
+        .json()
+        .await
+        .map_err(|e| anyhow!("could not parse embeddings response from {url}: {e}"))?;
+    if body.data.len() != inputs.len() {
+        return Err(anyhow!(
+            "embeddings response had {} vectors for {} inputs",
+            body.data.len(),
+            inputs.len()
+        ));
+    }
+    // Order by `index` so vectors line up with inputs regardless of wire order.
+    body.data.sort_by_key(|d| d.index);
+    Ok(body.data.into_iter().map(|d| d.embedding).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_model_refusing_tools_beside_reasoning_is_recognised() {
+        let refusal = r#"HTTP 400 Bad Request from https://api.openai.com/v1: { "error": { "message": "Function tools with reasoning_effort are not supported for gpt-6.1-sol in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'.", "type": "invalid_request_error", "param": "reasoning_effort", "code": null } }"#;
+        assert!(refuses_tools_beside_reasoning(refusal));
+        let other = r#"HTTP 400 Bad Request from https://api.openai.com/v1: { "error": { "message": "Unsupported value: 'temperature'", "type": "invalid_request_error", "param": "temperature", "code": null } }"#;
+        assert!(!refuses_tools_beside_reasoning(other));
+        assert!(!refuses_tools_beside_reasoning("HTTP 500 Internal Server Error from https://api.openai.com/v1: oops"));
+    }
+
+    #[test]
+    fn chat_messages_become_responses_items() {
+        let messages = vec![
+            json!({ "role": "system", "content": "Answer from notes." }),
+            json!({ "role": "system", "content": "Today is 27 Oct." }),
+            json!({ "role": "user", "content": "What did Acme decide?" }),
+            json!({ "role": "assistant", "content": "", "tool_calls": [
+                { "id": "call_1", "type": "function", "function": { "name": "search_notes", "arguments": "{\"query\":\"Acme\"}" } }
+            ]}),
+            json!({ "role": "tool", "tool_call_id": "call_1", "content": "kept the budget" }),
+        ];
+        let tools = vec![json!({ "type": "function", "function": {
+            "name": "search_notes", "description": "Search notes.", "parameters": { "type": "object" }
+        }})];
+
+        let (instructions, input, tools) = responses_request_parts(&messages, &tools);
+
+        assert_eq!(instructions, "Answer from notes.\n\nToday is 27 Oct.");
+        assert_eq!(
+            input,
+            vec![
+                json!({ "role": "user", "content": "What did Acme decide?" }),
+                json!({ "type": "function_call", "call_id": "call_1", "name": "search_notes", "arguments": "{\"query\":\"Acme\"}" }),
+                json!({ "type": "function_call_output", "call_id": "call_1", "output": "kept the budget" }),
+            ]
+        );
+        assert_eq!(
+            tools,
+            vec![json!({ "type": "function", "name": "search_notes", "description": "Search notes.", "parameters": { "type": "object" } })]
+        );
+    }
+
+    #[test]
+    fn an_assistant_turn_with_text_keeps_it_beside_its_calls() {
+        let (_, input, _) = responses_request_parts(
+            &[json!({ "role": "assistant", "content": "Let me look.", "tool_calls": [
+                { "id": "c", "type": "function", "function": { "name": "get_note", "arguments": "{}" } }
+            ]})],
+            &[],
+        );
+        assert_eq!(input[0], json!({ "role": "assistant", "content": "Let me look." }));
+        assert_eq!(input[1]["type"], "function_call");
+    }
+
+    #[test]
+    fn the_stream_folds_into_text_and_tool_calls() {
+        let mut fold = ResponsesFold::default();
+        let mut streamed = String::new();
+        for ev in [
+            json!({"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"search_notes","arguments":""}}),
+            json!({"type":"response.function_call_arguments.delta","output_index":0,"delta":"{\"query\":"}),
+            json!({"type":"response.function_call_arguments.delta","output_index":0,"delta":"\"Acme\"}"}),
+            json!({"type":"response.output_item.added","output_index":1,"item":{"type":"message","role":"assistant","content":[]}}),
+            json!({"type":"response.output_text.delta","output_index":1,"delta":"Hi"}),
+            json!({"type":"response.output_text.delta","output_index":1,"delta":" there"}),
+            json!({"type":"response.completed","response":{"status":"completed"}}),
+        ] {
+            if let Some(delta) = fold.feed(&ev).unwrap() {
+                streamed.push_str(&delta);
+            }
+        }
+        assert!(fold.done);
+        assert_eq!(streamed, "Hi there");
+        assert_eq!(fold.text, "Hi there");
+        assert_eq!(
+            fold.tool_calls(),
+            vec![RawToolCall { id: "call_1".into(), name: "search_notes".into(), arguments: "{\"query\":\"Acme\"}".into() }]
+        );
+    }
+
+    #[test]
+    fn a_failed_response_is_an_error() {
+        let mut fold = ResponsesFold::default();
+        let err = fold
+            .feed(&json!({"type":"response.failed","response":{"status":"failed","error":{"code":"server_error","message":"The server had an error"}}}))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("The server had an error"), "{err}");
+        assert!(fold.feed(&json!({"type":"error","message":"rate limited"})).unwrap_err().to_string().contains("rate limited"));
+    }
+
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn a_model_listing_is_narrowed_to_chat_models() {
+        let raw = [
+            "whisper-1",
+            "gpt-4o-realtime-preview",
+            "text-embedding-3-small",
+            "gpt-5.4-mini",
+            "gpt-5.4-2026-03-01",
+            "o3",
+            "gpt-image-1",
+            "chatgpt-4o-latest",
+        ]
+        .map(String::from)
+        .to_vec();
+        assert_eq!(chat_capable_models(raw), vec!["o3", "gpt-5.4-mini"]);
+    }
+
+    #[test]
+    fn an_undated_alias_survives_the_snapshot_filter() {
+        assert!(is_dated_snapshot("gpt-5.4-2026-03-01"));
+        assert!(!is_dated_snapshot("gpt-5.4"));
+        assert!(!is_dated_snapshot("gpt-4o-mini"));
+    }
+
+    #[test]
+    fn the_send_retry_policy_is_two_tries_with_a_lengthening_backoff() {
+        assert_eq!(MAX_SEND_RETRIES, 2);
+        assert_eq!(retry_backoff_ms(1), 500);
+        assert_eq!(retry_backoff_ms(2), 1000);
+    }
+
+    // Feed a whole SSE body through the parser in fixed-size byte slices,
+    // returning (assembled answer, the deltas that fired). Slicing at
+    // arbitrary widths is the point: real chunk boundaries land mid-frame.
+    fn parse_sse(body: &str, slice: usize) -> (String, Vec<String>) {
+        let mut parser = ChatSseParser::default();
+        let mut deltas: Vec<String> = Vec::new();
+        let mut on_delta = |d: &str| deltas.push(d.to_string());
+        for part in body.as_bytes().chunks(slice) {
+            parser.push(part, &mut on_delta);
+        }
+        (parser.answer, deltas)
+    }
+
+    fn frame(content: &str) -> String {
+        format!(
+            "data: {{\"choices\":[{{\"delta\":{{\"content\":{}}}}}]}}\n\n",
+            serde_json::to_string(content).unwrap()
+        )
+    }
+
+    #[test]
+    fn sse_assembles_deltas_in_order() {
+        let body = format!("{}{}{}data: [DONE]\n", frame("Hello"), frame(", "), frame("world"));
+        let (answer, deltas) = parse_sse(&body, body.len());
+        assert_eq!(answer, "Hello, world");
+        assert_eq!(deltas, vec!["Hello", ", ", "world"]);
+    }
+
+    #[test]
+    fn sse_survives_frames_split_across_chunk_boundaries() {
+        // The failure this guards: a summary truncated because one frame
+        // straddled two TCP reads. Every slice width must yield the same
+        // answer, including 1 byte at a time (worst case: every frame split).
+        let body = format!(
+            "{}{}{}data: [DONE]\n",
+            frame("Oppsummering:"),
+            frame(" møtet"),
+            frame(" handlet om design.")
+        );
+        let expected = "Oppsummering: møtet handlet om design.";
+        for slice in [1, 3, 7, 17, 64, 4096] {
+            let (answer, _) = parse_sse(&body, slice);
+            assert_eq!(answer, expected, "split at {slice} bytes lost content");
+        }
+    }
+
+    #[test]
+    fn sse_keeps_multibyte_characters_split_across_chunk_boundaries_intact() {
+        // Regression: the parser used to decode each network chunk with
+        // from_utf8_lossy on arrival, so a 2-byte `ø` (or `æ`/`å`/an em dash)
+        // straddling two TCP reads became two U+FFFD chars in the saved
+        // summary. Slice at every width so the boundary lands inside each
+        // multi-byte char in turn.
+        let body = format!("{}data: [DONE]\n", frame("Blåbær — økt på tømmerhøgda"));
+        let expected = "Blåbær — økt på tømmerhøgda";
+        for slice in 1..=body.len() {
+            let (answer, _) = parse_sse(&body, slice);
+            assert_eq!(answer, expected, "split at {slice} bytes mangled UTF-8");
+            assert!(!answer.contains('\u{FFFD}'), "replacement char at slice {slice}");
+        }
+    }
+
+    #[test]
+    fn sse_skips_heartbeats_and_unparseable_frames() {
+        // OpenAI interleaves `:` comment keep-alives, and a role-only opening
+        // frame carries no content. Neither may abort the answer.
+        let body = format!(
+            ": ping\n\ndata: {{\"choices\":[{{\"delta\":{{\"role\":\"assistant\"}}}}]}}\n\n\
+             {}data: not-json\n\n{}data: [DONE]\n",
+            frame("A"),
+            frame("B")
+        );
+        let (answer, deltas) = parse_sse(&body, 5);
+        assert_eq!(answer, "AB");
+        assert_eq!(deltas, vec!["A", "B"]);
+    }
+
+    #[test]
+    fn sse_ignores_empty_deltas_so_the_ui_gets_no_noop_events() {
+        let body = format!("{}{}{}data: [DONE]\n", frame("A"), frame(""), frame("B"));
+        let (answer, deltas) = parse_sse(&body, 9);
+        assert_eq!(answer, "AB");
+        assert_eq!(deltas, vec!["A", "B"], "an empty delta must not fire on_delta");
+    }
+
+    #[test]
+    fn sse_truncated_at_the_last_frame_keeps_only_completed_frames() {
+        // A connection dropped mid-frame (the VPN case) leaves the partial
+        // line unparsed in the buffer rather than half-committing it.
+        let mut body = format!("{}{}", frame("Ferdig del"), frame("aldri fullført"));
+        body.truncate(body.len() - 30);
+        let (answer, _) = parse_sse(&body, 4);
+        assert_eq!(answer, "Ferdig del");
+    }
+
+    #[test]
+    fn qwen_family_detected() {
+        for m in ["qwen3.5:4b", "qwen3.5:9b", "Qwen2.5-Instruct", "QWEN3", "myorg/qwen-custom"] {
+            assert!(is_qwen_model(m), "expected qwen: {m}");
+        }
+        for m in ["gemma4:12b-mlx", "llama3.2:3b", "gpt-5.4", "mistral", "phi4"] {
+            assert!(!is_qwen_model(m), "expected non-qwen: {m}");
+        }
+    }
+
+    #[test]
+    fn qwen_keeps_the_loop_breaker_profile() {
+        // The Qwen-specific penalties are what break its thinking/content loops —
+        // they must stay exactly as before for qwen* models (#51).
+        for think in [false, true] {
+            let p = sampling_profile("qwen3.5:4b", think);
+            assert_eq!(p.presence_penalty, 1.5);
+            assert_eq!(p.frequency_penalty, 0.5);
+            assert_eq!(p.repeat_penalty, 1.0);
+            assert_eq!(p.top_k, 20);
+        }
+        // The think/non-think temp + top_p split is preserved.
+        assert_eq!(sampling_profile("qwen3.5:4b", true).temperature, 1.0);
+        assert_eq!(sampling_profile("qwen3.5:4b", false).temperature, 0.7);
+        assert_eq!(sampling_profile("qwen3.5:4b", false).top_p, 0.8);
+    }
+
+    #[test]
+    fn non_qwen_gets_neutral_sampling_not_qwen_penalties() {
+        // gemma4:12b-mlx (the recommended local model) must NOT run under the
+        // Qwen loop-breaker penalties (#51).
+        for think in [false, true] {
+            let p = sampling_profile("gemma4:12b-mlx", think);
+            assert_eq!(p.presence_penalty, 0.0, "no Qwen presence penalty");
+            assert_eq!(p.frequency_penalty, 0.0, "no Qwen frequency penalty");
+            assert_eq!(p.repeat_penalty, 1.1, "standard repetition handling");
+            assert_eq!(p.top_k, 40);
+        }
+    }
+
+    #[test]
+    fn reasoning_models_detected() {
+        for m in [
+            "gpt-5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.5",
+            "gpt-5-mini", "gpt-5-nano",
+            "gpt-6", "gpt-6-mini", "gpt-6.1", "gpt-6.1-nano", "gpt-7",
+            "o1", "o3", "o4-mini",
+        ] {
+            assert!(is_reasoning_model(m), "expected reasoning: {m}");
+        }
+    }
+
+    #[test]
+    fn trim_truncates_at_3plus_consecutive_dupes() {
+        let input = "Hovedtemaer\n- A\n- B\n\nNote: spam.\nNote: spam.\nNote: spam.\nNote: spam.";
+        let out = trim_runaway_repetition(input);
+        assert_eq!(out, "Hovedtemaer\n- A\n- B");
+    }
+
+    #[test]
+    fn trim_keeps_clean_output() {
+        let input = "Hovedtemaer\n- A\n- B\n- C\n\nTilbakemeldinger\n- One\n- Two";
+        let out = trim_runaway_repetition(input);
+        assert_eq!(out, input);
+    }
+
+    #[test]
+    fn trim_keeps_two_consecutive_dupes() {
+        // A list with two identical entries shouldn't trigger; only 3+ does.
+        let input = "- Same\n- Same\n- Different";
+        let out = trim_runaway_repetition(input);
+        assert_eq!(out, input);
+    }
+
+    #[test]
+    fn trim_ignores_empty_line_runs() {
+        // Multiple blank lines must not count as repetition.
+        let input = "Header\n\n\n\nBody";
+        let out = trim_runaway_repetition(input);
+        assert_eq!(out, input);
+    }
+
+    #[test]
+    fn traditional_chat_models_not_reasoning() {
+        for m in [
+            "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4",
+            "gpt-3.5-turbo", "gpt-4.1", "gpt-4.1-mini", "chatgpt-4o-latest",
+            "openai-internal", // "o" prefix but not followed by a digit
+        ] {
+            assert!(!is_reasoning_model(m), "expected NOT reasoning: {m}");
+        }
+    }
+
+    mod local_output_ceiling {
+        use super::*;
+        use crate::chat::test_server::serve;
+        use serde_json::json;
+
+        fn base(port: u16) -> String {
+            format!("http://127.0.0.1:{port}/v1")
+        }
+
+        fn sse(frames: &[Value]) -> String {
+            let mut out: String = frames.iter().map(|f| format!("data: {f}\n\n")).collect();
+            out.push_str("data: [DONE]\n\n");
+            out
+        }
+
+        fn request_json(raw: &str) -> Value {
+            serde_json::from_str(raw.split("\r\n\r\n").nth(1).unwrap()).unwrap()
+        }
+
+        async fn step(base: &str) -> Result<(String, Vec<RawToolCall>)> {
+            let msgs = [json!({"role": "user", "content": "hei"})];
+            openai_chat_step(base, "", "gemma", &msgs, &[], |_| true).await
+        }
+
+        async fn summarize(base: &str) -> Result<String> {
+            summarize_with_base(base, "", "gemma", false, "sys", "transcript", |_| {}).await
+        }
+
+        const ANSWER: &str = r#"data: {"choices":[{"delta":{"content":"Svar"},"finish_reason":"stop"}]}
+
+data: [DONE]
+
+"#;
+
+        #[tokio::test]
+        async fn a_local_chat_step_lifts_the_server_default_output_limit() {
+            let (port, server) = serve(vec![(200, "text/event-stream", ANSWER.into())]).await;
+            step(&base(port)).await.unwrap();
+            let sent = request_json(&server.await.unwrap()[0]);
+            assert_eq!(sent["max_tokens"], LOCAL_MAX_TOKENS);
+        }
+
+        #[tokio::test]
+        async fn a_server_that_refuses_the_ceiling_is_asked_again_without_it() {
+            let (port, server) = serve(vec![
+                (400, "application/json", r#"{"error":"max_tokens too large"}"#.into()),
+                (200, "text/event-stream", ANSWER.into()),
+            ])
+            .await;
+            let (text, _) = step(&base(port)).await.unwrap();
+            assert_eq!(text, "Svar");
+            let seen = server.await.unwrap();
+            assert_eq!(request_json(&seen[0])["max_tokens"], LOCAL_MAX_TOKENS);
+            assert!(request_json(&seen[1]).get("max_tokens").is_none());
+        }
+
+        #[tokio::test]
+        async fn a_step_cut_off_while_reasoning_says_so() {
+            let body = sse(&[
+                json!({"choices":[{"delta":{"reasoning":"Thinking about it"},"finish_reason":null}]}),
+                json!({"choices":[{"delta":{"tool_calls":null},"finish_reason":"length"}]}),
+            ]);
+            let (port, _server) = serve(vec![(200, "text/event-stream", body)]).await;
+            let err = step(&base(port)).await.unwrap_err().to_string();
+            assert!(err.contains("output limit"), "{err}");
+            assert!(err.contains("reasoning"), "{err}");
+        }
+
+        #[tokio::test]
+        async fn a_local_summary_lifts_the_limit_and_reads_a_null_content_as_empty() {
+            let body = json!({"choices":[{"finish_reason":"length","message":{
+                "role":"assistant","content":null,"reasoning":"Thinking"}}]})
+            .to_string();
+            let (port, server) = serve(vec![(200, "application/json", body)]).await;
+            let err = summarize(&base(port)).await.unwrap_err().to_string();
+            assert!(err.contains("output limit"), "{err}");
+            let sent = request_json(&server.await.unwrap()[0]);
+            assert_eq!(sent["max_tokens"], LOCAL_MAX_TOKENS);
+        }
+
+        #[tokio::test]
+        async fn a_local_summary_retries_without_the_ceiling_when_refused() {
+            let ok = json!({"choices":[{"finish_reason":"stop","message":{"content":"Referat"}}]});
+            let (port, server) = serve(vec![
+                (400, "application/json", "{}".into()),
+                (200, "application/json", ok.to_string()),
+            ])
+            .await;
+            assert_eq!(summarize(&base(port)).await.unwrap(), "Referat");
+            assert!(request_json(&server.await.unwrap()[1]).get("max_tokens").is_none());
+        }
+    }
+
+    mod custom_endpoint {
+        use super::*;
+        use crate::chat::test_server::serve;
+        use serde_json::json;
+
+        fn base(port: u16) -> String {
+            format!("http://127.0.0.1:{port}/api/v1")
+        }
+
+        fn split(raw: &str) -> (String, Value) {
+            let (head, body) = raw.split_once("\r\n\r\n").unwrap();
+            (head.to_lowercase(), serde_json::from_str(body).unwrap())
+        }
+
+        fn keys(body: &Value) -> Vec<String> {
+            let mut keys: Vec<String> = body.as_object().unwrap().keys().cloned().collect();
+            keys.sort();
+            keys
+        }
+
+        const ANSWER: &str = r#"data: {"choices":[{"delta":{"content":"Referat"},"finish_reason":"stop"}]}
+
+data: [DONE]
+
+"#;
+
+        #[tokio::test]
+        async fn a_summary_sends_only_model_messages_and_stream() {
+            let (port, server) = serve(vec![(200, "text/event-stream", ANSWER.into())]).await;
+            let mut streamed = String::new();
+            let out = summarize_custom(&base(port), Some("sk-or-test"), "openai/o3", "sys", "transcript", |c| {
+                if let StreamChunk::Content(t) = c {
+                    streamed.push_str(t);
+                }
+            })
+            .await
+            .unwrap();
+            assert_eq!(out, "Referat");
+            assert_eq!(streamed, "Referat");
+            let raw = &server.await.unwrap()[0];
+            assert!(raw.starts_with("POST /api/v1/chat/completions "), "{raw}");
+            let (head, body) = split(raw);
+            assert!(head.contains("authorization: bearer sk-or-test"), "{head}");
+            assert_eq!(keys(&body), ["messages", "model", "stream"]);
+            assert_eq!(body["model"], "openai/o3");
+            assert_eq!(body["stream"], true);
+            assert_eq!(
+                body["messages"],
+                json!([{"role": "system", "content": "sys"}, {"role": "user", "content": "transcript"}])
+            );
+        }
+
+        #[tokio::test]
+        async fn a_keyless_endpoint_gets_no_authorization_header() {
+            let (port, server) = serve(vec![(200, "text/event-stream", ANSWER.into())]).await;
+            summarize_custom(&base(port), None, "m", "sys", "t", |_| {}).await.unwrap();
+            let (head, _) = split(&server.await.unwrap()[0]);
+            assert!(!head.contains("authorization"), "{head}");
+        }
+
+        #[tokio::test]
+        async fn a_wrong_root_names_the_url_that_was_requested() {
+            let (port, _server) =
+                serve(vec![(404, "text/html", "<html>Not Found</html>".into())]).await;
+            let root = format!("http://127.0.0.1:{port}");
+            let err = summarize_custom(&root, Some("k"), "m", "sys", "t", |_| {})
+                .await
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains(&format!("{root}/chat/completions")), "{err}");
+            assert!(err.contains("404"), "{err}");
+            assert!(err.contains("base URL"), "{err}");
+        }
+
+        #[tokio::test]
+        async fn a_refused_key_says_so() {
+            let (port, _server) =
+                serve(vec![(401, "application/json", r#"{"error":"bad key"}"#.into())]).await;
+            let err = summarize_custom(&base(port), Some("k"), "m", "sys", "t", |_| {})
+                .await
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("API key"), "{err}");
+            assert!(err.contains("bad key"), "{err}");
+        }
+
+        #[tokio::test]
+        async fn a_chat_step_adds_only_the_tools_and_reads_their_calls() {
+            let frames = [
+                json!({"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_7","function":{"name":"search_notes","arguments":"{\"query\":"}}]}}]}),
+                json!({"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"Acme\"}"}}]},"finish_reason":"tool_calls"}]}),
+            ];
+            let mut body: String = frames.iter().map(|f| format!("data: {f}\n\n")).collect();
+            body.push_str("data: [DONE]\n\n");
+            let (port, server) = serve(vec![(200, "text/event-stream", body)]).await;
+            let msgs = [json!({"role": "user", "content": "What did Acme decide?"})];
+            let tools = [json!({"type": "function", "function": {"name": "search_notes"}})];
+            let (text, calls) =
+                custom_chat_step(&base(port), None, "deepseek-chat", &msgs, &tools, |_| true)
+                    .await
+                    .unwrap();
+            assert_eq!(text, "");
+            assert_eq!(
+                calls,
+                vec![RawToolCall {
+                    id: "call_7".into(),
+                    name: "search_notes".into(),
+                    arguments: r#"{"query":"Acme"}"#.into(),
+                }]
+            );
+            let (head, sent) = split(&server.await.unwrap()[0]);
+            assert!(!head.contains("authorization"), "{head}");
+            assert_eq!(keys(&sent), ["messages", "model", "stream", "tools"]);
+        }
+    }
+}

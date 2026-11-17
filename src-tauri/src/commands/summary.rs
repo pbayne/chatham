@@ -1,0 +1,775 @@
+//! Summary generation. Reads a note's body + transcript, resolves the
+//! preset prompt and the target provider (cloud OpenAI or a local
+//! OpenAI-compatible server), streams thinking/content deltas to the
+//! frontend, and writes the result back. Surfaced to the frontend via
+//! `commands::summarize_note` (re-exported from the parent module).
+//! `read_provider_api_key` comes from the `api_keys` sibling module via
+//! the parent re-export.
+
+use super::read_provider_api_key;
+use super::{DEFAULT_LANGUAGE, DEFAULT_LOCAL_LLM_BASE_URL, DEFAULT_SUMMARY_MODEL};
+use crate::db::{self, Note, NotePatch};
+use crate::languages;
+use crate::anthropic;
+use crate::custom_endpoint;
+use crate::openai;
+use crate::presets::{self, DEFAULT_SUMMARY_PRESET};
+use crate::providers::ProviderId;
+use crate::recording::{StreamDeltaPayload, SummaryPayload, SummaryStatusPayload};
+use crate::AppState;
+use tauri::{AppHandle, Emitter, Manager, State};
+
+// Resolved provider for a single summary call. Both cloud OpenAI and any
+// local OpenAI-compatible server (Ollama, LM Studio, llama-server, vLLM)
+// flow through this same shape — the only difference is `base_url`.
+pub(super) struct ResolvedProvider {
+    pub(super) provider: ProviderId,
+    pub(super) base_url: String,
+    pub(super) api_key: String,
+    pub(super) model: String,
+    // Ollama-only knob: enable thinking mode (Qwen 3+ <think>...</think>
+    // chain-of-thought). Default off; flipping it on lets users A/B the
+    // quality difference in dev. Ignored for cloud + non-Ollama servers.
+    pub(super) think: bool,
+    /// The running Copilot CLI, which the caller attaches after resolving —
+    /// starting it is async and resolving is not.
+    pub(super) copilot: Option<github_copilot_sdk::Client>,
+}
+
+/// Which client a resolved provider is called through. One answer, so a caller
+/// can't pair an Anthropic key with the OpenAI-compatible path.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(super) enum Dispatch {
+    Anthropic,
+    Copilot,
+    /// The user's own endpoint, which is never treated as OpenAI or Ollama
+    /// whatever its URL looks like.
+    Custom,
+    OpenAiCompatible,
+}
+
+impl ResolvedProvider {
+    pub(super) fn dispatch(&self) -> Dispatch {
+        match self.provider {
+            ProviderId::Anthropic => Dispatch::Anthropic,
+            ProviderId::Copilot => Dispatch::Copilot,
+            ProviderId::Custom => Dispatch::Custom,
+            _ => Dispatch::OpenAiCompatible,
+        }
+    }
+
+    /// Run one completion against this provider. Every caller — the summary,
+    /// the automatic title — goes through here.
+    pub(super) async fn complete<F>(
+        &self,
+        system_prompt: &str,
+        user_message: &str,
+        on_chunk: F,
+    ) -> anyhow::Result<String>
+    where
+        F: FnMut(openai::StreamChunk) + Send,
+    {
+        match self.dispatch() {
+            Dispatch::Anthropic => {
+                anthropic::summarize(&self.api_key, &self.model, system_prompt, user_message, on_chunk)
+                    .await
+            }
+            Dispatch::Copilot => {
+                let client = self
+                    .copilot
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("the Copilot CLI isn't running"))?;
+                crate::copilot::session::complete(client, &self.model, system_prompt, user_message, on_chunk)
+                    .await
+            }
+            Dispatch::Custom => {
+                let key = Some(self.api_key.as_str()).filter(|k| !k.is_empty());
+                openai::summarize_custom(&self.base_url, key, &self.model, system_prompt, user_message, on_chunk)
+                    .await
+            }
+            Dispatch::OpenAiCompatible => {
+                openai::summarize_with_base(
+                    &self.base_url,
+                    &self.api_key,
+                    &self.model,
+                    self.think,
+                    system_prompt,
+                    user_message,
+                    on_chunk,
+                )
+                .await
+            }
+        }
+    }
+}
+
+/// Start the Copilot CLI for a provider that resolved to Copilot; any other
+/// provider is left as it is.
+pub(super) async fn attach_copilot(app: &AppHandle, p: &mut ResolvedProvider) -> anyhow::Result<()> {
+    if p.provider != ProviderId::Copilot {
+        return Ok(());
+    }
+    let state: State<AppState> = app.state();
+    let app_data = app.path().app_data_dir()?;
+    p.copilot = Some(state.copilot.ready_client(&state.keychain_cache, &app_data).await?);
+    Ok(())
+}
+
+// Decide whether this note's summary call should hit cloud OpenAI or a
+// local OpenAI-compatible server. Note-level override beats the global
+// setting; default is openai.
+//
+// For local: reads `local_llm_base_url` and `local_llm_model` from settings.
+// `api_key` is forwarded as-is — local servers typically ignore it but
+// Ollama requires a non-empty bearer string, so we send a sentinel.
+/// Which provider this note's summary goes to, before any key is read — so the
+/// caller fetches one Keychain slot and only the one in force.
+pub(super) fn summary_provider_id(
+    conn: &rusqlite::Connection,
+    note: &Note,
+) -> anyhow::Result<ProviderId> {
+    let note_override = note.summary_provider.trim();
+    let provider = if note_override.is_empty() {
+        db::get_setting(conn, "summary_provider")
+            .ok()
+            .flatten()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "openai".into())
+    } else {
+        note_override.to_string()
+    };
+    eprintln!(
+        "[llm] resolve_provider: note={} note_override={:?} effective={}",
+        note.id, note_override, provider
+    );
+
+    ProviderId::parse(&provider)
+        .filter(|p| p.capabilities().summarize)
+        .ok_or_else(|| anyhow::anyhow!("unknown summary provider “{provider}” — pick one in Settings"))
+}
+
+pub(super) fn resolve_provider(
+    conn: &rusqlite::Connection,
+    note: &Note,
+    api_key: Option<String>,
+) -> anyhow::Result<ResolvedProvider> {
+    let id = summary_provider_id(conn, note)?;
+    match id {
+        ProviderId::Local => {
+            let base_url = db::get_setting(conn, "local_llm_base_url")?
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| DEFAULT_LOCAL_LLM_BASE_URL.to_string());
+            let model = db::get_setting(conn, "local_llm_model")?
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| anyhow::anyhow!(
+                    "local LLM model not configured — pick one in Settings"
+                ))?;
+            let think = db::get_setting(conn, "local_llm_think")?
+                .map(|s| s.trim().eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+            eprintln!("[llm] resolved local: url={base_url} model={model} think={think}");
+            Ok(ResolvedProvider {
+                provider: id,
+                base_url,
+                api_key: "humla-local".into(),
+                model,
+                think,
+                copilot: None,
+            })
+        }
+        ProviderId::OpenAi => {
+            let api_key = api_key
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| anyhow::anyhow!("OpenAI API key not set"))?;
+            let model = db::get_setting(conn, "summary_model")?
+                .unwrap_or_else(|| DEFAULT_SUMMARY_MODEL.to_string());
+            eprintln!("[llm] resolved openai: model={model}");
+            Ok(ResolvedProvider {
+                provider: id,
+                base_url: openai::BASE.into(),
+                api_key,
+                model,
+                think: false,
+                copilot: None,
+            })
+        }
+        ProviderId::Anthropic => {
+            let api_key = api_key
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| anyhow::anyhow!("Anthropic API key not set"))?;
+            let model = db::get_setting(conn, "anthropic_model")?
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| anthropic::DEFAULT_MODEL.to_string());
+            eprintln!("[llm] resolved anthropic: model={model}");
+            Ok(ResolvedProvider {
+                provider: id,
+                base_url: anthropic::BASE.into(),
+                api_key,
+                model,
+                think: false,
+                copilot: None,
+            })
+        }
+        ProviderId::Copilot => {
+            let model = db::get_setting(conn, "copilot_model")?
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| crate::copilot::DEFAULT_MODEL.to_string());
+            eprintln!("[llm] resolved copilot: model={model}");
+            Ok(ResolvedProvider {
+                provider: id,
+                base_url: String::new(),
+                api_key: String::new(),
+                model,
+                think: false,
+                copilot: None,
+            })
+        }
+        ProviderId::Custom => {
+            let base_url = custom_endpoint::base_url(conn)?;
+            let model = custom_endpoint::model(conn, custom_endpoint::SUMMARY_MODEL_SETTING)?;
+            eprintln!("[llm] resolved custom: url={base_url} model={model}");
+            Ok(ResolvedProvider {
+                provider: id,
+                base_url,
+                // Optional: empty means the endpoint takes no key.
+                api_key: api_key.unwrap_or_default(),
+                model,
+                think: false,
+                copilot: None,
+            })
+        }
+        ProviderId::Deepgram | ProviderId::Groq => unreachable!("filtered on the summarize capability"),
+    }
+}
+
+#[tauri::command]
+pub async fn summarize_note(app: AppHandle, note_id: String) -> Result<(), String> {
+    eprintln!("[llm] summarize_note invoked for note={note_id}");
+    // Per-note `summary_status` channel keeps the summary spinner from
+    // touching `recording_status`. Summarising note B while note A
+    // records used to wipe A's recording state on completion (`note_id:
+    // None, Phase::Idle` on the shared channel); the dedicated event
+    // makes the two lifecycles independent.
+    emit_summary_status(&app, &note_id, true);
+    let result = run_summary(app.clone(), note_id.clone()).await;
+    emit_summary_status(&app, &note_id, false);
+    match &result {
+        Ok(()) => eprintln!("[llm] summarize_note succeeded"),
+        Err(e) => eprintln!("[llm] summarize_note failed: {e:#}"),
+    }
+    result.map_err(|e| e.to_string())
+}
+
+/// Resolve the summary prompt for a note. Three cases, in priority order:
+///   1. `custom:<id>` — a user-defined prompt row. Look it up; if the row
+///      was deleted out from under us, fall back to the built-in default
+///      prompt so the summary still runs.
+///   2. `"custom"` — the legacy single-prompt sentinel from before the
+///      summary_prompts table. The legacy `summary_prompt` setting is no
+///      longer read here (migrate_summary_prompts seeds a prompt row for
+///      upgraders, rewriting these notes to `custom:<id>`); any note that
+///      still carries the bare sentinel falls back to the built-in default
+///      prompt.
+///   3. Built-in preset value ("meeting", "lecture", etc.) — language-aware
+///      via presets::prompt.
+///
+/// Both fallbacks in 1 and 2 resolve to the Meeting preset rather than to a
+/// prompt of their own (issue #167). The constant they used to return was
+/// hardcoded Norwegian down to "Skriv på norsk", so on any other language
+/// setting it contradicted the directive appended right after it — and it
+/// had drifted from the house style in two other ways besides: an explicit
+/// "trust the notes over the transcript" rule that the parenthetical
+/// `(brukerens)` / `(automatisk)` tags replaced, and a fixed section list
+/// of the kind small thinking models re-litigate instead of following.
+/// Meeting is the built-in default preset and is already language-aware,
+/// so there is nothing for a second copy to add.
+fn resolve_prompt(conn: &rusqlite::Connection, note: &Note, language: &str) -> String {
+    if let Some(id) = note.summary_preset.strip_prefix("custom:") {
+        match db::get_summary_prompt(conn, id) {
+            Ok(p) => p.content,
+            Err(_) => presets::prompt(DEFAULT_SUMMARY_PRESET, language),
+        }
+    } else if note.summary_preset == "custom" {
+        presets::prompt(DEFAULT_SUMMARY_PRESET, language)
+    } else {
+        presets::prompt(&note.summary_preset, language)
+    }
+}
+
+/// Turn `auto` into the language the recording was actually in, when the
+/// STT provider told us (issue #167).
+///
+/// Everything downstream then takes the ordinary explicit-language path and
+/// emits a hard "write the entire response in X" directive, rather than
+/// asking a model to infer the target from a prompt whose every label is
+/// Norwegian.
+///
+/// The `auto` branches survive as the fallback for notes with no detection:
+/// notes recorded before this shipped, Deepgram, `gpt-4o-transcribe`, and
+/// recordings too bilingual for the vote to call.
+pub(super) fn resolve_auto(language: &str, note: &Note) -> String {
+    if language != "auto" {
+        return language.to_string();
+    }
+    match note.detected_language.as_deref() {
+        Some(code) if !code.trim().is_empty() => code.to_string(),
+        _ => language.to_string(),
+    }
+}
+
+/// The language a note's text is in, as far as Humla knows: the note's own
+/// language, the global default when the note follows it (empty), and `auto`
+/// resolved to what was detected ([`resolve_auto`]). Still `auto` when nothing
+/// was detected. The one rule the summary, the title and the webhook payload
+/// all read.
+pub(super) fn note_language(conn: &rusqlite::Connection, note: &Note) -> anyhow::Result<String> {
+    let lang = if note.language.trim().is_empty() {
+        db::get_setting(conn, "language")?.unwrap_or_else(|| DEFAULT_LANGUAGE.to_string())
+    } else {
+        note.language.clone()
+    };
+    Ok(resolve_auto(&lang, note))
+}
+
+async fn run_summary(app: AppHandle, note_id: String) -> anyhow::Result<()> {
+    let state: State<AppState> = app.state();
+    // Which provider first, then that provider's key: reading every slot would
+    // prompt the Keychain for a provider this summary never calls.
+    let provider_id = {
+        let conn = state.db.lock();
+        let n = db::get_note(&conn, &note_id)?;
+        summary_provider_id(&conn, &n)?
+    };
+    let api_key = match provider_id.keychain_account() {
+        Some(_) => {
+            read_provider_api_key(&state, provider_id.as_str()).map_err(|e| anyhow::anyhow!("{e}"))?
+        }
+        None => None,
+    };
+    let (provider, language, note) = {
+        let conn = state.db.lock();
+        let n = db::get_note(&conn, &note_id)?;
+        let p_resolved = resolve_provider(&conn, &n, api_key)?;
+        (p_resolved, note_language(&conn, &n)?, n)
+    };
+    let mut provider = provider;
+    if note.transcript.trim().is_empty() && note.body.trim().is_empty() {
+        return Ok(());
+    }
+    attach_copilot(&app, &mut provider).await?;
+    let prompt = {
+        let conn = state.db.lock();
+        resolve_prompt(&conn, &note, &language)
+    };
+    let body_text = crate::html_text::html_to_text(&note.body);
+    // Always send both labels even when one side is empty. Sending only
+    // [Transkripsjon] while the system prompt references [Notater] sends
+    // thinking models down a rabbit hole second-guessing whether the notes
+    // are missing or hidden — a real failure mode we observed in dev where
+    // Qwen 3.5 spent thousands of reasoning tokens on it. Explicit "(ingen)"
+    // tells the model the field is genuinely absent.
+    let notes_block = if body_text.trim().is_empty() {
+        "[Notater]\n(ingen)".to_string()
+    } else {
+        format!("[Notater]\n{body_text}")
+    };
+    let transcript_block = if note.transcript.trim().is_empty() {
+        "[Transkripsjon]\n(ingen)".to_string()
+    } else {
+        format!("[Transkripsjon]\n{}", note.transcript)
+    };
+    let user_message = format!("{notes_block}\n\n{transcript_block}");
+    // Hard language directive in case the prompt was authored in a different
+    // language than the user has now chosen.
+    let full_prompt = format!("{prompt}\n\n{}", language_directive(&language));
+    // Stream thinking + content deltas to the frontend so the user sees
+    // the model working in real time. Especially valuable when think=true
+    // on Qwen 3.5+ — without live feedback users wait minutes wondering if
+    // it's stuck.
+    let app_for_stream = app.clone();
+    let note_for_stream = note_id.clone();
+    let on_chunk = move |chunk: openai::StreamChunk| match chunk {
+        openai::StreamChunk::Thinking(t) => {
+            let _ = app_for_stream.emit(
+                "summary_thinking_delta",
+                StreamDeltaPayload { note_id: note_for_stream.clone(), delta: t.to_string() },
+            );
+        }
+        openai::StreamChunk::Content(c) => {
+            let _ = app_for_stream.emit(
+                "summary_content_delta",
+                StreamDeltaPayload { note_id: note_for_stream.clone(), delta: c.to_string() },
+            );
+        }
+    };
+    let summary = provider.complete(&full_prompt, &user_message, on_chunk).await?;
+    let state: State<AppState> = app.state();
+    {
+        let conn = state.db.lock();
+        db::update_note(&conn, &note_id, &NotePatch {
+            summary: Some(summary.clone()),
+            ..Default::default()
+        })?;
+        // Also store this as a template-tagged report (#reports). The note's
+        // `summary` column stays the "active/latest" copy for back-compat with
+        // exports + the old UI; `note_reports` lets the user keep a Meeting
+        // report AND a Sales Call report on the same recording and switch
+        // between them. Keyed by preset, so re-running a template refreshes its
+        // report in place. Best-effort — a report-store hiccup must not fail the
+        // summary that already wrote.
+        let report_preset = if note.summary_preset.trim().is_empty() {
+            crate::presets::DEFAULT_SUMMARY_PRESET.to_string()
+        } else {
+            note.summary_preset.clone()
+        };
+        let report_title = crate::presets::label_for(&report_preset);
+        let _ = db::upsert_note_report(&conn, &note_id, &report_preset, &report_title, &summary);
+        // Content-settled checkpoint (issue #47): a fresh summary is new
+        // searchable material — refresh the Note's retrieval chunks.
+        super::chat::reindex_note_content(&conn, &note_id);
+        // Mirror to an Obsidian vault if the user turned that on (no-op otherwise).
+        super::obsidian::sync_one_best_effort(&conn, &note_id);
+    }
+    // Embed the refreshed chunks off the request path (issue #48).
+    tauri::async_runtime::spawn(super::chat::embed_note_bg(app.clone(), note_id.clone()));
+    // Learn the customer from the meeting and tag the note (silent, untagged
+    // notes only). Off the request path like the embed + title passes.
+    tauri::async_runtime::spawn(super::customer::auto_tag_customer(app.clone(), note_id.clone()));
+    // Extract this meeting's action items into the follow-ups list (once per
+    // note; silent). Off the request path like the customer + embed passes.
+    tauri::async_runtime::spawn(super::action_items::auto_extract(app.clone(), note_id.clone()));
+    state.sync.note_upserted(&note_id); // AI summary written → enqueue a push
+    let _ = app.emit("summary_ready", SummaryPayload { note_id, summary });
+    Ok(())
+}
+
+fn emit_summary_status(app: &AppHandle, note_id: &str, active: bool) {
+    let _ = app.emit("summary_status", SummaryStatusPayload {
+        note_id: note_id.to_string(),
+        active,
+    });
+}
+
+// Hard directive appended to the summary system prompt. Enforces output
+// language regardless of which language the user wrote their prompt in.
+pub(super) fn language_directive(lang: &str) -> String {
+    // Native imperatives for the common Nordic codes — the model picks up
+    // the target language faster from a directive written in that language
+    // than from "Write in Norwegian." in English. Everything else falls back
+    // to a generated "IMPORTANT: Write the entire response in {Name}." using
+    // the English language name from the shared lookup.
+    match lang {
+        "no" => "VIKTIG: Skriv hele svaret på norsk.".to_string(),
+        "sv" => "VIKTIGT: Skriv hela svaret på svenska.".to_string(),
+        "da" => "VIGTIGT: Skriv hele svaret på dansk.".to_string(),
+        // Issue #167: this used to say "the user's notes", which with an
+        // empty body resolves to the Norwegian `(ingen)` literal — every
+        // language cue the model could see was Norwegian, so an English
+        // meeting came back in Norwegian. Anchor on the transcript, and
+        // say out loud that the Norwegian frame isn't the target.
+        "auto" => {
+            "Respond in the same language as the transcript block, not the language of these \
+             instructions or labels."
+                .to_string()
+        }
+        other => format!(
+            "IMPORTANT: Write the entire response in {}.",
+            languages::english_name(other)
+        ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_conn() -> (tempfile::TempDir, rusqlite::Connection) {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = db::open(&dir.path().join("summary-test.sqlite")).unwrap();
+        (dir, conn)
+    }
+
+    #[test]
+    fn custom_id_resolves_to_the_stored_prompt_row() {
+        let (_dir, conn) = temp_conn();
+        let row = db::create_summary_prompt(&conn, "Mine", "MY CUSTOM PROMPT", "").unwrap();
+        let note = db::create_note(&conn, "no", &format!("custom:{}", row.id), "").unwrap();
+        assert_eq!(resolve_prompt(&conn, &note, "no"), "MY CUSTOM PROMPT");
+    }
+
+    #[test]
+    fn deleted_custom_row_falls_back_to_the_builtin_default() {
+        // A note pointing at a custom prompt row that has since been
+        // deleted must still summarise — using the built-in default, not
+        // the retired `summary_prompt` setting.
+        let (_dir, conn) = temp_conn();
+        let note = db::create_note(&conn, "no", "custom:does-not-exist", "").unwrap();
+        assert_eq!(resolve_prompt(&conn, &note, "no"), presets::prompt("meeting", "no"));
+    }
+
+    #[test]
+    fn legacy_custom_sentinel_falls_back_to_the_builtin_default() {
+        // Pre-table `"custom"` sentinel that never got migrated. No longer
+        // reads the legacy `summary_prompt` setting.
+        let (_dir, conn) = temp_conn();
+        let note = db::create_note(&conn, "no", "custom", "").unwrap();
+        assert_eq!(resolve_prompt(&conn, &note, "no"), presets::prompt("meeting", "no"));
+    }
+
+    // Issue #167. The fallback used to be a hardcoded Norwegian prompt
+    // containing "Skriv på norsk", so on any other language setting it
+    // contradicted the directive appended right after it — and once `auto`
+    // started resolving to a detected language, an English recording could
+    // pair "Skriv på norsk" with "Write the entire response in English."
+    #[test]
+    fn the_fallback_prompt_follows_the_requested_language() {
+        let (_dir, conn) = temp_conn();
+        for preset in ["custom", "custom:does-not-exist"] {
+            let note = db::create_note(&conn, "en", preset, "").unwrap();
+            let p = resolve_prompt(&conn, &note, "en");
+            assert!(p.contains("Reply in English"), "{preset}: {p}");
+            assert!(!p.contains("Skriv på norsk"), "{preset}: {p}");
+        }
+    }
+
+    #[test]
+    fn the_fallback_prompt_anchors_on_the_transcript_when_auto() {
+        let (_dir, conn) = temp_conn();
+        let note = db::create_note(&conn, "auto", "custom", "").unwrap();
+        let p = resolve_prompt(&conn, &note, "auto");
+        assert!(p.contains("the same language as the transcript"), "{p}");
+    }
+
+    #[test]
+    fn builtin_preset_uses_the_language_aware_preset_prompt() {
+        let (_dir, conn) = temp_conn();
+        let note = db::create_note(&conn, "no", "meeting", "").unwrap();
+        assert_eq!(
+            resolve_prompt(&conn, &note, "no"),
+            presets::prompt("meeting", "no")
+        );
+    }
+
+    // Issue #167. On `auto` the directive is the only thing telling the
+    // model where to look, and the whole prompt frame around it — labels,
+    // the `(ingen)` empty-notes literal — is Norwegian. Pointing it at the
+    // notes meant an English meeting with no typed notes had exactly one
+    // language cue in reach, and it was Norwegian. Pin the target so a
+    // future reword can't quietly drift back.
+    #[test]
+    fn auto_directive_anchors_on_the_transcript_not_the_notes() {
+        let d = language_directive("auto");
+        assert!(d.contains("transcript"), "{d}");
+        assert!(!d.contains("notes"), "{d}");
+    }
+
+    #[test]
+    fn auto_directive_disowns_the_surrounding_scaffolding() {
+        // The labels and instructions are Norwegian; without this clause the
+        // model is free to read the frame as the target.
+        let d = language_directive("auto");
+        assert!(d.contains("instructions"), "{d}");
+        assert!(d.contains("labels"), "{d}");
+    }
+
+    // Issue #167 — `auto` resolves to what was actually spoken, so the
+    // summary takes the hard-directive path instead of inferring the target
+    // from a Norwegian-labelled prompt.
+    #[test]
+    fn an_unknown_summary_provider_is_an_error_not_openai() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = db::open(&dir.path().join("t.sqlite")).unwrap();
+        db::set_setting(&conn, "summary_provider", "mistral").unwrap();
+        let note = db::create_note(&conn, "no", "meeting", "").unwrap();
+        let err = resolve_provider(&conn, &note, Some("sk-test".into()))
+            .err()
+            .expect("unknown id must not resolve")
+            .to_string();
+        assert!(err.contains("mistral"), "{err}");
+    }
+
+    #[test]
+    fn each_provider_has_exactly_one_client() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = db::open(&dir.path().join("dispatch.sqlite")).unwrap();
+        let note = db::create_note(&conn, "no", "meeting", "").unwrap();
+        for (id, want) in [
+            ("openai", Dispatch::OpenAiCompatible),
+            ("anthropic", Dispatch::Anthropic),
+        ] {
+            db::set_setting(&conn, "summary_provider", id).unwrap();
+            let p = resolve_provider(&conn, &note, Some("k".into())).unwrap();
+            assert_eq!(p.dispatch(), want, "{id}");
+        }
+        db::set_setting(&conn, "summary_provider", "local").unwrap();
+        db::set_setting(&conn, "local_llm_model", "gemma4:12b-mlx").unwrap();
+        let p = resolve_provider(&conn, &note, None).unwrap();
+        assert_eq!(p.dispatch(), Dispatch::OpenAiCompatible);
+    }
+
+    #[test]
+    fn anthropic_resolves_to_the_messages_api_and_its_default_model() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = db::open(&dir.path().join("t.sqlite")).unwrap();
+        db::set_setting(&conn, "summary_provider", "anthropic").unwrap();
+        let note = db::create_note(&conn, "no", "meeting", "").unwrap();
+        let p = resolve_provider(&conn, &note, Some("sk-ant-test".into())).unwrap();
+        assert_eq!(p.provider, ProviderId::Anthropic);
+        assert_eq!(p.base_url, anthropic::BASE);
+        assert_eq!(p.model, anthropic::DEFAULT_MODEL);
+    }
+
+    #[test]
+    fn the_anthropic_model_setting_wins_over_the_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = db::open(&dir.path().join("t.sqlite")).unwrap();
+        db::set_setting(&conn, "summary_provider", "anthropic").unwrap();
+        db::set_setting(&conn, "anthropic_model", "claude-opus-5").unwrap();
+        let note = db::create_note(&conn, "no", "meeting", "").unwrap();
+        let p = resolve_provider(&conn, &note, Some("sk-ant-test".into())).unwrap();
+        assert_eq!(p.model, "claude-opus-5");
+    }
+
+    #[test]
+    fn anthropic_without_a_key_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = db::open(&dir.path().join("t.sqlite")).unwrap();
+        db::set_setting(&conn, "summary_provider", "anthropic").unwrap();
+        let note = db::create_note(&conn, "no", "meeting", "").unwrap();
+        let err = resolve_provider(&conn, &note, None).err().unwrap().to_string();
+        assert!(err.contains("Anthropic API key"), "{err}");
+    }
+
+    #[test]
+    fn copilot_needs_no_key_and_lets_copilot_pick_by_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = db::open(&dir.path().join("t.sqlite")).unwrap();
+        db::set_setting(&conn, "summary_provider", "copilot").unwrap();
+        let note = db::create_note(&conn, "no", "meeting", "").unwrap();
+        let p = resolve_provider(&conn, &note, None).unwrap();
+        assert_eq!(p.provider, ProviderId::Copilot);
+        assert_eq!(p.dispatch(), Dispatch::Copilot);
+        assert_eq!(p.model, "auto");
+    }
+
+    #[test]
+    fn the_copilot_model_setting_wins_over_auto() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = db::open(&dir.path().join("t.sqlite")).unwrap();
+        db::set_setting(&conn, "summary_provider", "copilot").unwrap();
+        db::set_setting(&conn, "copilot_model", "claude-sonnet-5.5").unwrap();
+        db::set_setting(&conn, "anthropic_model", "claude-opus-5").unwrap();
+        let note = db::create_note(&conn, "no", "meeting", "").unwrap();
+        assert_eq!(resolve_provider(&conn, &note, None).unwrap().model, "claude-sonnet-5.5");
+    }
+
+    #[test]
+    fn custom_resolves_to_its_own_endpoint_and_summary_model_without_a_key() {
+        let (_dir, conn) = temp_conn();
+        db::set_setting(&conn, "summary_provider", "custom").unwrap();
+        // Used as typed: surrounding whitespace is an input artifact, the
+        // trailing slash is not Humla's to remove.
+        db::set_setting(&conn, "custom_base_url", "  https://openrouter.ai/api/v1/ ").unwrap();
+        db::set_setting(&conn, "custom_model", "deepseek/deepseek-chat").unwrap();
+        db::set_setting(&conn, "local_llm_model", "gemma4:12b-mlx").unwrap();
+        db::set_setting(&conn, "summary_model", "gpt-5.4").unwrap();
+        let note = db::create_note(&conn, "no", "meeting", "").unwrap();
+        let p = resolve_provider(&conn, &note, None).unwrap();
+        assert_eq!(p.provider, ProviderId::Custom);
+        assert_eq!(p.dispatch(), Dispatch::Custom);
+        assert_eq!(p.base_url, "https://openrouter.ai/api/v1/");
+        assert_eq!(p.model, "deepseek/deepseek-chat");
+        assert_eq!(p.api_key, "");
+        let keyed = resolve_provider(&conn, &note, Some("sk-or-test".into())).unwrap();
+        assert_eq!(keyed.api_key, "sk-or-test");
+    }
+
+    #[test]
+    fn custom_without_a_base_url_or_a_model_says_which() {
+        let (_dir, conn) = temp_conn();
+        db::set_setting(&conn, "summary_provider", "custom").unwrap();
+        db::set_setting(&conn, "custom_model", "m").unwrap();
+        let note = db::create_note(&conn, "no", "meeting", "").unwrap();
+        let err = resolve_provider(&conn, &note, None).err().unwrap().to_string();
+        assert!(err.contains("base URL"), "{err}");
+        db::set_setting(&conn, "custom_base_url", "https://gateway.example/v1").unwrap();
+        db::set_setting(&conn, "custom_model", "  ").unwrap();
+        let err = resolve_provider(&conn, &note, None).err().unwrap().to_string();
+        assert!(err.contains("model"), "{err}");
+    }
+
+    #[test]
+    fn a_blank_summary_provider_row_still_means_openai() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = db::open(&dir.path().join("t.sqlite")).unwrap();
+        db::set_setting(&conn, "summary_provider", "  ").unwrap();
+        let note = db::create_note(&conn, "no", "meeting", "").unwrap();
+        let p = resolve_provider(&conn, &note, Some("sk-test".into())).unwrap();
+        assert_eq!(p.base_url, openai::BASE);
+    }
+
+    #[test]
+    fn a_transcribe_only_provider_cannot_summarise() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = db::open(&dir.path().join("t.sqlite")).unwrap();
+        db::set_setting(&conn, "summary_provider", "deepgram").unwrap();
+        let note = db::create_note(&conn, "no", "meeting", "").unwrap();
+        assert!(resolve_provider(&conn, &note, Some("sk-test".into())).is_err());
+    }
+
+    #[test]
+    fn auto_resolves_to_the_detected_language() {
+        let (_dir, conn) = temp_conn();
+        let note = db::create_note(&conn, "auto", "meeting", "").unwrap();
+        db::set_detected_language(&conn, &note.id, "en").unwrap();
+        let note = db::get_note(&conn, &note.id).unwrap();
+        assert_eq!(resolve_auto("auto", &note), "en");
+        assert!(language_directive(&resolve_auto("auto", &note)).contains("English"));
+    }
+
+    #[test]
+    fn auto_stays_auto_without_a_detection() {
+        // Pre-change notes, Deepgram, gpt-4o-transcribe, and recordings too
+        // bilingual to call all land here — and fall back to Fix 2's
+        // transcript-anchored directive.
+        let (_dir, conn) = temp_conn();
+        let note = db::create_note(&conn, "auto", "meeting", "").unwrap();
+        assert_eq!(resolve_auto("auto", &note), "auto");
+    }
+
+    #[test]
+    fn an_explicit_language_ignores_the_detection() {
+        // The user asked for Norwegian output on an English recording. That's
+        // a choice, not a mistake — don't override it.
+        let (_dir, conn) = temp_conn();
+        let note = db::create_note(&conn, "no", "meeting", "").unwrap();
+        db::set_detected_language(&conn, &note.id, "en").unwrap();
+        let note = db::get_note(&conn, &note.id).unwrap();
+        assert_eq!(resolve_auto("no", &note), "no");
+    }
+
+    #[test]
+    fn a_note_with_no_language_follows_the_global_default() {
+        let (_dir, conn) = temp_conn();
+        let note = db::create_note(&conn, "", "meeting", "").unwrap();
+        assert_eq!(note_language(&conn, &note).unwrap(), DEFAULT_LANGUAGE);
+        db::set_setting(&conn, "language", "auto").unwrap();
+        db::set_detected_language(&conn, &note.id, "sv").unwrap();
+        let note = db::get_note(&conn, &note.id).unwrap();
+        // A global `auto` resolves through the note's detection like a note's own.
+        assert_eq!(note_language(&conn, &note).unwrap(), "sv");
+        let english = db::create_note(&conn, "en", "meeting", "").unwrap();
+        assert_eq!(note_language(&conn, &english).unwrap(), "en");
+    }
+
+    #[test]
+    fn explicit_languages_still_get_their_hard_directive() {
+        assert!(language_directive("no").contains("norsk"));
+        assert!(language_directive("en").contains("English"));
+    }
+}

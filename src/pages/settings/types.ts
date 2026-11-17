@@ -1,0 +1,246 @@
+// Shared types and option lists for the Settings page.
+//
+// Most of the constants here are options users can pick from a Select.
+// They live next to the page rather than in a global module because
+// they're tightly coupled to how the form is shaped — moving them out
+// would create a layer of indirection without buying us reuse.
+
+import type { DiarizeDownloadProgress, DiarizeModelStatus, LocalWhisperModelStatus, SettingsKey } from "../../lib/ipc";
+import { DEFAULT_DIARIZE_ENGINE } from "../../lib/diarizeEngine";
+import { SUMMARY_PRESETS, presetPromptForLang } from "../../lib/presets";
+import type { Theme } from "../../lib/theme";
+import { PALETTE_REGISTRY, type Palette } from "../../lib/palette";
+import { CHAT_CAPABLE, SUMMARY_CAPABLE, type Provider } from "../../lib/providers";
+
+// The Settings form manages every key except the ones with their own
+// dedicated controls (theme/palette) and the onboarding wizard's internal
+// bookkeeping keys (owned by the wizard shell, never surfaced in Settings).
+export type EditableKey = Exclude<
+  SettingsKey,
+  // `telemetry_enabled` is excluded for the same reason as theme/palette: it is
+  // owned by its own self-contained row (which must distinguish UNSET from "false"),
+  // not by the generic settings map, whose DEFAULTS would collapse that distinction.
+  // `record_hotkey` is excluded on the same grounds: it is written through
+  // `recordHotkeySet` (which registers it with the OS first and can fail), not
+  // through the generic settings map.
+  | "theme"
+  | "palette"
+  | "onboarding_completed"
+  | "onboarding_step"
+  | "telemetry_enabled"
+  | "record_hotkey"
+  // Owned by Home's offer card (src/lib/nemotronOffer.ts).
+  | "nemotron_offer"
+>;
+
+export type { Provider } from "../../lib/providers";
+
+export const DEFAULTS: Record<EditableKey, string> = {
+  language: "no",
+  default_summary_preset: "meeting",
+  diarize_model: DEFAULT_DIARIZE_ENGINE,
+  community1_threshold: "0.5",
+  keep_audio: "false",
+  transcribe_manually: "false",
+  keep_awake: "true",
+  capture_screenshots_enabled: "false",
+  capture_clipboard_enabled: "false",
+  close_to_tray: "false",
+  sync_audio: "true",
+  custom_vocabulary: "",
+  summary_model: "gpt-5.4-mini",
+  anthropic_model: "claude-sonnet-5",
+  copilot_model: "auto",
+  copilot_chat_model: "auto",
+  custom_base_url: "",
+  custom_model: "",
+  custom_chat_model: "",
+  summary_provider: "openai",
+  local_llm_base_url: "http://localhost:11434/v1",
+  local_llm_model: "",
+  local_llm_think: "false",
+  chat_provider: "openai",
+  chat_model: "",
+  // Empty = follow the chat server, embeddinggemma (#179).
+  embed_base_url: "",
+  embed_model: "",
+  developer_mode: "false",
+  silence_rms_threshold: "0.005",
+  mcp_enabled: "false",
+  webhook_enabled: "false",
+};
+
+export const PROVIDERS_BASE = [
+  { value: "openai", label: "OpenAI" },
+  { value: "deepgram", label: "Deepgram" },
+  { value: "groq", label: "Groq (Whisper Large v3 Turbo)" },
+  { value: "custom", label: "Custom (OpenAI-compatible API)" },
+];
+export const LOCAL_PROVIDER = {
+  value: "local",
+  label: "Local (Whisper turbo, on-device)",
+};
+
+// How each capable provider is named in the two pickers. Which providers
+// appear is derived from the registry's capability flags; only the wording is
+// stated here.
+const PROVIDER_PICKER_LABEL: Record<Provider, string> = {
+  openai: "Cloud (OpenAI)",
+  anthropic: "Cloud (Anthropic)",
+  copilot: "Cloud (GitHub Copilot)",
+  local: "Local (any OpenAI-compatible server)",
+  custom: "Custom (OpenAI-compatible API)",
+  deepgram: "Deepgram",
+  groq: "Groq",
+};
+
+export const SUMMARY_PROVIDERS = SUMMARY_CAPABLE.map((id) => ({
+  value: id,
+  label: PROVIDER_PICKER_LABEL[id],
+}));
+
+// Chat stores the local provider as `ollama` from before the vocabularies were
+// unified; the stored rows are never rewritten, so the value stays.
+export const CHAT_PROVIDERS = CHAT_CAPABLE.map((id) => ({
+  value: id === "local" ? "ollama" : id,
+  label: PROVIDER_PICKER_LABEL[id],
+}));
+
+export const WHISPER_PRESETS = [
+  { value: "fast", label: "Fast — lower latency, may drop borderline words" },
+  { value: "balanced", label: "Balanced — good speed and accuracy" },
+  { value: "quality", label: "Quality — slowest, best for meetings" },
+];
+
+export const THEMES: { value: Theme; label: string }[] = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+];
+
+// Derived from the theme registry rather than restated: a new theme file plus a
+// registry row is all it takes to appear here.
+export const PALETTES: { value: Palette; label: string; description: string }[] =
+  PALETTE_REGISTRY.map((p) => ({
+    value: p.id,
+    label: p.label,
+    description: p.description,
+  }));
+
+export const TRANSCRIBE_MODELS = [
+  "whisper-1",
+  "gpt-4o-mini-transcribe",
+  "gpt-4o-transcribe",
+  "gpt-4o-transcribe-diarize",
+];
+
+export const DEEPGRAM_MODELS = ["nova-3", "nova-2", "base"];
+
+export const GROQ_MODELS = ["whisper-large-v3-turbo"];
+
+export const SUMMARY_MODELS = [
+  "gpt-5.4-mini",
+  "gpt-5.4",
+  "gpt-5.4-nano",
+  "gpt-5.5",
+  "gpt-5",
+  "gpt-5-mini",
+  "gpt-5-nano",
+  "o3",
+];
+
+// Shipped fallback for the Anthropic model pickers when the live listing
+// can't be reached, newest first.
+export const ANTHROPIC_MODELS = [
+  "claude-opus-5",
+  "claude-sonnet-5",
+  "claude-opus-4-8",
+  "claude-opus-4-7",
+  "claude-opus-4-6",
+  "claude-sonnet-4-6",
+  "claude-haiku-4-5",
+  "claude-fable-5-1",
+  "claude-fable-5",
+];
+
+export const inputClass =
+  "w-full px-3 py-2 rounded-md text-sm bg-[var(--color-input-bg)] border border-[var(--color-line)] focus:border-[var(--color-text-muted)]";
+
+/// Flash message shape. `info` is a plain text toast; `suggest_language_override`
+/// renders a one-click "Add as <language> override?" affordance after a
+/// language-specific model is downloaded.
+export type LocalFlash =
+  | { kind: "info"; message: string }
+  | {
+      kind: "suggest_language_override";
+      message: string;
+      language: string;
+      modelId: string;
+    };
+
+export type LocalState = {
+  // List of all known models with their per-id download status. Sourced
+  // from the backend registry; the UI filters by language and surfaces
+  // download / delete / select per row.
+  models: LocalWhisperModelStatus[];
+  // Per-model download progress while a download is in flight. Keyed by
+  // model id so two simultaneous downloads (rare) wouldn't fight.
+  downloading: Record<string, { received: number; total: number | null }>;
+  error: string | null;
+  flash: LocalFlash | null;
+};
+
+export const EMPTY_LOCAL_STATE: LocalState = {
+  models: [],
+  downloading: {},
+  error: null,
+  flash: null,
+};
+
+export type DiarizeState = {
+  status: DiarizeModelStatus | null;
+  downloading: boolean;
+  fraction: number;
+  phase: DiarizeDownloadProgress["phase"] | null;
+  error: string | null;
+  flash: string | null;
+};
+
+export const EMPTY_DIARIZE_STATE: DiarizeState = {
+  status: null,
+  downloading: false,
+  fraction: 0,
+  phase: null,
+  error: null,
+  flash: null,
+};
+
+
+// Discriminated so the Summary tab can render guidance tailored to the
+// failure mode. "unreachable" means the local server isn't responding —
+// usually Ollama not running. "other" is the catch-all (HTTP 500, parse
+// failure, etc) where we just show the raw message.
+export type LlmModelsError =
+  | { kind: "unreachable"; baseUrl: string }
+  | { kind: "other"; message: string };
+
+export type LlmModelsState = {
+  list: string[] | null;
+  loading: boolean;
+  error: LlmModelsError | null;
+};
+
+export const EMPTY_LLM_MODELS_STATE: LlmModelsState = {
+  list: null,
+  loading: false,
+  error: null,
+};
+
+// Returns the value of whichever preset matches the prompt text for the
+// current language, or "custom" if the user has typed something else.
+export function detectActivePreset(prompt: string, lang: string): string {
+  for (const p of SUMMARY_PRESETS) {
+    if (presetPromptForLang(p, lang) === prompt) return p.value;
+  }
+  return "custom";
+}

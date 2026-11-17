@@ -1,0 +1,695 @@
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useMemo, useState } from "react";
+import {
+  ChevronLeft,
+  FileAudio,
+  Files,
+  Folder as FolderIcon,
+  FolderPlus,
+  Home as HomeIcon,
+  Inbox,
+  ListTodo,
+  MessageCircle,
+  Plus,
+  Search,
+  Users,
+  Settings as SettingsIcon,
+  Trash2,
+} from "lucide-react";
+import { open } from "@tauri-apps/plugin-dialog";
+import { useNotesStore } from "../lib/store";
+import { ipc, type Folder, type Note } from "../lib/ipc";
+import { cn } from "../lib/cn";
+import { ContextMenu, ContextMenuItem } from "./ContextMenu";
+import { Modal } from "../pages/settings/components/Modal";
+import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
+import { SetupNag } from "./SetupNag";
+import { ImportDialog } from "./ImportDialog";
+import { ChatConversations } from "./ChatConversations";
+import { useCloudStore } from "../lib/cloud";
+import { trafficLightSpacerCssPx, useZoomStore } from "../lib/zoom";
+
+// Parley mark — the Baskerville serif "P" matching the app icon
+// (icons/parley-icon.svg), as an outlined vector path (no font dependency).
+// Monochrome via currentColor so it inherits the brand row's text colour; the
+// icon's red record dot is dropped here to keep the sidebar wordmark calm.
+function ParleyMark({ size = 18 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <path d="M46.8212890625 62.685546875V71.3134765625Q46.8212890625 76.1572265625 47.04833984375 77.65576171875Q47.275390625 79.154296875 48.2744140625 79.880859375Q49.2734375 80.607421875 52.0283203125 80.607421875H53.390625V82.0H34.5908203125V80.607421875H35.6806640625Q38.314453125 80.607421875 39.32861328125 79.94140625Q40.3427734375 79.275390625 40.615234375 77.86767578125Q40.8876953125 76.4599609375 40.8876953125 71.3134765625V51.181640625Q40.8876953125 46.27734375 40.615234375 44.8544921875Q40.3427734375 43.431640625 39.404296875 42.88671875Q38.4658203125 42.341796875 35.34765625 42.341796875H34.5908203125V40.94921875L39.7373046875 40.767578125Q45.9130859375 40.5556640625 49.3642578125 40.5556640625Q55.7216796875 40.5556640625 59.15771484375 41.5546875Q62.59375 42.5537109375 64.78857421875 45.0966796875Q66.9833984375 47.6396484375 66.9833984375 51.5146484375Q66.9833984375 54.875 65.48486328125 57.4482421875Q63.986328125 60.021484375 61.18603515625 61.353515625Q58.3857421875 62.685546875 51.33203125 62.685546875ZM46.8212890625 61.171875H49.7578125Q53.2998046875 61.171875 55.4794921875 60.46044921875Q57.6591796875 59.7490234375 59.1123046875 57.478515625Q60.5654296875 55.2080078125 60.5654296875 51.8779296875Q60.5654296875 46.7919921875 58.06787109375 44.41552734375Q55.5703125 42.0390625 49.9697265625 42.0390625Q47.9111328125 42.0390625 46.8212890625 42.16015625Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const notes = useNotesStore((s) => s.notes);
+  const folders = useNotesStore((s) => s.folders);
+  const removeLocal = useNotesStore((s) => s.removeLocal);
+  const upsertLocal = useNotesStore((s) => s.upsertLocal);
+  const upsertFolder = useNotesStore((s) => s.upsertFolder);
+  const [q, setQ] = useState("");
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  // Path of the file awaiting an import-config dialog. Non-null while the
+  // dialog is open, between picking the file and confirming language/speakers.
+  const [importPath, setImportPath] = useState<string | null>(null);
+
+  // Import an existing audio file. Step 1: pick the file. We then open a config
+  // dialog (language + speakers) rather than importing immediately — the
+  // transcription runs once and can't be re-run per language, so the language
+  // must be chosen before it starts, not corrected on the note afterward.
+  async function importAudio() {
+    let selected: string | string[] | null;
+    try {
+      selected = await open({
+        multiple: false,
+        filters: [
+          {
+            name: "Audio",
+            // Whatever AVFoundation decodes — the sidecar handles the rest.
+            extensions: ["m4a", "mp3", "wav", "aac", "caf", "aiff", "aif", "m4b", "mp4"],
+          },
+        ],
+      });
+    } catch {
+      return; // dialog unavailable / cancelled
+    }
+    if (typeof selected !== "string") return; // cancelled or multi (shouldn't happen)
+    setImportPath(selected);
+  }
+
+  // Step 2: config confirmed. Create the note with the chosen language +
+  // speaker hint and kick off the pipeline; navigate so the transcript fills
+  // in live. Throws propagate to the dialog, which surfaces the error inline.
+  async function confirmImport(language: string, expectedSpeakers: number | null) {
+    const path = importPath;
+    if (!path) return;
+    const note = await ipc.importAudio(path, language, expectedSpeakers);
+    upsertLocal(note);
+    setImportPath(null);
+    navigate(`/note/${note.id}`);
+  }
+
+  async function deleteNote(e: React.MouseEvent, id: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    await ipc.deleteNote(id);
+    removeLocal(id);
+    if (location.pathname === `/note/${id}`) navigate("/all-notes");
+  }
+
+  async function commitNewFolder() {
+    const name = newFolderName.trim();
+    if (!name) {
+      setCreatingFolder(false);
+      setNewFolderName("");
+      return;
+    }
+    try {
+      const folder = await ipc.createFolder(name);
+      upsertFolder(folder);
+    } finally {
+      setCreatingFolder(false);
+      setNewFolderName("");
+    }
+  }
+
+  const needle = q.trim().toLowerCase();
+  const searching = needle.length > 0;
+
+  const noteMatches = (n: Note) =>
+    n.title.toLowerCase().includes(needle) ||
+    n.body.toLowerCase().includes(needle) ||
+    n.transcript.toLowerCase().includes(needle) ||
+    n.summary.toLowerCase().includes(needle);
+
+  // When searching, surface a flat list of all matching notes regardless
+  // of folder — folder context shows as a small chip on each row. When
+  // not searching, folder rows + root note groups render normally.
+  const searchResults = useMemo(() => {
+    if (!searching) return [] as Note[];
+    return notes
+      .filter(noteMatches)
+      .sort((a, b) => b.created_at - a.created_at);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notes, needle]);
+
+  const folderCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const n of notes) {
+      if (n.folder_id) map.set(n.folder_id, (map.get(n.folder_id) ?? 0) + 1);
+    }
+    return map;
+  }, [notes]);
+
+  const folderById = useMemo(() => {
+    const map = new Map<string, Folder>();
+    for (const f of folders) map.set(f.id, f);
+    return map;
+  }, [folders]);
+
+  const empty = folders.length === 0 && notes.length === 0;
+  const noResults = searching && searchResults.length === 0;
+  // Search still wins over the route: searching notes from `/chat` is a reasonable
+  // thing to do, and its results navigate away anyway.
+  //
+  // A folder chat swaps the section for the same reason `/chat` does (#110) — the
+  // list on screen is that surface's conversations, and showing the folder tree
+  // beneath a folder's own chat would offer navigation the page already is.
+  const onChat = location.pathname === "/chat" || /^\/folder\/[^/]+\/chat$/.test(location.pathname);
+  // Webview zoom scales the DOM but not the native traffic lights, so the
+  // clearance strip grows as 1/zoom to keep ~34 device px under the lights.
+  const zoom = useZoomStore((s) => s.zoom);
+
+  return (
+    <div className="h-full flex flex-col px-2.5 pb-2.5">
+      {/* Traffic-light clearance + window drag handle — the macOS lights
+          sit over this strip in the nav card's top-left. */}
+      <div
+        data-tauri-drag-region
+        className="w-full shrink-0"
+        style={{ height: `${trafficLightSpacerCssPx(zoom)}px` }}
+      />
+
+      {/* Brand */}
+      <div
+        data-tauri-drag-region
+        className="flex items-center justify-between pl-2 pr-0 pb-3"
+      >
+        <div className="no-drag flex items-center gap-2 select-none text-[var(--color-text)]">
+          <ParleyMark size={18} />
+          <span className="text-[15px] font-semibold tracking-[-0.01em]">Parley</span>
+        </div>
+        <button
+          onClick={onCollapse}
+          data-tauri-drag-region="false"
+          className="no-drag p-1.5 rounded-[var(--radius)] hover:bg-[var(--color-pill-hover)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+          aria-label="Collapse sidebar"
+          title="Collapse sidebar"
+        >
+          <ChevronLeft size={16} strokeWidth={1.5} />
+        </button>
+      </div>
+
+      <WorkspaceSwitcher />
+
+      {/* .nd-bar owns height, side padding and radius — graphite's recipe names
+          all three for a bar, and they differ from its nav rows. */}
+      <div className="no-drag nd-bar mt-2.5">
+        <Search size={14} strokeWidth={1.5} className="text-[var(--color-icon)] shrink-0" />
+        <input
+          data-search-input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search notes"
+          className="flex-1 text-sm min-w-0 bg-transparent"
+        />
+        <kbd className="shrink-0 px-1.5 py-0.5 text-[10px] text-[var(--color-text-disabled)] border border-[var(--color-line-visible)] rounded tabular-nums">
+          ⌘K
+        </kbd>
+      </div>
+
+      {/* Scrollable nav body: primary links → Folders section (or search
+          results when searching). */}
+      <div className="flex-1 overflow-y-auto -mx-1 px-1 mt-3.5">
+        <div className="flex flex-col gap-1">
+          <NavItem to="/" icon={HomeIcon} label="Home" active={location.pathname === "/"} />
+          <NavItem
+            to="/all-notes"
+            icon={Files}
+            label="All notes"
+            active={location.pathname === "/all-notes"}
+            count={notes.length}
+          />
+          {/* Chat sits directly under "All notes" — both are library-level
+              destinations, so they belong on the same tier (#95). */}
+          <NavItem
+            to="/chat"
+            icon={MessageCircle}
+            label="Chat"
+            active={location.pathname === "/chat"}
+          />
+          <NavItem
+            to="/inbox"
+            icon={Inbox}
+            label="Inbox"
+            active={location.pathname === "/inbox"}
+          />
+          <NavItem
+            to="/follow-ups"
+            icon={ListTodo}
+            label="Follow-ups"
+            active={location.pathname === "/follow-ups"}
+          />
+          <NavItem
+            to="/people"
+            icon={Users}
+            label="People"
+            active={location.pathname === "/people" || location.pathname.startsWith("/person/")}
+          />
+          <button
+            type="button"
+            onClick={importAudio}
+            title="Import an existing audio file as a new note"
+            className="no-drag nd-navrow w-full"
+          >
+            <FileAudio size={16} strokeWidth={1.6} className="shrink-0 opacity-85" />
+            <span className="flex-1 truncate text-left">Import audio</span>
+          </button>
+        </div>
+
+        {searching ? (
+          <div className="mt-3">
+            {noResults && (
+              <div className="px-2 py-4 text-sm text-[var(--color-text-muted)]">No matches</div>
+            )}
+            {searchResults.map((n) => (
+              <NoteRow
+                key={n.id}
+                note={n}
+                active={location.pathname === `/note/${n.id}`}
+                onDelete={deleteNote}
+                folderName={n.folder_id ? folderById.get(n.folder_id)?.name : undefined}
+              />
+            ))}
+          </div>
+        ) : onChat ? (
+          // Route-dependent section (#95): on `/chat` the body below the nav items
+          // lists conversations instead of folders. Folders are inert there, and a
+          // conversation list is navigation, so this is where it belongs. Only the
+          // section swaps — nav, search and the footer stay put, so nothing the
+          // user needs to leave with disappears.
+          // No divider above it: the section label already separates it, and a
+          // hairline plus a label is two devices doing one job.
+          <div className="mt-4">
+            <ChatConversations />
+          </div>
+        ) : (
+          <>
+            <Divider />
+            <div className="nd-label flex items-center justify-between px-2 pb-1.5">
+              <span>Folders</span>
+              <button
+                onClick={() => setCreatingFolder(true)}
+                aria-label="New folder"
+                title="New folder"
+                className="grid place-items-center w-5 h-5 rounded-full text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-pill-hover)] transition-colors"
+              >
+                <Plus size={14} strokeWidth={2} />
+              </button>
+            </div>
+
+            {creatingFolder && (
+              <div className="flex items-center gap-2 px-2 py-2 mb-0.5 rounded-[var(--radius)] border border-[var(--color-text-muted)] bg-[var(--color-surface)]">
+                <FolderPlus size={15} strokeWidth={1.5} className="shrink-0 text-[var(--color-text-muted)]" />
+                <input
+                  autoFocus
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitNewFolder();
+                    else if (e.key === "Escape") {
+                      setCreatingFolder(false);
+                      setNewFolderName("");
+                    }
+                  }}
+                  onBlur={commitNewFolder}
+                  placeholder="Folder name"
+                  className="flex-1 text-sm min-w-0 bg-transparent"
+                />
+              </div>
+            )}
+
+            {empty && !creatingFolder ? (
+              <div className="px-2 py-4 text-sm text-[var(--color-text-muted)]">No notes yet</div>
+            ) : folders.length === 0 && !creatingFolder ? (
+              <div className="px-2 py-3 text-xs text-[var(--color-text-disabled)]">No folders yet</div>
+            ) : (
+              folders.map((f) => (
+                <FolderRow
+                  key={f.id}
+                  folder={f}
+                  count={folderCounts.get(f.id) ?? 0}
+                  active={location.pathname === `/folder/${f.id}`}
+                />
+              ))
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Pinned footer */}
+      <Divider />
+      <NavItem to="/trash" icon={Trash2} label="Trash" active={location.pathname === "/trash"} />
+      {/* Setup nag — renders only while the recording pipeline isn't functional
+          (shared predicate). Sits above Settings; self-hides when all set. */}
+      <SetupNag />
+      <NavItem
+        to="/settings"
+        icon={SettingsIcon}
+        label="Settings"
+        active={location.pathname.startsWith("/settings")}
+        title="⌘,"
+      />
+      <AccountRow />
+
+      {importPath && (
+        <ImportDialog
+          path={importPath}
+          onCancel={() => setImportPath(null)}
+          onConfirm={confirmImport}
+        />
+      )}
+    </div>
+  );
+}
+
+// Hairline divider between nav groups. 0.5px reads as a crisp warm line on
+// the card surface in both themes.
+function Divider() {
+  return <div className="h-px bg-[var(--color-line)] mx-1.5 my-3" />;
+}
+
+// A primary / footer nav row: leading icon, label, optional trailing count.
+// Active = surface lift (sits above the card); hover = a faint tint.
+function NavItem({
+  to,
+  icon: Icon,
+  label,
+  active,
+  count,
+  title,
+}: {
+  to: string;
+  icon: typeof HomeIcon;
+  label: string;
+  active: boolean;
+  count?: number;
+  title?: string;
+}) {
+  return (
+    <Link
+      to={to}
+      title={title}
+      className={cn(
+        // .nd-navrow owns the height, radius, label size and icon gap so a
+        // theme can restate the navigation (graphite: 28px rows, 13px labels,
+        // 9px radius) without touching this file.
+        "no-drag nd-navrow",
+        active &&
+          "is-active font-medium shadow-[0_1px_2px_rgba(0,0,0,0.05)]",
+      )}
+    >
+      {/* `size` stays as the fallback for any context the .nd-navrow > svg rule
+          doesn't reach; the theme's --icon-size overrides it where it does. */}
+      <Icon size={16} strokeWidth={1.6} className="shrink-0 opacity-85" />
+      <span className="flex-1 truncate">{label}</span>
+      {count !== undefined && count > 0 && (
+        <span className="text-[11px] text-[var(--color-text-disabled)] tabular-nums">{count}</span>
+      )}
+    </Link>
+  );
+}
+
+function FolderRow({
+  folder,
+  count,
+  active,
+}: {
+  folder: Folder;
+  count: number;
+  active: boolean;
+}) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const upsertFolder = useNotesStore((s) => s.upsertFolder);
+  const removeFolder = useNotesStore((s) => s.removeFolder);
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draftName, setDraftName] = useState(folder.name);
+  // `undefined` = closed. Otherwise the conversations about to be destroyed —
+  // `null` when the listing FAILED, which still confirms but can't name a number.
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string }[] | null | undefined>(
+    undefined,
+  );
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  function openMenu(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenuPos({ x: e.clientX, y: e.clientY });
+  }
+
+  function startRename() {
+    setMenuPos(null);
+    setDraftName(folder.name);
+    setEditing(true);
+  }
+
+  async function commitRename() {
+    const name = draftName.trim();
+    if (!name || name === folder.name) {
+      setEditing(false);
+      return;
+    }
+    try {
+      await ipc.renameFolder(folder.id, name);
+      upsertFolder({ ...folder, name, updated_at: Date.now() });
+    } finally {
+      setEditing(false);
+    }
+  }
+
+  async function deleteHere() {
+    setMenuPos(null);
+    // Notes fall back to root rather than being deleted, so THAT part is
+    // recoverable. The folder's chat conversations are not (#110): they go with
+    // it, because a folder thread's whole reach was that folder. So this confirms
+    // only when there is something unrecoverable to lose — a folder with no
+    // conversations deletes as immediately as it always did — and the prompt, when
+    // it appears, names the actual cost rather than asking "are you sure?" about
+    // something that isn't at risk.
+    //
+    // A FAILED listing confirms rather than proceeding. Treating "couldn't ask" as
+    // "nothing there" is the one wrong way to be wrong here: it turns an unknown
+    // number of unrecoverable threads into a silent hard delete. `null` says so.
+    let threads: { id: string }[] | null = null;
+    try {
+      threads = await ipc.chatListConversations({ kind: "folder", folderId: folder.id });
+    } catch {
+      threads = null;
+    }
+    if (threads !== null && threads.length === 0) {
+      await commitDelete([]);
+      return;
+    }
+    setConfirmDelete(threads);
+  }
+
+  async function commitDelete(threads: { id: string }[] | null) {
+    // Delete the conversations FIRST, and through the normal per-conversation
+    // command rather than by dropping local rows (#110).
+    //
+    // In a workspace a folder thread is server-authoritative — the local row is
+    // only a handle — so `db::delete_folder`'s local cascade would leave the real
+    // thread alive on the server, pointing at a folder that no longer exists:
+    // unreachable, still listed for teammates, and clamping to nothing. That
+    // command is also where the server's own rule lives (only the thread's
+    // creator, or a workspace owner/admin, may delete one).
+    //
+    // So a refusal ABORTS the folder delete rather than being swallowed. A folder
+    // that half-deleted — gone locally, its threads still on the server — is worse
+    // than one that didn't delete, because nothing would ever offer to finish it.
+    setDeleteError(null);
+    try {
+      // A listing that failed at menu time is retried here rather than treated as
+      // an empty one. Without it, "delete anyway" would delete the folder while
+      // every server-side thread survived pointing at it — precisely the orphan
+      // this whole function exists to prevent.
+      const doomed =
+        threads ??
+        (await ipc.chatListConversations({ kind: "folder", folderId: folder.id }));
+      for (const t of doomed) {
+        await ipc.chatDeleteConversation({ kind: "folder", folderId: folder.id }, t.id);
+      }
+    } catch (e) {
+      setDeleteError(String(e));
+      return;
+    }
+    await ipc.deleteFolder(folder.id);
+    removeFolder(folder.id);
+    setConfirmDelete(undefined);
+    // If we're sitting on this folder's page — or its chat — navigate home so we
+    // don't end up on a dead route.
+    if (location.pathname.startsWith(`/folder/${folder.id}`)) navigate("/all-notes");
+  }
+
+  if (editing) {
+    return (
+      <div className="no-drag flex items-center gap-2 px-2.5 py-2 mb-0.5 rounded-[var(--radius)] border border-[var(--color-text-muted)] bg-[var(--color-surface)]">
+        <FolderIcon size={15} strokeWidth={1.5} className="shrink-0 text-[var(--color-text-muted)]" />
+        <input
+          autoFocus
+          value={draftName}
+          onChange={(e) => setDraftName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commitRename();
+            else if (e.key === "Escape") setEditing(false);
+          }}
+          onBlur={commitRename}
+          className="flex-1 text-sm min-w-0 bg-transparent"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <Link
+        to={`/folder/${folder.id}`}
+        onContextMenu={openMenu}
+        className={cn(
+          "no-drag group nd-navrow mb-0.5",
+          active && "is-active font-medium shadow-[0_1px_2px_rgba(0,0,0,0.05)]",
+        )}
+      >
+        <FolderIcon size={16} strokeWidth={1.6} className="shrink-0 opacity-85" />
+        <span className="flex-1 truncate">{folder.name}</span>
+        {count > 0 && (
+          <span className="text-[11px] text-[var(--color-text-disabled)] tabular-nums">
+            {count}
+          </span>
+        )}
+      </Link>
+      {menuPos && (
+        <ContextMenu x={menuPos.x} y={menuPos.y} onClose={() => setMenuPos(null)}>
+          <ContextMenuItem
+            onClick={() => {
+              setMenuPos(null);
+              navigate(`/folder/${folder.id}/chat`);
+            }}
+          >
+            Chat about this folder
+          </ContextMenuItem>
+          <ContextMenuItem onClick={startRename}>Rename</ContextMenuItem>
+          <ContextMenuItem onClick={() => void deleteHere()} danger>
+            Delete
+          </ContextMenuItem>
+        </ContextMenu>
+      )}
+      <Modal
+        open={confirmDelete !== undefined}
+        onClose={() => {
+          setConfirmDelete(undefined);
+          setDeleteError(null);
+        }}
+        title="Delete folder"
+      >
+        <p className="text-[14px] text-[var(--color-text)]">
+          Delete “{folder.name}”? Its notes move out of the folder, but{" "}
+          {confirmDelete === null
+            ? "any chat conversations about it are"
+            : confirmDelete?.length === 1
+              ? "its chat conversation is"
+              : `its ${confirmDelete?.length} chat conversations are`}{" "}
+          deleted for good.
+        </p>
+        {deleteError && (
+          <p className="mt-3 text-[13px]" style={{ color: "var(--color-danger)" }}>
+            {deleteError} — the folder was left alone.
+          </p>
+        )}
+        <div className="flex justify-end gap-2 mt-5">
+          <button
+            className="nd-btn"
+            onClick={() => {
+              setConfirmDelete(undefined);
+              setDeleteError(null);
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            className="nd-btn"
+            style={{ color: "var(--color-danger)" }}
+            onClick={() => void commitDelete(confirmDelete ?? null)}
+          >
+            Delete
+          </button>
+        </div>
+      </Modal>
+    </>
+  );
+}
+
+function NoteRow({
+  note,
+  active,
+  onDelete,
+  folderName,
+}: {
+  note: Note;
+  active: boolean;
+  onDelete: (e: React.MouseEvent, id: string) => void;
+  folderName?: string;
+}) {
+  return (
+    <Link
+      to={`/note/${note.id}`}
+      className={cn(
+        "no-drag group nd-navrow gap-1 pr-1",
+        active && "is-active"
+      )}
+    >
+      <span className="flex-1 min-w-0 flex flex-col">
+        <span className="truncate">{note.title.trim() || "Untitled"}</span>
+        {folderName && (
+          <span className="truncate text-[10px] text-[var(--color-text-disabled)]">
+            {folderName}
+          </span>
+        )}
+      </span>
+      <button
+        onClick={(e) => onDelete(e, note.id)}
+        aria-label="Delete note"
+        title="Delete"
+        className="opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0 p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-danger)] hover:bg-[var(--color-pill-hover)] transition-colors"
+      >
+        <Trash2 size={14} strokeWidth={1.5} />
+      </button>
+    </Link>
+  );
+}
+
+// Signed-in profile presence pinned at the bottom of the nav. Hidden when
+// signed out (the workspace switcher already offers a sign-in affordance).
+function AccountRow() {
+  const status = useCloudStore((s) => s.status);
+  if (!status.logged_in || !status.user) return null;
+  const u = status.user;
+  return (
+    <Link
+      to="/settings?tab=account"
+      className="no-drag flex items-center gap-2.5 mt-1 px-2 py-2 rounded-[var(--radius)] hover:bg-[var(--color-pill-hover)] transition-colors"
+      title="Account"
+    >
+      <span className="shrink-0 grid place-items-center w-6 h-6 rounded-full bg-[var(--color-surface-raised)] text-[11px] font-semibold text-[var(--color-text)]">
+        {(u.name || u.email).slice(0, 1).toUpperCase()}
+      </span>
+      <span className="flex-1 min-w-0 flex flex-col leading-tight">
+        <span className="truncate text-[13px] text-[var(--color-text)]">{u.name || u.email}</span>
+        {u.name && (
+          <span className="truncate text-[11px] text-[var(--color-text-disabled)]">{u.email}</span>
+        )}
+      </span>
+    </Link>
+  );
+}

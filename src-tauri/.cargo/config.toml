@@ -1,0 +1,20 @@
+# Sign every debug build with the release Developer ID identity before running
+# it, so the macOS Keychain sees a stable designated requirement across
+# rebuilds and stops re-prompting for the login password on every `tauri dev`.
+# See scripts/dev-sign.sh.
+[target.aarch64-apple-darwin]
+runner = "../scripts/dev-sign.sh"
+
+[target.x86_64-apple-darwin]
+runner = "../scripts/dev-sign.sh"
+
+# github-copilot-sdk's build script downloads the Copilot runtime unless told
+# not to.
+[env]
+COPILOT_SKIP_CLI_DOWNLOAD = "1"
+
+# Must match bundle.macOS.minimumSystemVersion in tauri.conf.json. C and
+# Objective-C dependencies built through cmake (whisper.cpp's Metal backend)
+# otherwise target the build machine's SDK, which links newer framework symbols
+# strongly and stops the app launching on older macOS.
+MACOSX_DEPLOYMENT_TARGET = "13.0"

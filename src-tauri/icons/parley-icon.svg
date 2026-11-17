@@ -1,0 +1,13 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#232320"/><stop offset="1" stop-color="#17170f"/></linearGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ece7da"/></linearGradient>
+  </defs>
+  <path d="M512 72 C 300 72 196 72 134 134 C 72 196 72 300 72 512 C 72 724 72 828 134 890 C 196 952 300 952 512 952 C 724 952 828 952 890 890 C 952 828 952 724 952 512 C 952 300 952 196 890 134 C 828 72 724 72 512 72 Z" fill="url(#ground)"/>
+  <!-- Baskerville 'P' as outlined vector (self-contained, no font dependency).
+       Transform: em(2048,Y-up) -> icon(1024,Y-down), size matches font-size 680 at baseline y=740, centered x=512. -->
+  <g transform="translate(320.8 740) scale(0.33203 -0.33203)">
+    <path d="M471 638V353Q471 193 478.5 143.5Q486 94 519.0 70.0Q552 46 643 46H688V0H67V46H103Q190 46 223.5 68.0Q257 90 266.0 136.5Q275 183 275 353V1018Q275 1180 266.0 1227.0Q257 1274 226.0 1292.0Q195 1310 92 1310H67V1356L237 1362Q441 1369 555 1369Q765 1369 878.5 1336.0Q992 1303 1064.5 1219.0Q1137 1135 1137 1007Q1137 896 1087.5 811.0Q1038 726 945.5 682.0Q853 638 620 638ZM471 688H568Q685 688 757.0 711.5Q829 735 877.0 810.0Q925 885 925 995Q925 1163 842.5 1241.5Q760 1320 575 1320Q507 1320 471 1316Z" fill="url(#mark)"/>
+  </g>
+  <circle cx="556" cy="420" r="38" fill="#b84a3a"/>
+</svg>
