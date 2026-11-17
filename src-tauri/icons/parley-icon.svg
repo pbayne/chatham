@@ -1,22 +1,13 @@
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-  <!-- Parley icon — Option B: clean P, no tail. Red dot centred in counter. -->
   <defs>
-    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#232320"/><stop offset="1" stop-color="#17170f"/>
-    </linearGradient>
-    <linearGradient id="mark" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ece7da"/>
-    </linearGradient>
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#232320"/><stop offset="1" stop-color="#17170f"/></linearGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ece7da"/></linearGradient>
   </defs>
   <path d="M512 72 C 300 72 196 72 134 134 C 72 196 72 300 72 512 C 72 724 72 828 134 890 C 196 952 300 952 512 952 C 724 952 828 952 890 890 C 952 828 952 724 952 512 C 952 300 952 196 890 134 C 828 72 724 72 512 72 Z" fill="url(#ground)"/>
-
-  <!-- Stem: x 332..420 (w88), y 300..724, rounded top, flat base -->
-  <path fill="url(#mark)" d="M332 344 C332 320 351 300 376 300 C401 300 420 320 420 344 L420 724 L332 724 Z"/>
-
-  <!-- Bowl: filled half-round from stem, even-odd circular counter -->
-  <path fill="url(#mark)" fill-rule="evenodd" d="
-    M420 300 L556 300 C676 300 756 372 756 466 C756 560 676 632 556 632 L420 632 L420 548 L556 548 C628 548 672 512 672 466 C672 420 628 384 556 384 L420 384 Z"/>
-
-  <!-- Record dot centred in counter: x 420..672 (c=546), y 384..548 (c=466) -->
-  <circle cx="546" cy="466" r="48" fill="#b84a3a"/>
+  <!-- Baskerville 'P' as outlined vector (self-contained, no font dependency).
+       Transform: em(2048,Y-up) -> icon(1024,Y-down), size matches font-size 680 at baseline y=740, centered x=512. -->
+  <g transform="translate(320.8 740) scale(0.33203 -0.33203)">
+    <path d="M471 638V353Q471 193 478.5 143.5Q486 94 519.0 70.0Q552 46 643 46H688V0H67V46H103Q190 46 223.5 68.0Q257 90 266.0 136.5Q275 183 275 353V1018Q275 1180 266.0 1227.0Q257 1274 226.0 1292.0Q195 1310 92 1310H67V1356L237 1362Q441 1369 555 1369Q765 1369 878.5 1336.0Q992 1303 1064.5 1219.0Q1137 1135 1137 1007Q1137 896 1087.5 811.0Q1038 726 945.5 682.0Q853 638 620 638ZM471 688H568Q685 688 757.0 711.5Q829 735 877.0 810.0Q925 885 925 995Q925 1163 842.5 1241.5Q760 1320 575 1320Q507 1320 471 1316Z" fill="url(#mark)"/>
+  </g>
+  <circle cx="556" cy="420" r="38" fill="#b84a3a"/>
 </svg>
