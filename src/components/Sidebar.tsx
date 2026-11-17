@@ -29,10 +29,10 @@ import { ChatConversations } from "./ChatConversations";
 import { useCloudStore } from "../lib/cloud";
 import { trafficLightSpacerCssPx, useZoomStore } from "../lib/zoom";
 
-// Parley mark — the "P" monogram with a speech-bubble tail, matching the app
-// icon (icons/parley-icon.svg). Monochrome via currentColor so it inherits the
-// brand row's text colour; the icon's red record dot is dropped here to keep
-// the sidebar wordmark calm. Hollow bowl via even-odd fill.
+// Parley mark — the "P" monogram matching the app icon (icons/parley-icon.svg):
+// a clean P with a round counter, no tail. Monochrome via currentColor so it
+// inherits the brand row's text colour; the icon's red record dot is dropped
+// here to keep the sidebar wordmark calm. Hollow bowl via even-odd fill.
 function ParleyMark({ size = 18 }: { size?: number }) {
   return (
     <svg
@@ -45,10 +45,9 @@ function ParleyMark({ size = 18 }: { size?: number }) {
       <path
         fillRule="evenodd"
         clipRule="evenodd"
-        d="M26 16 H60 C75 16 86 27 86 42 C86 57 75 68 60 68 H38 V86 C38 89.3 35.3 92 32 92 C28.7 92 26 89.3 26 86 Z M38 28 V56 H60 C68 56 74 50 74 42 C74 34 68 28 60 28 Z"
+        d="M30 30 C30 27 32 25 35 25 C38 25 40 27 40 30 L40 75 L30 75 Z M40 25 L55 25 C67 25 75 32 75 44 C75 56 67 63 55 63 L40 63 L40 54 L55 54 C62 54 66 50 66 44 C66 38 62 34 55 34 L40 34 Z"
         fill="currentColor"
       />
-      <path d="M66 64 L74 78 L80 66 Z" fill="currentColor" />
     </svg>
   );
 }

@@ -1,46 +1,22 @@
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-  <!-- Parley icon — "P" monogram as a speech bubble (refined).
-       Ink squircle, paper glyph, record-red dot centred in the bowl. -->
+  <!-- Parley icon — Option B: clean P, no tail. Red dot centred in counter. -->
   <defs>
     <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#232320"/>
-      <stop offset="1" stop-color="#17170f"/>
+      <stop offset="0" stop-color="#232320"/><stop offset="1" stop-color="#17170f"/>
     </linearGradient>
     <linearGradient id="mark" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#ece7da"/>
+      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ece7da"/>
     </linearGradient>
   </defs>
-
-  <!-- macOS squircle ground -->
   <path d="M512 72 C 300 72 196 72 134 134 C 72 196 72 300 72 512 C 72 724 72 828 134 890 C 196 952 300 952 512 952 C 724 952 828 952 890 890 C 952 828 952 724 952 512 C 952 300 952 196 890 134 C 828 72 724 72 512 72 Z" fill="url(#ground)"/>
 
-  <!-- P built as a single filled shape with an even-odd counter so the bowl
-       hole is true negative space. Stem at x=348..432; bowl is a half-round
-       on the right. Optically centred (stem a bit left of middle, bowl extends
-       right so the visual mass sits centre). -->
-  <!-- Stroke weight ~84. Stem top 300 -> bottom 742 (descending foot). -->
-  <path fill-rule="evenodd" fill="url(#mark)" d="
-    M348 300
-    H596
-    C706 300 790 378 790 476
-    C790 574 706 652 596 652
-    H432
-    V742
-    C432 765 413 784 390 784
-    C367 784 348 765 348 742
-    Z
-    M432 384
-    V568
-    H596
-    C654 568 706 534 706 476
-    C706 418 654 384 596 384
-    Z"/>
+  <!-- Stem: x 332..420 (w88), y 300..724, rounded top, flat base -->
+  <path fill="url(#mark)" d="M332 344 C332 320 351 300 376 300 C401 300 420 320 420 344 L420 724 L332 724 Z"/>
 
-  <!-- Speech-bubble tail off the bowl's lower-right, pointing down-right -->
-  <path fill="url(#mark)" d="M636 610 L690 700 L724 626 Z"/>
+  <!-- Bowl: filled half-round from stem, even-odd circular counter -->
+  <path fill="url(#mark)" fill-rule="evenodd" d="
+    M420 300 L556 300 C676 300 756 372 756 466 C756 560 676 632 556 632 L420 632 L420 548 L556 548 C628 548 672 512 672 466 C672 420 628 384 556 384 L420 384 Z"/>
 
-  <!-- Record dot centred in the bowl counter.
-       Counter spans x 432..706 (center ~569), y 384..568 (center ~476). -->
-  <circle cx="569" cy="476" r="52" fill="#b84a3a"/>
+  <!-- Record dot centred in counter: x 420..672 (c=546), y 384..548 (c=466) -->
+  <circle cx="546" cy="466" r="48" fill="#b84a3a"/>
 </svg>
