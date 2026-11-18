@@ -63,6 +63,15 @@ const MODELS: &[ModelInfo] = &[
         kind: ModelKind::Multilingual,
     },
     ModelInfo {
+        id: "large-v3-turbo-q8",
+        label: "Large v3 Turbo (q8 — higher fidelity)",
+        filename: "ggml-large-v3-turbo-q8_0.bin",
+        url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q8_0.bin",
+        size_bytes_hint: 874_188_075,
+        description: "Multilingual. Same Turbo speed tier as the default, quantized to 8-bit instead of 5-bit — a little larger on disk for slightly cleaner output on dense or noisy audio. A good step up from the q5 default when accuracy matters more than download size.",
+        kind: ModelKind::Multilingual,
+    },
+    ModelInfo {
         id: "large-v3-q5",
         label: "Large v3 (quantized)",
         filename: "ggml-large-v3-q5_0.bin",
