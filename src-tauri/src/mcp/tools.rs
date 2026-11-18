@@ -2,7 +2,7 @@
 //! and one seam — [`execute`] — that every one of them passes through.
 //!
 //! Deliberately a PARALLEL module to `chat::tools`, not a reuse of it. The chat
-//! surface is pinned pairwise against `parley-cloud/chat-service/src/tools.ts`, and
+//! surface is pinned pairwise against `chatham-cloud/chat-service/src/tools.ts`, and
 //! its descriptions are terse on purpose because small local models re-litigate
 //! long ones. MCP wants the opposite — richer descriptions for capable agents — a
 //! `language` field, and tools the chat loop has no use for. Reusing the chat specs
@@ -33,7 +33,7 @@ use serde_json::{json, Value};
 /// `is_error` marks a bad-argument or internal failure — never an empty result.
 ///
 /// No citation list, deliberately, unlike `chat::tools::Outcome`. Chat has a channel
-/// for one — the cited notes become chips in Parley's own UI that navigate to the
+/// for one — the cited notes become chips in Chatham's own UI that navigate to the
 /// source — and MCP has none: the protocol hands a tool result back as content, and
 /// the client would have nowhere to put a structured citation even if we produced
 /// one. Every result that draws on a note therefore names it IN the text (title,
@@ -129,7 +129,7 @@ const MS_PER_DAY: i64 = 86_400_000;
 const SPEAKERS_SHOWN: usize = 8;
 
 /// The one sentence every tool's description ends with about language, stated as a
-/// mechanism and naming no language. Parley transcribes around ninety-nine of them
+/// mechanism and naming no language. Chatham transcribes around ninety-nine of them
 /// and the distribution is a property of each user's library, so naming any would be
 /// wrong for nearly everyone — the client learns which exist by looking at the
 /// `lang:` field on results.
@@ -1091,7 +1091,7 @@ fn run_clients(conn: &Connection, workspace: &str) -> Outcome {
 /// when no note in it has a language either way.
 ///
 /// [`LANGUAGE_NOTE`] tells a client that language matters and names none, on purpose:
-/// a tool DESCRIPTION ships identically to every user, and Parley transcribes around
+/// a tool DESCRIPTION ships identically to every user, and Chatham transcribes around
 /// ninety-nine languages, so any name in it is wrong for nearly everyone. This is the
 /// other half, and the distinction is the one that makes both correct — here the
 /// names are read out of the user's own library at the moment a search came back

@@ -405,7 +405,7 @@ export function TranscriptionStep({ ctx }: { ctx: StepContext }) {
   return (
     <StepShell
       icon={<HardDriveDownload size={26} strokeWidth={1.6} />}
-      title="How should Parley transcribe?"
+      title="How should Chatham transcribe?"
       subtitle="Run it privately on your Mac, or use a cloud API. You can change this any time in Settings."
     >
       <div className="w-full max-w-md flex flex-col gap-3 text-left">

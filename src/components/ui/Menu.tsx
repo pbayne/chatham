@@ -4,7 +4,7 @@ import { Check } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { floatingSurface, rowClass, rowHighlightClass } from "./surface";
 
-// Parley's menu primitive: Radix `DropdownMenu` with our tokens on it (#114).
+// Chatham's menu primitive: Radix `DropdownMenu` with our tokens on it (#114).
 //
 // Radix owns the parts that were previously hand-rolled six times over and
 // wrong in a different way each time — portalling, collision-aware placement,

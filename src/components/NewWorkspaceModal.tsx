@@ -10,7 +10,7 @@ import {
   Users,
 } from "lucide-react";
 import {
-  PARLEY_CLOUD_URL,
+  CHATHAM_CLOUD_URL,
   cloudApi,
   formatSeatPrice,
   useCloudStore,
@@ -148,7 +148,7 @@ function PricingPanel({
       style={{ background: "var(--color-accent-soft)" }}
     >
       <div className="flex items-center gap-1.5 text-sm font-medium">
-        <Cloud size={15} strokeWidth={1.7} /> Parley Cloud
+        <Cloud size={15} strokeWidth={1.7} /> Chatham Cloud
       </div>
       <ul className="flex flex-col gap-2">
         {[
@@ -186,11 +186,11 @@ function ConnectStage({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function useParleyCloud() {
+  async function useChathamCloud() {
     setBusy(true);
     setError(null);
     try {
-      await cloudApi.configure(PARLEY_CLOUD_URL);
+      await cloudApi.configure(CHATHAM_CLOUD_URL);
       await refresh();
     } catch (e) {
       setError(String(e));
@@ -204,7 +204,7 @@ function ConnectStage({ onClose }: { onClose: () => void }) {
       <Body>
         <Head
           title="Create a team workspace"
-          blurb="Parley works fully offline and your notes live on your Mac. A workspace is how you share them with other people."
+          blurb="Chatham works fully offline and your notes live on your Mac. A workspace is how you share them with other people."
         />
         <PricingPanel trial />
         <Err>{error}</Err>
@@ -212,12 +212,12 @@ function ConnectStage({ onClose }: { onClose: () => void }) {
       <Footer>
         <button
           type="button"
-          onClick={useParleyCloud}
+          onClick={useChathamCloud}
           disabled={busy}
           className="nd-btn nd-btn-primary"
         >
           <Cloud size={14} strokeWidth={2} />
-          {busy ? "Connecting…" : "Use Parley Cloud"}
+          {busy ? "Connecting…" : "Use Chatham Cloud"}
         </button>
         <span className="flex-1" />
         <button
@@ -324,7 +324,7 @@ function AuthStage() {
         <p className="text-xs text-[var(--color-text-muted)]">
           {status.billing_enabled
             ? `${formatSeatPrice(status.seat_price_cents ?? 500, status.seat_currency)} per seat/mo after a 14-day free trial · cancel anytime`
-            : "Your own server — Parley bills nothing for it."}
+            : "Your own server — Chatham bills nothing for it."}
         </p>
       </Body>
       <Footer>

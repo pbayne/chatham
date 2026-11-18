@@ -36,23 +36,23 @@ use serde_json::{Map, Value};
 
 use super::tools;
 
-/// The `parley://note/<id>` scheme notes are exposed under.
-const RESOURCE_PREFIX: &str = "parley://note/";
+/// The `chatham://note/<id>` scheme notes are exposed under.
+const RESOURCE_PREFIX: &str = "chatham://note/";
 /// The one resource offered while the integration is switched off. Deliberately NOT
 /// under [`RESOURCE_PREFIX`]: it is not a note, it names none, and reading it must
 /// not go anywhere near the library.
-const RESOURCE_DISABLED: &str = "parley://disabled";
+const RESOURCE_DISABLED: &str = "chatham://disabled";
 /// How many notes to advertise as resources. An `@` menu is a picker, not an
 /// archive — the tools are the way to reach anything older, and a list of every
 /// note in a years-old library would cost the client more than it is worth.
 const RESOURCE_LIMIT: usize = 200;
 
 #[derive(Clone)]
-pub struct ParleyMcp {
+pub struct ChathamMcp {
     db: Arc<Mutex<Connection>>,
 }
 
-impl ParleyMcp {
+impl ChathamMcp {
     pub fn new(conn: Connection) -> Self {
         Self { db: Arc::new(Mutex::new(conn)) }
     }
@@ -89,7 +89,7 @@ impl ParleyMcp {
             // It carries no note title and no note id: the whole promise of the gate
             // is that nothing from the library is readable until the user opts in,
             // and a resource list is readable without any tool being called.
-            return vec![Resource::new(RESOURCE_DISABLED, "Parley — integration turned off")
+            return vec![Resource::new(RESOURCE_DISABLED, "Chatham — integration turned off")
                 .with_description(super::disabled_message())
                 .with_mime_type("text/plain")];
         }
@@ -117,7 +117,7 @@ impl ParleyMcp {
             return Ok(super::disabled_message());
         }
         let Some(note_id) = uri.strip_prefix(RESOURCE_PREFIX) else {
-            return Err(ErrorData::resource_not_found(format!("Not a Parley note URI: {uri}"), None));
+            return Err(ErrorData::resource_not_found(format!("Not a Chatham note URI: {uri}"), None));
         };
         // Straight through the same seam the tool takes, so a resource read and a
         // `get_note` call can never come to mean different things — including the
@@ -137,7 +137,7 @@ fn schema_object(v: &Value) -> Arc<Map<String, Value>> {
     Arc::new(v.as_object().cloned().unwrap_or_default())
 }
 
-impl ServerHandler for ParleyMcp {
+impl ServerHandler for ChathamMcp {
     fn get_info(&self) -> ServerConfig {
         // Resources are declared as well as tools: Claude Code turns them into `@`
         // mentions, and a server that declares none has been reported by Codex as
@@ -146,7 +146,7 @@ impl ServerHandler for ParleyMcp {
             ServerCapabilities::builder().enable_tools().enable_resources().build(),
         )
         .with_protocol_version(ProtocolVersion::LATEST_WITH_INITIALIZE)
-        .with_server_info(Implementation::new("parley", env!("CARGO_PKG_VERSION")))
+        .with_server_info(Implementation::new("chatham", env!("CARGO_PKG_VERSION")))
         .with_instructions(super::INSTRUCTIONS)
     }
 
@@ -210,7 +210,7 @@ mod tests {
     fn info() -> ServerConfig {
         let dir = tempfile::tempdir().unwrap();
         let conn = crate::db::open(&dir.path().join("t.sqlite")).unwrap();
-        ParleyMcp::new(conn).get_info()
+        ChathamMcp::new(conn).get_info()
     }
 
     /// Speaks to a server over a pipe, one JSON-RPC line per request, and returns
@@ -224,7 +224,7 @@ mod tests {
         let (client, server) = tokio::io::duplex(1 << 20);
         let (server_read, server_write) = tokio::io::split(server);
         tokio::spawn(async move {
-            if let Ok(s) = ParleyMcp::new(conn).serve((server_read, server_write)).await {
+            if let Ok(s) = ChathamMcp::new(conn).serve((server_read, server_write)).await {
                 let _ = s.waiting().await;
             }
         });
@@ -318,7 +318,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let conn = crate::db::open(&dir.path().join("t.sqlite")).unwrap();
         crate::db::set_setting(&conn, super::super::SETTING_ENABLED, "true").unwrap();
-        let server = ParleyMcp::new(conn);
+        let server = ChathamMcp::new(conn);
         for spec in tools::specs() {
             let (text, _) = server.dispatch(spec.name, serde_json::json!({ "query": "x", "note_id": "x" }));
             assert!(!text.contains("Unknown tool"), "{} does not dispatch", spec.name);
@@ -342,7 +342,7 @@ mod tests {
             &crate::db::NotePatch { title: Some("Secret meeting".into()), ..Default::default() },
         )
         .unwrap();
-        let server = ParleyMcp::new(conn);
+        let server = ChathamMcp::new(conn);
 
         let listed = server.resources();
         assert!(!listed.is_empty(), "an empty list reads as a broken server");
@@ -373,7 +373,7 @@ mod tests {
         )
         .unwrap();
         crate::db::set_setting(&conn, super::super::SETTING_ENABLED, "true").unwrap();
-        let server = ParleyMcp::new(conn);
+        let server = ChathamMcp::new(conn);
 
         let listed = server.resources();
         let rendered = serde_json::to_string(&listed).unwrap();
@@ -403,7 +403,7 @@ mod tests {
             },
         )
         .unwrap();
-        let server = ParleyMcp::new(conn);
+        let server = ChathamMcp::new(conn);
 
         for spec in tools::specs() {
             let (text, is_error) =

@@ -60,7 +60,7 @@ export function LanguageStep({ ctx }: { ctx: StepContext }) {
     <StepShell
       icon={<Languages size={26} strokeWidth={1.6} />}
       title="What language are your meetings mostly in?"
-      subtitle="This helps Parley pick the right transcription model. You can override it per note later."
+      subtitle="This helps Chatham pick the right transcription model. You can override it per note later."
     >
       <div className="w-full max-w-xs">
         <Select

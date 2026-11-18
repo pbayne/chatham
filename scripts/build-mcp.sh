@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Build the `parley-mcp` stdio MCP server (#172) and place it where Tauri expects,
-# so it ships inside the bundle at Parley.app/Contents/MacOS/parley-mcp.
+# Build the `chatham-mcp` stdio MCP server (#172) and place it where Tauri expects,
+# so it ships inside the bundle at Chatham.app/Contents/MacOS/chatham-mcp.
 #
 # Unlike the two Swift sidecars this is a second [[bin]] of the app's own Rust
 # crate, so there is no source-hash skip: cargo already does exactly that, and
@@ -20,9 +20,9 @@ case "$ARCH" in
 esac
 
 mkdir -p src-tauri/binaries
-DEST="src-tauri/binaries/parley-mcp-$TRIPLE"
+DEST="src-tauri/binaries/chatham-mcp-$TRIPLE"
 
-# Chicken-and-egg: `parley-mcp` is declared in tauri.conf.json's externalBin, and
+# Chicken-and-egg: `chatham-mcp` is declared in tauri.conf.json's externalBin, and
 # tauri-build's build script fails the crate build when a declared sidecar is
 # missing — including the build that produces this very binary. A zero-byte
 # placeholder gets that first compile through; it is overwritten below, before
@@ -30,7 +30,7 @@ DEST="src-tauri/binaries/parley-mcp-$TRIPLE"
 #
 # The trap is not optional. Without it a failed `cargo build` leaves the empty file
 # behind, and the next `tauri build` happily bundles and SIGNS a zero-byte
-# `Contents/MacOS/parley-mcp` — a shipped server that dies the instant a client
+# `Contents/MacOS/chatham-mcp` — a shipped server that dies the instant a client
 # spawns it, with a Settings snippet pointing straight at it.
 if [[ ! -f "$DEST" ]]; then
   : > "$DEST"
@@ -39,10 +39,10 @@ fi
 
 (
   cd src-tauri
-  cargo build --release --bin parley-mcp
+  cargo build --release --bin chatham-mcp
 )
 
-cp src-tauri/target/release/parley-mcp "$DEST"
+cp src-tauri/target/release/chatham-mcp "$DEST"
 # Past the only failure that could leave a placeholder behind.
 trap - EXIT
 chmod +x "$DEST"
@@ -55,7 +55,7 @@ IDENTITY=$(node -e "
 ")
 
 if [[ -n "$IDENTITY" ]] && security find-identity -v -p codesigning | grep -qF "$IDENTITY"; then
-  echo "signing parley-mcp with: $IDENTITY"
+  echo "signing chatham-mcp with: $IDENTITY"
   codesign --force --options runtime --sign "$IDENTITY" --timestamp "$DEST"
 else
   echo "warning: Developer ID identity not in Keychain, falling back to ad-hoc signing"

@@ -1,9 +1,9 @@
-//! Parley's own MCP server (#172): a read-only view of the user's Notes for any MCP
+//! Chatham's own MCP server (#172): a read-only view of the user's Notes for any MCP
 //! client — Claude Code, Codex, or anything else that speaks the protocol.
 //!
-//! Shipped as a second binary built from this crate (`src/bin/parley-mcp.rs`) so it
+//! Shipped as a second binary built from this crate (`src/bin/chatham-mcp.rs`) so it
 //! reuses `db` and `html_text` and the real domain types. It opens the app's SQLite
-//! database directly, which is why it works whether or not Parley is running, needs
+//! database directly, which is why it works whether or not Chatham is running, needs
 //! no port and no token, and is authorized by nothing more than filesystem
 //! permissions on the application-support directory.
 //!
@@ -33,15 +33,15 @@ use std::path::{Path, PathBuf};
 /// with the app that owns them, on every cold start. It is also the slower path, and
 /// the client handshake budget goes as low as ten seconds.
 ///
-/// The one case that needs the migrations is version skew: a Parley update installs a
-/// newer `parley-mcp` beside a database the newer app hasn't opened yet, so a column
+/// The one case that needs the migrations is version skew: a Chatham update installs a
+/// newer `chatham-mcp` beside a database the newer app hasn't opened yet, so a column
 /// the tools query may be missing. [`schema_is_current`] detects exactly that, and
 /// only then does this fall back to the app's own opener — self-healing once, rather
 /// than migrating on every start or failing with `no such column`.
 ///
 /// That fallback WRITES, from a server the spec calls read-only, and it was argued
 /// once that it should therefore be replaced by an error telling the user to open
-/// Parley. It stays, deliberately. The read-only promise — in the spec, in the
+/// Chatham. It stays, deliberately. The read-only promise — in the spec, in the
 /// Settings copy, in every tool description — is a claim about NOTES: an agent cannot
 /// alter or destroy a meeting record, and no path in this module touches one. Schema
 /// bookkeeping is not what that promise is about. The migrations are idempotent and
@@ -89,7 +89,7 @@ pub const SETTING_ENABLED: &str = "mcp_enabled";
 const SETTING_WORKSPACE: &str = "cloud_workspace_id";
 
 /// macOS bundle id, which is also the application-support directory name.
-const BUNDLE_ID: &str = "no.parley.app";
+const BUNDLE_ID: &str = "no.chatham.app";
 
 /// What the client is told this server is for, at `initialize`.
 ///
@@ -97,7 +97,7 @@ const BUNDLE_ID: &str = "no.parley.app";
 /// what it is used for: Claude Code defers tool schemas and decides from this string
 /// alone whether to go looking for the tools at all, and Codex reads it at
 /// initialization. Kept well under the 2 KB both clients truncate at.
-pub const INSTRUCTIONS: &str = "Parley is the user's meeting-notes app: every meeting \
+pub const INSTRUCTIONS: &str = "Chatham is the user's meeting-notes app: every meeting \
     they record becomes a note with their own typed notes, an AI summary, and a \
     speaker-labelled transcript of what was actually said.
 
@@ -128,7 +128,7 @@ pub fn is_enabled(conn: &Connection) -> bool {
 /// the client as broken, which is a worse answer than one that says plainly what
 /// the user has to do.
 pub fn disabled_message() -> String {
-    "Parley's MCP integration is turned off. The user can enable it in Parley → \
+    "Chatham's MCP integration is turned off. The user can enable it in Chatham → \
      Settings → General → Integrations. Nothing can be read until they do — tell \
      them that rather than trying another tool."
         .to_string()
@@ -145,18 +145,18 @@ pub fn active_workspace(conn: &Connection) -> String {
 
 /// The app's database, at the same path the app itself uses.
 ///
-/// In DEBUG builds only, `PARLEY_DB_PATH` overrides it, which is what makes the binary
+/// In DEBUG builds only, `CHATHAM_DB_PATH` overrides it, which is what makes the binary
 /// testable by hand against a scratch library instead of the user's real one. It is
 /// compiled out of release builds on purpose: this server's entire authorization
 /// story is filesystem permissions on the application-support directory, and an env
 /// var that repoints a shipped binary at an arbitrary SQLite file is a way around
 /// that — anything able to set the environment of the process a client spawns could
-/// serve a library the user never consented to, under Parley's name. Same shape and
-/// same reasoning as `commands::cloud_auth::dev_account`, whose `PARLEY_DEV_SYNC_EMAIL` /
-/// `PARLEY_DEV_SYNC_PASSWORD` are debug-only for the equivalent reason.
+/// serve a library the user never consented to, under Chatham's name. Same shape and
+/// same reasoning as `commands::cloud_auth::dev_account`, whose `CHATHAM_DEV_SYNC_EMAIL` /
+/// `CHATHAM_DEV_SYNC_PASSWORD` are debug-only for the equivalent reason.
 pub fn db_path() -> Option<PathBuf> {
     #[cfg(debug_assertions)]
-    if let Some(p) = std::env::var_os("PARLEY_DB_PATH") {
+    if let Some(p) = std::env::var_os("CHATHAM_DB_PATH") {
         return Some(PathBuf::from(p));
     }
     // Tauri's `app_data_dir` on macOS is ~/Library/Application Support/<bundle id>.
@@ -213,7 +213,7 @@ mod tests {
         assert_eq!(active_workspace(&conn), "");
     }
 
-    /// Version skew: a newer `parley-mcp` beside a database the newer app hasn't
+    /// Version skew: a newer `chatham-mcp` beside a database the newer app hasn't
     /// opened yet. Falling back to the app's opener is what turns that into one
     /// self-healing start instead of every tool failing with `no such column`.
     #[test]
@@ -250,12 +250,12 @@ mod tests {
     fn the_database_path_override_exists_only_in_debug_builds() {
         // SAFETY: single-threaded within this test, and the var is removed again
         // before it returns so no other test can observe it.
-        unsafe { std::env::set_var("PARLEY_DB_PATH", "/tmp/parley-scratch.sqlite") };
+        unsafe { std::env::set_var("CHATHAM_DB_PATH", "/tmp/chatham-scratch.sqlite") };
         let overridden = db_path();
-        unsafe { std::env::remove_var("PARLEY_DB_PATH") };
+        unsafe { std::env::remove_var("CHATHAM_DB_PATH") };
 
         if cfg!(debug_assertions) {
-            assert_eq!(overridden, Some(PathBuf::from("/tmp/parley-scratch.sqlite")));
+            assert_eq!(overridden, Some(PathBuf::from("/tmp/chatham-scratch.sqlite")));
         } else {
             let real = db_path().expect("a data directory");
             assert_eq!(overridden.as_ref(), Some(&real), "the override survived into release");

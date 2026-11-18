@@ -259,7 +259,7 @@ pub(crate) fn write_note_audio(sources: &[PathBuf], format: AudioFormat, dest: &
     if sources.is_empty() {
         return Err("This note has no audio stored on this device.".into());
     }
-    let scratch = Scratch(std::env::temp_dir().join(format!("parley-audio-{}", uuid::Uuid::new_v4())));
+    let scratch = Scratch(std::env::temp_dir().join(format!("chatham-audio-{}", uuid::Uuid::new_v4())));
     std::fs::create_dir_all(&scratch.0).map_err(|e| format!("prepare audio: {e}"))?;
     let wav = scratch.0.join("audio.wav");
     crate::wav::concat_pcm16_mono_16k(sources, &wav).map_err(|e| format!("join audio: {e}"))?;
@@ -305,7 +305,7 @@ pub async fn note_audio_export_info(app: AppHandle, note_id: String) -> Result<V
 /// Save a note's audio to the path chosen in the native save panel. Like
 /// `export_note`, the destination is not constrained to the app data dir.
 ///
-/// This writes no audio Parley keeps: it copies out what `keep_audio` already
+/// This writes no audio Chatham keeps: it copies out what `keep_audio` already
 /// let this device store, at the user's request, to a place the user chose.
 #[tauri::command]
 pub async fn export_note_audio(app: AppHandle, note_id: String, spec: AudioExportSpec) -> Result<(), String> {

@@ -140,7 +140,7 @@ export function demoNotes(now = Date.now()): Note[] {
     }),
     makeNote({
       id: "n9",
-      title: "Workshop: hva skal Parley ikke være",
+      title: "Workshop: hva skal Chatham ikke være",
       folder_id: "f2",
       created_at: now - 5 * DAY,
       summary:

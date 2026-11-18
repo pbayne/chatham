@@ -13,7 +13,7 @@ import { WebhookRows } from "./Webhook";
 //
 // Off by default and explicitly opt-in — this hands an outside agent the
 // contents of real meetings, so installing an update must never quietly open
-// them. The switch writes `mcp_enabled`, which the `parley-mcp` process reads on
+// them. The switch writes `mcp_enabled`, which the `chatham-mcp` process reads on
 // every call, so turning it off takes effect on the next tool call rather than
 // at the client's next restart.
 //
@@ -46,9 +46,9 @@ export function IntegrationsSection({
   }, []);
 
   // Quoted, because an .app lives under a path with a space in it.
-  const claudeCode = path ? `claude mcp add --scope user parley -- "${path}"` : "";
+  const claudeCode = path ? `claude mcp add --scope user chatham -- "${path}"` : "";
   const codex = path
-    ? `[mcp_servers.parley]\ncommand = "${path}"`
+    ? `[mcp_servers.chatham]\ncommand = "${path}"`
     : "";
 
   return (
@@ -84,7 +84,7 @@ export function IntegrationsSection({
           <Row label="Anything else">
             <p className="text-xs text-[var(--color-text-muted)]">
               Any MCP client that speaks stdio can run this command directly. It
-              works whether or not Parley is open, and reads whichever workspace
+              works whether or not Chatham is open, and reads whichever workspace
               you're currently in.
             </p>
           </Row>
@@ -155,7 +155,7 @@ export function ObsidianSection() {
     <Section title="Obsidian sync">
       <Row
         label="Auto-tag the customer from each meeting"
-        description="After a recording is summarized, Parley reads it to identify which customer the meeting was with and tags the note — learning your account list as you go. Client-tagged notes are filed under the customer's name in your vault."
+        description="After a recording is summarized, Chatham reads it to identify which customer the meeting was with and tags the note — learning your account list as you go. Client-tagged notes are filed under the customer's name in your vault."
         control={
           <Toggle
             checked={autoTag ?? true}
@@ -181,7 +181,7 @@ export function ObsidianSection() {
       />
       <Row
         label="Vault folder"
-        description={vault ? vault : "Pick the folder Parley should write notes into (your vault, or a subfolder of it)."}
+        description={vault ? vault : "Pick the folder Chatham should write notes into (your vault, or a subfolder of it)."}
         control={
           <button
             type="button"

@@ -1,6 +1,6 @@
-//! The macOS Keychain: Parley's one service, and the cache in front of it.
+//! The macOS Keychain: Chatham's one service, and the cache in front of it.
 //!
-//! Every secret Parley keeps — each provider's API key, the webhook endpoint
+//! Every secret Chatham keeps — each provider's API key, the webhook endpoint
 //! (#213), the cloud credentials — is an account under [`SERVICE`]. Reads go
 //! through [`Cache`] so a session prompts the Keychain at most once per
 //! account: without it, a signed build whose ACL the user hasn't trusted yet
@@ -13,7 +13,7 @@ use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub const SERVICE: &str = "no.parley.app";
+pub const SERVICE: &str = "no.chatham.app";
 
 /// What this session has read or written, per account. `None` is a cached
 /// absence: a missing entry stays missing until this session writes one.

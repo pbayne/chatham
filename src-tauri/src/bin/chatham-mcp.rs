@@ -1,8 +1,8 @@
-//! `parley-mcp` — Parley's MCP server over stdio (#172).
+//! `chatham-mcp` — Chatham's MCP server over stdio (#172).
 //!
 //! Built from the app's own crate so it reuses `db` and the real domain types, and
-//! shipped inside the bundle at `Parley.app/Contents/MacOS/parley-mcp`. It opens the
-//! app's SQLite database directly, which is what makes it work whether or not Parley
+//! shipped inside the bundle at `Chatham.app/Contents/MacOS/chatham-mcp`. It opens the
+//! app's SQLite database directly, which is what makes it work whether or not Chatham
 //! is running, with no port, no token and no auth code — the filesystem permissions
 //! on the application-support directory are the authorization.
 //!
@@ -20,16 +20,16 @@ use rmcp::ServiceExt;
 #[tokio::main]
 async fn main() {
     let Some(path) = mcp::db_path() else {
-        eprintln!("parley-mcp: could not locate Parley's data directory");
+        eprintln!("chatham-mcp: could not locate Chatham's data directory");
         std::process::exit(1);
     };
-    // A missing database means Parley has never run on this machine. Said plainly
-    // rather than surfaced as a SQLite error, because the fix is "open Parley once",
+    // A missing database means Chatham has never run on this machine. Said plainly
+    // rather than surfaced as a SQLite error, because the fix is "open Chatham once",
     // and because opening would otherwise CREATE an empty library and answer every
     // question with a confident, wrong "you have no notes".
     if !path.exists() {
         eprintln!(
-            "parley-mcp: no Parley library at {} — open Parley once to create it",
+            "chatham-mcp: no Chatham library at {} — open Chatham once to create it",
             path.display()
         );
         std::process::exit(1);
@@ -37,21 +37,21 @@ async fn main() {
     let conn = match humla_lib::mcp::open_db(&path) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("parley-mcp: could not open {}: {e}", path.display());
+            eprintln!("chatham-mcp: could not open {}: {e}", path.display());
             std::process::exit(1);
         }
     };
 
-    let service = match mcp::server::ParleyMcp::new(conn).serve(stdio()).await {
+    let service = match mcp::server::ChathamMcp::new(conn).serve(stdio()).await {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("parley-mcp: failed to start: {e}");
+            eprintln!("chatham-mcp: failed to start: {e}");
             std::process::exit(1);
         }
     };
     // Runs until the client closes stdin, which is how every MCP client stops a
     // stdio server.
     if let Err(e) = service.waiting().await {
-        eprintln!("parley-mcp: stopped: {e}");
+        eprintln!("chatham-mcp: stopped: {e}");
     }
 }

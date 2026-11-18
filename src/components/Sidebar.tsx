@@ -29,11 +29,11 @@ import { ChatConversations } from "./ChatConversations";
 import { useCloudStore } from "../lib/cloud";
 import { trafficLightSpacerCssPx, useZoomStore } from "../lib/zoom";
 
-// Parley mark — the Baskerville serif "P" matching the app icon
-// (icons/parley-icon.svg), as an outlined vector path (no font dependency).
+// Chatham mark — the Baskerville serif "P" matching the app icon
+// (icons/chatham-icon.svg), as an outlined vector path (no font dependency).
 // Monochrome via currentColor so it inherits the brand row's text colour; the
 // icon's red record dot is dropped here to keep the sidebar wordmark calm.
-function ParleyMark({ size = 18 }: { size?: number }) {
+function ChathamMark({ size = 18 }: { size?: number }) {
   return (
     <svg
       width={size}
@@ -185,8 +185,8 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
         className="flex items-center justify-between pl-2 pr-0 pb-3"
       >
         <div className="no-drag flex items-center gap-2 select-none text-[var(--color-text)]">
-          <ParleyMark size={18} />
-          <span className="text-[15px] font-semibold tracking-[-0.01em]">Parley</span>
+          <ChathamMark size={18} />
+          <span className="text-[15px] font-semibold tracking-[-0.01em]">Chatham</span>
         </div>
         <button
           onClick={onCollapse}

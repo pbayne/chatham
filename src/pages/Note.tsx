@@ -366,7 +366,7 @@ export function Note() {
     ? myWorkspaces.find((w) => w.id === draft.workspace_id)
     : undefined;
   const isViewer = noteWs?.role === "viewer";
-  // On parley-cloud, a workspace with no active/trialing subscription is read-only
+  // On chatham-cloud, a workspace with no active/trialing subscription is read-only
   // until it's paid — the server blocks writes, so mirror that in the UI rather
   // than letting edits look saved locally but silently fail to sync.
   const lockedByPlan = billingEnabled && !!noteWs && !planIsLive(noteWs);

@@ -2065,7 +2065,7 @@ struct CancelledMicWav(PathBuf);
 impl CancelledMicWav {
     async fn write(samples: &[i16]) -> anyhow::Result<Self> {
         // Held before the write, so a half-written file is removed too.
-        let wav = Self(std::env::temp_dir().join(format!("parley-echo-{}.wav", uuid::Uuid::new_v4())));
+        let wav = Self(std::env::temp_dir().join(format!("chatham-echo-{}.wav", uuid::Uuid::new_v4())));
         wav::write_i16_mono_16k(&wav.0, samples).await?;
         Ok(wav)
     }
@@ -2701,7 +2701,7 @@ pub async fn recording_start(
     let stderr = child.stderr.take().ok_or("no stderr")?;
 
     // Drain stderr in the background so the pipe never fills. Only the
-    // sidecar's own `parley-error:`-prefixed lines get surfaced to the
+    // sidecar's own `chatham-error:`-prefixed lines get surfaced to the
     // user as a recording_error toast — anything else is treated as
     // dev-time diagnostic noise and only mirrored to our own stderr.
     // Without this filter, the Swift side's verbose `scstream: …`
@@ -2717,7 +2717,7 @@ pub async fn recording_start(
                 let trimmed = line.trim();
                 if trimmed.is_empty() { continue; }
                 eprintln!("audio-capture stderr: {trimmed}");
-                if let Some(msg) = trimmed.strip_prefix("parley-error: ") {
+                if let Some(msg) = trimmed.strip_prefix("chatham-error: ") {
                     let _ = app_err.emit("recording_error", ErrorPayload {
                         note_id: Some(note_id_err.clone()),
                         message: format!("audio-capture: {msg}"),
@@ -3854,7 +3854,7 @@ fn redact_sidecar_line(line: &str) -> String {
 
 /// The title an import falls back to when the path had no usable stem. Named
 /// because it is not user-owned: `menubar::is_replaceable_title` has to
-/// recognise it as Parley's own, and a second copy of the literal would be a
+/// recognise it as Chatham's own, and a second copy of the literal would be a
 /// second place for the two to drift apart (#90).
 pub(crate) const IMPORTED_AUDIO_TITLE: &str = "Imported audio";
 
@@ -3986,7 +3986,7 @@ pub async fn import_audio(
     let stdout = child.stdout.take().ok_or("no stdout")?;
     let stderr = child.stderr.take().ok_or("no stderr")?;
 
-    // Drain stderr (same parley-error filter as recording_start).
+    // Drain stderr (same chatham-error filter as recording_start).
     {
         let app_err = app.clone();
         let note_id_err = note_id.clone();
@@ -3996,7 +3996,7 @@ pub async fn import_audio(
                 let trimmed = line.trim();
                 if trimmed.is_empty() { continue; }
                 eprintln!("audio-capture(import) stderr: {trimmed}");
-                if let Some(msg) = trimmed.strip_prefix("parley-error: ") {
+                if let Some(msg) = trimmed.strip_prefix("chatham-error: ") {
                     let _ = app_err.emit("recording_error", ErrorPayload {
                         note_id: Some(note_id_err.clone()),
                         message: format!("audio-capture: {msg}"),
@@ -4521,7 +4521,7 @@ async fn replay_retained_stream(
     sink: &Arc<CaptureSink>,
 ) -> Result<(), String> {
     let temp_dir = std::env::temp_dir().join(format!(
-        "parley-replay-{}-{}",
+        "chatham-replay-{}-{}",
         note_id,
         uuid::Uuid::new_v4()
     ));
@@ -4552,7 +4552,7 @@ async fn replay_retained_stream(
                     continue;
                 }
                 eprintln!("audio-capture(replay) stderr: {trimmed}");
-                if let Some(msg) = trimmed.strip_prefix("parley-error: ") {
+                if let Some(msg) = trimmed.strip_prefix("chatham-error: ") {
                     let _ = app_err.emit("recording_error", ErrorPayload {
                         note_id: Some(note_id_err.clone()),
                         message: format!("audio-capture: {msg}"),
@@ -6257,7 +6257,7 @@ pub(crate) struct UnifyCosts {
 /// Re-diarize clicks — never write to and `remove_dir_all` each other's concat
 /// files (a mid-read truncation that silently produced wrong unified labels).
 fn unify_scratch_dir(note_id: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("parley-unify-{note_id}-{}", uuid::Uuid::new_v4()))
+    std::env::temp_dir().join(format!("chatham-unify-{note_id}-{}", uuid::Uuid::new_v4()))
 }
 
 /// Get (or lazily create) the per-note unify lock. Same note → same `Arc`, so
@@ -8581,7 +8581,7 @@ mod diarize_tests {
     #[test]
     fn merge_handles_norwegian_lowercase_continuation() {
         // The unicode lowercase check covers non-ASCII letters; common
-        // Parley case for Norwegian recordings.
+        // Chatham case for Norwegian recordings.
         let input = "Speaker 1: vi har snakket om\nSpeaker 1: økonomien lenge.";
         assert_eq!(
             merge_run_on_sentences(input),
@@ -9324,7 +9324,7 @@ mod diarize_tests {
         let wav = CancelledMicWav::write(&[3277; 1600]).await.expect("written");
         let path = wav.path().to_path_buf();
         assert!(path.starts_with(std::env::temp_dir()), "{}", path.display());
-        assert!(!path.components().any(|c| c.as_os_str() == "no.parley.app"));
+        assert!(!path.components().any(|c| c.as_os_str() == "no.chatham.app"));
         assert_eq!(wav::read_i16_mono_16k(&path).await.unwrap(), vec![3277; 1600]);
         let other = CancelledMicWav::write(&[0; 16]).await.unwrap();
         assert_ne!(other.path(), path, "two diarizes never share one file");

@@ -58,7 +58,7 @@ describe("Account section", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("pitches Parley Cloud with a pricing card whose CTA starts the connect flow", async () => {
+  it("pitches Chatham Cloud with a pricing card whose CTA starts the connect flow", async () => {
     const configures: unknown[] = [];
     renderApp("/settings?tab=account", {
       cloud_configure: (args) => {

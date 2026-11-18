@@ -77,13 +77,13 @@ describe("stageFor", () => {
 });
 
 describe("the create-workspace sheet", () => {
-  it("sells Parley Cloud before asking for anything, when no server is set", async () => {
+  it("sells Chatham Cloud before asking for anything, when no server is set", async () => {
     open({ ...DISCONNECTED, configured: false });
     expect(await screen.findByRole("heading", { name: /create a team workspace/i })).toBeInTheDocument();
     // The complaint this replaces: a bare textbox that explained nothing.
     expect(screen.getByText(/per seat, per month/i)).toBeInTheDocument();
     expect(screen.getByText(/14-day free trial/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /use parley cloud/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /use chatham cloud/i })).toBeInTheDocument();
   });
 
   it("asks for an account first when signed out, instead of sending you to Settings", async () => {

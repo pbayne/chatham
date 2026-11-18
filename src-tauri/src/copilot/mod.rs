@@ -1,5 +1,5 @@
 //! GitHub Copilot as a summary and chat provider (#227), reached through the
-//! user's Copilot subscription: Parley signs in with its own OAuth app and
+//! user's Copilot subscription: Chatham signs in with its own OAuth app and
 //! drives the Copilot CLI through `github-copilot-sdk`.
 
 pub mod auth;

@@ -30,7 +30,7 @@ export function signInFailureMessage(e: CopilotSignInEvent): string {
 }
 
 /** GitHub Copilot's setup in Settings → Summary and Settings → Chat: the CLI
- *  Parley drives, the GitHub sign-in, and the model the tab uses. */
+ *  Chatham drives, the GitHub sign-in, and the model the tab uses. */
 export function CopilotCard({
   copilot,
   model,
@@ -158,8 +158,8 @@ export function CopilotCard({
           <>
             <p className="text-xs text-[var(--color-text-muted)] mt-0.5 mb-2">
               {brokenCli
-                ? `The Copilot CLI on this Mac (version ${status.cliVersion ?? "unknown"}) didn't start. Download the version Parley supports (${status.downloadVersion}, about 120 MB).`
-                : `Parley reaches Copilot through GitHub's Copilot CLI, which isn't on this Mac yet (version ${status.downloadVersion}, about 120 MB).`}
+                ? `The Copilot CLI on this Mac (version ${status.cliVersion ?? "unknown"}) didn't start. Download the version Chatham supports (${status.downloadVersion}, about 120 MB).`
+                : `Chatham reaches Copilot through GitHub's Copilot CLI, which isn't on this Mac yet (version ${status.downloadVersion}, about 120 MB).`}
             </p>
             {brokenCli && (
               <p className="text-xs text-[var(--color-danger)] mb-2 break-words">{status.cliError}</p>
@@ -211,7 +211,7 @@ export function CopilotCard({
         ) : code ? (
           <div className="mt-1 space-y-2">
             <p className="text-xs text-[var(--color-text-muted)]">
-              Enter this code on GitHub to let Parley use your Copilot subscription:
+              Enter this code on GitHub to let Chatham use your Copilot subscription:
             </p>
             <div className="flex items-center gap-2">
               <code

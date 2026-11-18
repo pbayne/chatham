@@ -273,7 +273,7 @@ function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void 
   async function saveToFile() {
     try {
       const path = await save({
-        defaultPath: "Parley recovery codes.txt",
+        defaultPath: "Chatham recovery codes.txt",
         filters: [{ name: "Text", extensions: ["txt"] }],
       });
       if (!path) return;

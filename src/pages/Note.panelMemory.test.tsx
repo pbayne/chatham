@@ -38,7 +38,7 @@ describe("the note's context panel", () => {
   });
 
   it("reopens on the next note once the user opened it again", async () => {
-    localStorage.setItem("parley.panelOpen", "false");
+    localStorage.setItem("chatham.panelOpen", "false");
     openNote("n1");
     await userEvent.click(await toggle());
     cleanup();
@@ -48,7 +48,7 @@ describe("the note's context panel", () => {
   });
 
   it("opens at the width the user last dragged it to", async () => {
-    localStorage.setItem("parley.panelWidth", "520");
+    localStorage.setItem("chatham.panelWidth", "520");
     openNote("n1");
     await toggle();
     const panel = document.querySelector<HTMLElement>("[aria-hidden='false'][style*='width']");
@@ -62,12 +62,12 @@ describe("the context panel's window cap", () => {
     const clientWidth = Object.getOwnPropertyDescriptor(Element.prototype, "clientWidth");
     Object.defineProperty(Element.prototype, "clientWidth", { configurable: true, get: () => 900 });
     try {
-      localStorage.setItem("parley.panelWidth", "600");
+      localStorage.setItem("chatham.panelWidth", "600");
       openNote("n1");
       await toggle();
       const panel = document.querySelector<HTMLElement>("[aria-hidden='false'][style*='width']");
       expect(panel?.style.width).toBe("480px");
-      expect(localStorage.getItem("parley.panelWidth")).toBe("600");
+      expect(localStorage.getItem("chatham.panelWidth")).toBe("600");
     } finally {
       if (clientWidth) Object.defineProperty(Element.prototype, "clientWidth", clientWidth);
     }

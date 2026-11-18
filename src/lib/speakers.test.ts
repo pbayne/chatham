@@ -73,7 +73,7 @@ describe("extractSpeakerLabels", () => {
   //
   // The same label rule now exists three times: here, in `db::parse_speaker_turns`
   // (which decides how transcripts are chunked and which speakers each chunk is
-  // attributed to), and in parley-cloud's indexer. They MUST agree — a one-sided
+  // attributed to), and in chatham-cloud's indexer. They MUST agree — a one-sided
   // change means a chunk is attributed to someone the UI never shows as a speaker,
   // or vice versa. #105's `client_id` drift passed every test on both sides, so the
   // mitigation is the same one used for the tool schemas: pin the identical case

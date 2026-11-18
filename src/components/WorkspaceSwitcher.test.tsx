@@ -128,7 +128,7 @@ describe("the ambient team hint", () => {
   });
 });
 
-describe("a parley://new-workspace link", () => {
+describe("a chatham://new-workspace link", () => {
   beforeEach(() => {
     useDeepLinkStore.setState({ newWorkspace: null });
   });

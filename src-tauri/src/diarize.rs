@@ -342,12 +342,12 @@ pub async fn recheck(app: &AppHandle, engine: Engine) -> Result<()> {
 /// The toast for a run that fell back from `failed` to `used`.
 pub fn fell_back_message(failed: Engine, used: Engine, reason: &str) -> String {
     let recheck = if failed.has_warm_marker() {
-        format!(" Parley is checking {} again in the background.", failed.label())
+        format!(" Chatham is checking {} again in the background.", failed.label())
     } else {
         String::new()
     };
     format!(
-        "{} failed on this Mac ({reason}), so speakers were identified with {} instead, and will be until Parley restarts.{recheck}",
+        "{} failed on this Mac ({reason}), so speakers were identified with {} instead, and will be until Chatham restarts.{recheck}",
         failed.label(),
         used.label()
     )
@@ -484,10 +484,10 @@ pub async fn diarize_file(
 }
 
 /// The sidecar's own error line out of its stderr, which FluidAudio fills with
-/// logging, so the sidecar tags that line `parley-error:`. An untagged failure
+/// logging, so the sidecar tags that line `chatham-error:`. An untagged failure
 /// (a crash) gives its last line and how the process exited.
 fn sidecar_error(stderr: &str, exit: impl std::fmt::Display) -> String {
-    const TAG: &str = "parley-error:";
+    const TAG: &str = "chatham-error:";
     let tagged = stderr
         .lines()
         .filter_map(|l| l.strip_prefix(TAG))
@@ -583,7 +583,7 @@ pub async fn cleanup_full_wav(path: &Path) {
     }
 }
 
-/// Model directories under FluidAudio's `Models` root that Parley no longer
+/// Model directories under FluidAudio's `Models` root that Chatham no longer
 /// uses — the old streaming diarizer's files and Sortformer's — each with the
 /// flag that removes it once per install.
 const RETIRED_MODEL_DIRS: &[(&str, &[&str])] = &[
@@ -597,7 +597,7 @@ const RETIRED_MODEL_DIRS: &[(&str, &[&str])] = &[
     ("sortformer_models_purged_v1", &["sortformer"]),
 ];
 
-/// FluidAudio's shared model cache, a sibling of Parley's own app-data directory.
+/// FluidAudio's shared model cache, a sibling of Chatham's own app-data directory.
 fn fluidaudio_models_root(app: &AppHandle) -> Option<PathBuf> {
     let app_data = match app.path().app_data_dir() {
         Ok(p) => p,
@@ -1074,14 +1074,14 @@ mod tests {
 
     #[test]
     fn payload_errors_when_no_array_present() {
-        assert!(parse_segment_payload("parley-error: something went wrong\n").is_err());
+        assert!(parse_segment_payload("chatham-error: something went wrong\n").is_err());
     }
 
     #[test]
     fn sidecar_error_is_the_tagged_line_not_fluidaudios_logging() {
         let stderr = "[Profiling] load 0.8 s\n\
             download error: Error Domain=com.apple.CoreML Code=1 \"Output backing …\"\n\
-            parley-error: Output backing for feature named 'speaker_preds' is not compatible\n\
+            chatham-error: Output backing for feature named 'speaker_preds' is not compatible\n\
             [Profiling] teardown\n";
         assert_eq!(
             sidecar_error(stderr, "exit status: 1"),
@@ -1101,7 +1101,7 @@ mod tests {
     #[test]
     fn an_empty_tagged_line_is_not_a_message() {
         assert_eq!(
-            sidecar_error("loading\nparley-error: \n", "exit status: 1"),
+            sidecar_error("loading\nchatham-error: \n", "exit status: 1"),
             "loading (speaker-diarize exit status: 1)"
         );
     }
@@ -1360,13 +1360,13 @@ mod tests {
         assert_eq!(
             fell_back_message(Engine::Nemotron3, Engine::Community1, "Output backing is not compatible"),
             "Nemotron 3 failed on this Mac (Output backing is not compatible), so speakers were \
-             identified with Community-1 instead, and will be until Parley restarts. Parley is \
+             identified with Community-1 instead, and will be until Chatham restarts. Chatham is \
              checking Nemotron 3 again in the background."
         );
         assert_eq!(
             fell_back_message(Engine::Community1, Engine::Nemotron3, "boom"),
             "Community-1 failed on this Mac (boom), so speakers were identified with Nemotron 3 \
-             instead, and will be until Parley restarts."
+             instead, and will be until Chatham restarts."
         );
     }
 

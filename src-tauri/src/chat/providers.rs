@@ -686,11 +686,11 @@ mod anthropic_tests {
     #[test]
     fn system_turns_leave_the_message_list() {
         let (system, wire) = lower_messages_anthropic(&[
-            ChatTurn::new("system", "You are Parley."),
+            ChatTurn::new("system", "You are Chatham."),
             ChatTurn::new("system", "Cite your sources."),
             ChatTurn::new("user", "what did we agree?"),
         ]);
-        assert_eq!(system, "You are Parley.\n\nCite your sources.");
+        assert_eq!(system, "You are Chatham.\n\nCite your sources.");
         assert_eq!(wire.len(), 1);
         assert_eq!(wire[0]["role"], "user");
     }

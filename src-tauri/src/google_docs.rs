@@ -2,7 +2,7 @@
 //!
 //! Flow:
 //!   1. Create an empty doc via the Docs API (`documents.create`) — owned by
-//!      the user, under the `drive.file` scope (Parley only ever touches docs it
+//!      the user, under the `drive.file` scope (Chatham only ever touches docs it
 //!      creates, never the rest of Drive).
 //!   2. Build a `batchUpdate` that inserts the note's text and applies real
 //!      structure: the title as HEADING_1, each section (Summary / Transcript /

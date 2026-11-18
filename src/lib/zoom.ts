@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { create } from "zustand";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 
-const ZOOM_KEY = "parley.zoom";
+const ZOOM_KEY = "chatham.zoom";
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 2.0;
 const ZOOM_STEP = 0.1;

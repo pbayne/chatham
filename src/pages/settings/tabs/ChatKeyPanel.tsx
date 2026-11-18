@@ -196,7 +196,7 @@ export function ChatKeyPanel({ ws }: { ws: CloudWorkspace }) {
         </>
       ) : usage ? (
         <>
-          <p className="text-sm">Chat runs on Parley's managed key.</p>
+          <p className="text-sm">Chat runs on Chatham's managed key.</p>
           <p className="text-xs text-[var(--color-text-muted)]">
             {usage.used}/{usage.cap} turns this period.
           </p>
@@ -224,7 +224,7 @@ export function ChatKeyPanel({ ws }: { ws: CloudWorkspace }) {
                   Prefer not to manage a key? The managed add-on
                   {addon.price_cents != null &&
                     ` (${formatSeatPrice(addon.price_cents, addon.currency)}/mo)`}{" "}
-                  runs chat on Parley's key — see Billing above.
+                  runs chat on Chatham's key — see Billing above.
                 </p>
               )}
             </>

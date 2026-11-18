@@ -465,9 +465,9 @@ function integrationsCase(enabled: boolean, webhook = false): Scenario {
     wrap: settingsWrap,
     render: () => <IntegrationsHarness mcp={enabled} webhook={webhook} />,
     ipc: {
-      mcp_server_path: () => "/Applications/Parley.app/Contents/MacOS/parley-mcp",
+      mcp_server_path: () => "/Applications/Chatham.app/Contents/MacOS/chatham-mcp",
       webhook_get_endpoint: () => ({
-        url: "https://hooks.example.com/parley/ingest",
+        url: "https://hooks.example.com/chatham/ingest",
         headers: ["Authorization"],
       }),
       webhook_set_endpoint: () => undefined,
@@ -1279,7 +1279,7 @@ function capturingLibraryCase(
 
 const MOCK_WORKSPACE = {
   id: "w1",
-  name: "Parley",
+  name: "Chatham",
   role: "owner" as const,
   plan_status: "active" as const,
 };
@@ -1730,13 +1730,13 @@ const CASES: Record<string, Scenario> = {
       cloud_status: () => ({
         ...DISCONNECTED,
         logged_in: true,
-        user: { id: "u-me", email: "michael@parley.no", name: "Michael", verified: true },
+        user: { id: "u-me", email: "michael@chatham.no", name: "Michael", verified: true },
         current_workspace: MOCK_WORKSPACE,
         workspaces: [MOCK_WORKSPACE],
       }),
       cloud_workspace_members: () => [
-        { id: "u-me", email: "michael@parley.no", name: "Michael", role: "owner" },
-        { id: "u-hege", email: "hege@parley.no", name: "Hege Nordvik", role: "member" },
+        { id: "u-me", email: "michael@chatham.no", name: "Michael", role: "owner" },
+        { id: "u-hege", email: "hege@chatham.no", name: "Hege Nordvik", role: "member" },
       ],
     },
   },

@@ -28,7 +28,7 @@ export const PALETTE_REGISTRY = [
   {
     id: "warm",
     label: "Warm",
-    description: "Parley's own: cream paper, Hanken Grotesk, gold accent.",
+    description: "Chatham's own: cream paper, Hanken Grotesk, gold accent.",
     mode: "light",
   },
   {
@@ -75,7 +75,7 @@ function apply(palette: Palette) {
   }
 }
 
-const CACHE_KEY = "parley.palette";
+const CACHE_KEY = "chatham.palette";
 
 // Called from main.tsx BEFORE the first render. Without it every non-default
 // design flashes `warm` on launch: the settings read is async, so the first

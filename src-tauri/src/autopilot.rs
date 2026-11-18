@@ -8,7 +8,7 @@
 //! A background task polls the user's Google Calendar over a rolling window and,
 //! depending on the mode (Off / Ask / Auto), either notifies the user to record
 //! a starting meeting or starts/stops the local recording itself. No bot joins
-//! the call — Parley records the Mac's own audio, the scheduler just presses
+//! the call — Chatham records the Mac's own audio, the scheduler just presses
 //! start/stop on the calendar's schedule.
 
 use std::sync::Arc;

@@ -550,6 +550,57 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
+name = "chatham"
+version = "0.75.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "block2",
+ "chrono",
+ "cloud-sync",
+ "dirs 5.0.1",
+ "echo-probe",
+ "flate2",
+ "futures-util",
+ "github-copilot-sdk",
+ "keyring",
+ "krilla",
+ "libc",
+ "objc2",
+ "objc2-foundation",
+ "objc2-user-notifications",
+ "parking_lot",
+ "pulldown-cmark",
+ "qrcodegen",
+ "rand 0.8.6",
+ "reqwest 0.12.28",
+ "rmcp",
+ "rusqlite",
+ "rustybuzz",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tar",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-autostart",
+ "tauri-plugin-deep-link",
+ "tauri-plugin-dialog",
+ "tauri-plugin-global-shortcut",
+ "tauri-plugin-notification",
+ "tauri-plugin-process",
+ "tauri-plugin-shell",
+ "tauri-plugin-updater",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "url",
+ "uuid",
+ "whisper-rs",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3232,57 +3283,6 @@ dependencies = [
  "redox_syscall 0.5.18",
  "smallvec",
  "windows-link 0.2.1",
-]
-
-[[package]]
-name = "parley"
-version = "0.75.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64 0.22.1",
- "block2",
- "chrono",
- "cloud-sync",
- "dirs 5.0.1",
- "echo-probe",
- "flate2",
- "futures-util",
- "github-copilot-sdk",
- "keyring",
- "krilla",
- "libc",
- "objc2",
- "objc2-foundation",
- "objc2-user-notifications",
- "parking_lot",
- "pulldown-cmark",
- "qrcodegen",
- "rand 0.8.6",
- "reqwest 0.12.28",
- "rmcp",
- "rusqlite",
- "rustybuzz",
- "serde",
- "serde_json",
- "sha2",
- "tar",
- "tauri",
- "tauri-build",
- "tauri-plugin-autostart",
- "tauri-plugin-deep-link",
- "tauri-plugin-dialog",
- "tauri-plugin-global-shortcut",
- "tauri-plugin-notification",
- "tauri-plugin-process",
- "tauri-plugin-shell",
- "tauri-plugin-updater",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "url",
- "uuid",
- "whisper-rs",
 ]
 
 [[package]]

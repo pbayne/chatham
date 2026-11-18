@@ -7,7 +7,7 @@ import { emitDeveloperModeChange } from "../../../lib/useDeveloperMode";
 import { Btn } from "../components/Btn";
 import { Row, Section } from "../components/Section";
 
-const REPO_URL = "https://github.com/pbayne/parley";
+const REPO_URL = "https://github.com/pbayne/chatham";
 
 /** Anonymous usage counters were REMOVED in this personal fork — the toggle and
  *  its network path are gone, and `telemetry_event` is a backend no-op. Nothing
@@ -93,7 +93,7 @@ export function AboutTab() {
 
   return (
     <>
-      <Section title="Parley">
+      <Section title="Chatham">
         <Row label="Version">
           <div
             className="text-sm cursor-default select-none inline-block"
@@ -120,7 +120,7 @@ export function AboutTab() {
           )}
           <p className="text-xs text-[var(--color-text-muted)] mt-2">
             Updates are checked automatically on launch and can be triggered
-            manually from <code>Parley → Check for Updates…</code> in the
+            manually from <code>Chatham → Check for Updates…</code> in the
             menu bar.
           </p>
         </Row>

@@ -1,7 +1,7 @@
 //! The user's own OpenAI-compatible endpoint (#173): one base URL and an
 //! optional key (Keychain account `custom_api_key`), shared by summaries, chat
 //! and transcription, each with a model of its own. The base URL is used
-//! exactly as typed — Parley appends only the route — so a wrong root has to be
+//! exactly as typed — Chatham appends only the route — so a wrong root has to be
 //! visible in the errors instead.
 
 use crate::db;

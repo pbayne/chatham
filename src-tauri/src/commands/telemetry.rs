@@ -1,6 +1,6 @@
 //! Onboarding counters — REMOVED in this personal fork.
 //!
-//! Upstream Parley POSTed anonymous onboarding milestones (first launch, setup
+//! Upstream Chatham POSTed anonymous onboarding milestones (first launch, setup
 //! finished) to its own server at `sync.humla.team`. This fork is single-user
 //! and sends nothing: the command below is a deliberate no-op, kept only so the
 //! existing frontend callers in the onboarding flow remain valid without a wider

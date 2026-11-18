@@ -1,4 +1,4 @@
-//! Notifications Parley posts through macOS's UserNotifications: whether it
+//! Notifications Chatham posts through macOS's UserNotifications: whether it
 //! may, posting one with buttons, taking one back, and what the user clicked.
 
 mod center;
@@ -16,11 +16,11 @@ use center::Center;
 pub(crate) use permission::Authorization;
 
 /// The event a click on a notification is emitted as, carrying a [`Response`].
-/// A click that launches Parley can arrive before the window listens, so only
+/// A click that launches Chatham can arrive before the window listens, so only
 /// a listener added in `setup` is sure to hear that one.
 pub(crate) const RESPONSE_EVENT: &str = "notification_response";
 
-/// What the user clicked on a notification Parley posted.
+/// What the user clicked on a notification Chatham posted.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Response {
@@ -65,7 +65,7 @@ pub(crate) async fn request() {
 }
 
 /// Makes clicks reach the app. Runs in `setup`, since macOS hands a click that
-/// launched Parley to whatever delegate is set as launching finishes.
+/// launched Chatham to whatever delegate is set as launching finishes.
 pub(crate) fn install(app: &AppHandle) {
     if let Some(center) = Center::get() {
         center.install(app.clone());
@@ -152,7 +152,7 @@ async fn deliver(app: &AppHandle, notification: Notification) {
         Route::AskFirst => {
             eprintln!("[notifications] macOS's prompt went unanswered, so nothing was posted");
         }
-        Route::Drop => say_once(&SAID_OFF, "notifications are off for Parley, so none are posted"),
+        Route::Drop => say_once(&SAID_OFF, "notifications are off for Chatham, so none are posted"),
     }
 }
 
@@ -253,7 +253,7 @@ enum Route {
     AskFirst,
     /// The plugin's plain banner, with no buttons and no clicks.
     Plain,
-    /// Notifications are off for Parley.
+    /// Notifications are off for Chatham.
     Drop,
 }
 

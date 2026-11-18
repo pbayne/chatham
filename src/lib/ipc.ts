@@ -216,7 +216,7 @@ export type SettingsKey =
   | "theme"
   | "palette"
   | "developer_mode"
-  // MCP integration (#172). Off until explicitly enabled: the `parley-mcp`
+  // MCP integration (#172). Off until explicitly enabled: the `chatham-mcp`
   // server process reads this key on every call, so the switch takes effect
   // without restarting the MCP client.
   | "mcp_enabled"
@@ -715,7 +715,7 @@ export const ipc = {
     invoke<void>("inbox_set_action_items", { messageId, items }),
   inboxSetProvider: (provider: "local" | "openai" | "anthropic") =>
     invoke<string>("inbox_set_provider", { provider }),
-  // Switch Gmail auth: "oauth" (Parley's own) or "gcloud" (machine ADC — works
+  // Switch Gmail auth: "oauth" (Chatham's own) or "gcloud" (machine ADC — works
   // on corp accounts that block third-party OAuth consents).
   inboxSetAuthMode: (mode: "oauth" | "gcloud") =>
     invoke<string>("inbox_set_auth_mode", { mode }),
@@ -727,14 +727,14 @@ export const ipc = {
    *  the combination — another app already owns it — leaving the previous one
    *  in place. */
   recordHotkeySet: (accel: string) => invoke<void>("record_hotkey_set", { accel }),
-  /** Whether Parley's own login item is installed (#207). */
+  /** Whether Chatham's own login item is installed (#207). */
   launchAtLoginGet: () => invoke<boolean>("launch_at_login_get"),
   launchAtLoginSet: (on: boolean) => invoke<void>("launch_at_login_set", { on }),
   appDataDir: () => invoke<string>("app_data_dir"),
   // CPU architecture of the running process ("aarch64", "x86_64", …).
   // Onboarding uses it to steer Intel Macs toward cloud transcription.
   systemArch: () => invoke<string>("system_arch"),
-  // Absolute path to the bundled `parley-mcp` executable, so Settings can offer
+  // Absolute path to the bundled `chatham-mcp` executable, so Settings can offer
   // a config snippet that actually works on this install (#172).
   mcpServerPath: () => invoke<string>("mcp_server_path"),
   noteDiagnosticsDir: (noteId: string) =>

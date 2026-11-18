@@ -117,7 +117,7 @@ function BillingPanel({
   // failed payment through the same Customer Portal as "Manage billing".
   const pastDue = ws.plan_status === "past_due";
   // The server grants the 14-day trial only to workspaces that never had a
-  // subscription (parley-cloud billing.pb.js) — mirror that so the CTA never
+  // subscription (chatham-cloud billing.pb.js) — mirror that so the CTA never
   // promises a trial that checkout won't include.
   const firstSub = ws.plan_status === "none";
   const meta = planMeta(ws.plan_status);

@@ -25,7 +25,7 @@
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 
-/// OAuth client ID for the Parley Desktop-app OAuth client. Public by design for
+/// OAuth client ID for the Chatham Desktop-app OAuth client. Public by design for
 /// installed apps (PKCE is what protects the flow, not a secret). Overridable at
 /// build time via the GOOGLE_OAUTH_CLIENT_ID env var so the repo can ship without
 /// a hard-coded project.
@@ -34,15 +34,15 @@ pub const CLIENT_ID: &str = match option_env!("GOOGLE_OAUTH_CLIENT_ID") {
     None => "REPLACE_ME.apps.googleusercontent.com",
 };
 
-/// OAuth scopes Parley requests. One consent screen covers every Google-backed
+/// OAuth scopes Chatham requests. One consent screen covers every Google-backed
 /// feature so the user connects once:
 ///   - calendar.events.readonly — Autopilot reads meetings (read-only)
-///   - drive.file — create/own Docs Parley makes (NOT read existing Drive);
+///   - drive.file — create/own Docs Chatham makes (NOT read existing Drive);
 ///     a non-sensitive scope, so no Google verification wall
 ///   - gmail.compose — create Gmail drafts for after-call follow-ups and inbox
 ///     triage replies; drafts are never auto-sent, so the user always reviews
 ///   - gmail.readonly — read inbox messages for triage (classify + extract
-///     action items); read-only, Parley never sends or deletes mail. A
+///     action items); read-only, Chatham never sends or deletes mail. A
 ///     restricted scope: fine in OAuth "Testing" mode (bounded ≤100 users, no
 ///     verification); a public launch would need Google verification + CASA.
 pub const SCOPES: &[&str] = &[

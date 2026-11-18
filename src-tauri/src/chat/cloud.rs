@@ -1,5 +1,5 @@
 //! Cloud (Teams) chat wiring (issue #50). For a WORKSPACE-tenant conversation
-//! the desktop delegates the turn to the deployed parley-cloud `POST /api/chat`
+//! the desktop delegates the turn to the deployed chatham-cloud `POST /api/chat`
 //! endpoint, streams its SSE response, and re-emits it onto the SAME `chat_*`
 //! events the local loop uses — so the Chat UI is identical across tenants
 //! (story 18). Workspace conversations are server-authoritative; the desktop
@@ -78,7 +78,7 @@ pub fn build_cloud_request(
     super::validate_breadth(breadth)?;
     // A note-less turn (#93, #110) sends NO `note_id` at all: the server 400s a
     // malformed `note_id` under *every* breadth, so a sentinel or an empty string
-    // would be rejected rather than ignored (parley-cloud#26).
+    // would be rejected rather than ignored (chatham-cloud#26).
     // An EMPTY anchor is a caller bug, not "absent" — `ChatTarget::from_ids`
     // rejects it at the IPC boundary and this is the matching strictness, so the
     // same value can't mean two things at two layers.
@@ -87,7 +87,7 @@ pub fn build_cloud_request(
     }
     let anchor = note_id;
     // The needs-its-own-id rule lives in `chat::check_anchor` — one owner, one
-    // message. A folder turn is satisfied by its `folder_id` alone (parley-cloud#110
+    // message. A folder turn is satisfied by its `folder_id` alone (chatham-cloud#110
     // dropped the server's note requirement for it), which is what lets a folder
     // conversation exist with no anchor note behind it at all.
     super::check_anchor(
@@ -601,7 +601,7 @@ mod tests {
     }
 
     /// #93: a library-wide turn OMITS `note_id` entirely. The server 400s a
-    /// malformed `note_id` under *every* breadth including "all" (parley-cloud#26),
+    /// malformed `note_id` under *every* breadth including "all" (chatham-cloud#26),
     /// so a sentinel or an empty string would be rejected rather than ignored —
     /// the key has to be absent.
     #[test]

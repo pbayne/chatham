@@ -90,7 +90,7 @@ export function mockTauri(
       case "diarize_status":
         return { downloaded: false, needsWarmUp: false, warmUpError: null, sizeBytes: 0, path: "" };
       case "app_data_dir":
-        return "/tmp/parley-test";
+        return "/tmp/chatham-test";
       case "system_arch":
         return "aarch64";
       default:

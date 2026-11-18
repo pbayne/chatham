@@ -9,9 +9,9 @@
 
 use super::err;
 
-/// Absolute path to the `parley-mcp` executable, resolved next to the running
-/// binary — `Parley.app/Contents/MacOS/parley-mcp` in a bundle, and `target/debug/
-/// parley-mcp` under `tauri dev`, which is what makes the snippet in Settings
+/// Absolute path to the `chatham-mcp` executable, resolved next to the running
+/// binary — `Chatham.app/Contents/MacOS/chatham-mcp` in a bundle, and `target/debug/
+/// chatham-mcp` under `tauri dev`, which is what makes the snippet in Settings
 /// copyable during development too.
 ///
 /// Returns the path whether or not the file exists. A missing binary is a build
@@ -21,7 +21,7 @@ use super::err;
 pub fn mcp_server_path() -> Result<String, String> {
     let exe = std::env::current_exe().map_err(err)?;
     let dir = exe.parent().ok_or_else(|| "no parent directory".to_string())?;
-    dir.join("parley-mcp")
+    dir.join("chatham-mcp")
         .to_str()
         .map(str::to_string)
         .ok_or_else(|| "non-utf8 path".to_string())

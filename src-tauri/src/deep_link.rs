@@ -1,4 +1,4 @@
-//! What a `parley://` link asks the backend to do (#91). A recording link starts
+//! What a `chatham://` link asks the backend to do (#91). A recording link starts
 //! or stops a recording through the menu bar's headless path; any other link
 //! only brings the window forward, and the frontend reads it
 //! (`src/lib/deepLink.ts`).
@@ -11,7 +11,7 @@ use tauri::{AppHandle, Manager, Url};
 use crate::menubar;
 use crate::recording::Phase;
 
-/// Act on the links macOS handed Parley.
+/// Act on the links macOS handed Chatham.
 pub(crate) fn open(app: &AppHandle, urls: Vec<Url>) {
     let mut focus_window = false;
     for url in &urls {
@@ -26,7 +26,7 @@ pub(crate) fn open(app: &AppHandle, urls: Vec<Url>) {
 }
 
 /// Recording links held until the frontend listens for `recording_status`: a
-/// link that cold-launches Parley would otherwise start a recording the window
+/// link that cold-launches Chatham would otherwise start a recording the window
 /// that opens never hears about. `None` once it listens.
 pub(crate) struct Held(Mutex<Option<Vec<RecordLink>>>);
 
@@ -72,7 +72,7 @@ fn follow(app: &AppHandle, link: RecordLink) {
         menubar::notify(
             app,
             "Couldn't follow the link",
-            "Parley's menu bar isn't running, and recording links need it.",
+            "Chatham's menu bar isn't running, and recording links need it.",
         );
         return;
     };
@@ -113,7 +113,7 @@ pub(crate) enum RecordLink {
 
 /// Reads the route as `parseDeepLink` (src/lib/deepLink.ts) does; change both.
 pub(crate) fn parse(url: &Url) -> Option<RecordLink> {
-    if url.scheme() != "parley" {
+    if url.scheme() != "chatham" {
         return None;
     }
     let route = format!("{}{}", url.host_str().unwrap_or(""), url.path());
@@ -151,11 +151,11 @@ impl Refusal {
             }
             Refusal::StillSaving => (
                 "Couldn't start recording",
-                "Parley is still saving the last recording. Try the link again once it's saved.",
+                "Chatham is still saving the last recording. Try the link again once it's saved.",
             ),
             Refusal::Importing => (
                 "Couldn't start recording",
-                "Parley is importing a file. Try the link again once it's done.",
+                "Chatham is importing a file. Try the link again once it's done.",
             ),
             Refusal::NotRecording => ("Not recording", "There's no recording for the link to stop."),
             Refusal::StillStarting => (
@@ -212,27 +212,27 @@ mod tests {
 
     #[test]
     fn a_start_link_starts_a_recording() {
-        assert_eq!(link("parley://record/start"), Some(RecordLink::Start { name: None }));
+        assert_eq!(link("chatham://record/start"), Some(RecordLink::Start { name: None }));
     }
 
     #[test]
     fn a_start_link_carries_its_name_decoded() {
         let named = |name: &str| Some(RecordLink::Start { name: Some(name.to_string()) });
-        assert_eq!(link("parley://record/start?name=Daily%20Standup"), named("Daily Standup"));
-        assert_eq!(link("parley://record/start?name=Daily+Standup"), named("Daily Standup"));
-        assert_eq!(link("parley://record/start?name=1%3A1%20%C3%98yvind"), named("1:1 Øyvind"));
+        assert_eq!(link("chatham://record/start?name=Daily%20Standup"), named("Daily Standup"));
+        assert_eq!(link("chatham://record/start?name=Daily+Standup"), named("Daily Standup"));
+        assert_eq!(link("chatham://record/start?name=1%3A1%20%C3%98yvind"), named("1:1 Øyvind"));
     }
 
     #[test]
     fn a_stop_link_stops_the_recording() {
-        assert_eq!(link("parley://record/stop"), Some(RecordLink::Stop));
-        assert_eq!(link("parley://record/stop?name=Ignored"), Some(RecordLink::Stop));
+        assert_eq!(link("chatham://record/stop"), Some(RecordLink::Stop));
+        assert_eq!(link("chatham://record/stop?name=Ignored"), Some(RecordLink::Stop));
     }
 
     // The spellings `parseDeepLink` (src/lib/deepLink.ts) accepts for its routes.
     #[test]
     fn a_route_reads_the_same_however_the_link_spells_it() {
-        for raw in ["parley:///record/stop", "parley:record/stop", "PARLEY://Record/Stop/"] {
+        for raw in ["chatham:///record/stop", "chatham:record/stop", "CHATHAM://Record/Stop/"] {
             assert_eq!(link(raw), Some(RecordLink::Stop), "{raw}");
         }
     }
@@ -240,10 +240,10 @@ mod tests {
     #[test]
     fn any_other_link_is_not_a_recording_link() {
         for raw in [
-            "parley://new-workspace?source=web",
-            "parley://record",
-            "parley://record/pause",
-            "parley://",
+            "chatham://new-workspace?source=web",
+            "chatham://record",
+            "chatham://record/pause",
+            "chatham://",
             "https://record/start",
         ] {
             assert_eq!(link(raw), None, "{raw}");
@@ -253,7 +253,7 @@ mod tests {
     const START: RecordLink = RecordLink::Start { name: None };
 
     #[test]
-    fn a_start_link_starts_a_recording_when_parley_is_idle() {
+    fn a_start_link_starts_a_recording_when_chatham_is_idle() {
         assert_eq!(decide(START, Phase::Idle), Outcome::Start { name: None });
         let named = RecordLink::Start { name: Some("Daily Standup".into()) };
         assert_eq!(
@@ -371,7 +371,7 @@ mod tests {
         assert_eq!(title_from_name(Some(&ends_in_space), at()), "a".repeat(199));
     }
 
-    // #90's titler may replace only a title Parley made up.
+    // #90's titler may replace only a title Chatham made up.
     #[test]
     fn the_automatic_titler_keeps_a_name_and_replaces_the_start_time() {
         use crate::menubar::is_replaceable_title;

@@ -5,7 +5,7 @@ import { IntegrationsSection } from "./Integrations";
 import { mockTauri } from "../../../test/tauri";
 import { DEFAULTS, type EditableKey } from "../types";
 
-const PATH = "/Applications/Parley.app/Contents/MacOS/parley-mcp";
+const PATH = "/Applications/Chatham.app/Contents/MacOS/chatham-mcp";
 
 function settings(overrides: Partial<Record<EditableKey, string>> = {}) {
   return { ...DEFAULTS, ...overrides } as Record<EditableKey, string>;
@@ -41,7 +41,7 @@ describe("the MCP integration switch", () => {
     // between a bundle and a dev build, which is why it comes from the backend.
     const claude = await screen.findByText(/claude mcp add/);
     expect(claude.textContent).toContain(PATH);
-    const codex = screen.getByText(/\[mcp_servers\.parley\]/);
+    const codex = screen.getByText(/\[mcp_servers\.chatham\]/);
     expect(codex.textContent).toContain(PATH);
     // Quoted: an .app path contains a space, and an unquoted one silently
     // becomes two arguments.

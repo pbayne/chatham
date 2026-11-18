@@ -199,7 +199,7 @@ export function ReleaseNotes() {
   const close = useCallback(() => setSelected(null), []);
   return (
     <section className="release-section" aria-labelledby="release-heading">
-      <div className="release-section-heading"><h2 id="release-heading">What’s new</h2><span>The latest from Parley</span></div>
+      <div className="release-section-heading"><h2 id="release-heading">What’s new</h2><span>The latest from Chatham</span></div>
       <ol className="release-list">
         {latestReleases.map((release, index) => <li key={release.version}>
           <button className="release-row no-drag" onClick={() => { setLinkError(null); setSelected(release); }} aria-haspopup="dialog">
@@ -242,7 +242,7 @@ export function ReleaseNotes() {
             </ul> : <p className="release-issues-empty">No linked issues for this release.</p>}
             {linkError && <p role="alert">{linkError}</p>}
           </div>
-          <footer className="release-post-footer"><span>Made for your everyday meetings.</span><button className="nd-btn no-drag" onClick={close}>Back to Parley</button></footer>
+          <footer className="release-post-footer"><span>Made for your everyday meetings.</span><button className="nd-btn no-drag" onClick={close}>Back to Chatham</button></footer>
         </article>}
       </Modal>
     </section>

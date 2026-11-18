@@ -73,7 +73,7 @@ pub async fn permissions_open_settings(kind: String) -> Result<(), String> {
     let url = match kind.as_str() {
         "microphone" => "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
         "screen" => "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
-        "notifications" => "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=no.parley.app",
+        "notifications" => "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=no.chatham.app",
         _ => return Err("unknown kind".into()),
     };
     tokio::process::Command::new("open")

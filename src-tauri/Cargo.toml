@@ -1,7 +1,7 @@
 [package]
-name = "parley"
+name = "chatham"
 version = "0.75.0"
-description = "Parley — personal meeting notes"
+description = "Chatham — personal meeting notes"
 authors = ["Michael Wilhelmsen"]
 edition = "2021"
 rust-version = "1.94"
@@ -10,7 +10,7 @@ license = "MIT"
 # `[[bin]]`: `tauri dev` shells out to a bare `cargo run`, which refuses to pick
 # between two binaries and fails the whole dev command with "could not determine
 # which binary to run".
-default-run = "parley"
+default-run = "chatham"
 
 [lib]
 name = "humla_lib"

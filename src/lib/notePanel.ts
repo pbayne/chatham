@@ -10,8 +10,8 @@ export const PANEL_FLOOR = 260;
 export const PANEL_MAX = 720;
 export const PANEL_DEFAULT_WIDTH = 440;
 
-const OPEN_KEY = "parley.panelOpen";
-const WIDTH_KEY = "parley.panelWidth";
+const OPEN_KEY = "chatham.panelOpen";
+const WIDTH_KEY = "chatham.panelWidth";
 
 /** Open unless the user last closed it. */
 export function resolveStoredPanelOpen(raw: string | null): boolean {

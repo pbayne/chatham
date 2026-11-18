@@ -25,7 +25,7 @@ use tauri::{AppHandle, Manager, State};
 /// Resolve how Gmail calls should authenticate this run. In `gcloud` mode the
 /// bearer token is minted from the machine's Application Default Credentials
 /// (the route that works on a corp account that blocks third-party OAuth but
-/// has an authorized gcloud ADC); in `oauth` mode it's Parley's own refresh
+/// has an authorized gcloud ADC); in `oauth` mode it's Chatham's own refresh
 /// token on Autopilot. Returns the auth plus whether Google is reachable.
 async fn resolve_gmail_auth(state: &AppState) -> Result<gmail_auth::GmailAuth, String> {
     let mode = {
@@ -244,7 +244,7 @@ fn resolve_triage_provider(
                 .flatten()
                 .map(|s| s.trim().eq_ignore_ascii_case("true"))
                 .unwrap_or(false);
-            Ok(("local".into(), base_url, model, think, "parley-local".into()))
+            Ok(("local".into(), base_url, model, think, "chatham-local".into()))
         }
     }
 }
@@ -330,7 +330,7 @@ pub async fn inbox_triage_now(app: AppHandle) -> Result<usize, String> {
 
     let (provider, base_url, model, think, api_key) = resolve_triage_provider(&state)?;
 
-    // Resolve Gmail auth (gcloud ADC or Parley OAuth) — also our connectivity gate.
+    // Resolve Gmail auth (gcloud ADC or Chatham OAuth) — also our connectivity gate.
     let auth = resolve_gmail_auth(&state).await?;
     let http = state.autopilot.http();
 
@@ -498,7 +498,7 @@ pub fn inbox_set_action_items(
     Ok(())
 }
 
-/// Set how Gmail authenticates: "oauth" (Parley's own Google connection) or
+/// Set how Gmail authenticates: "oauth" (Chatham's own Google connection) or
 /// "gcloud" (the machine's Application Default Credentials — the route that
 /// works on a corp account that blocks third-party OAuth consents).
 #[tauri::command]

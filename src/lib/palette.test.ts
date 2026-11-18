@@ -75,7 +75,7 @@ describe("setPalette", () => {
     await usePaletteStore.getState().setPalette("graphite");
     expect(paletteAttr()).toBe("graphite");
     expect(setSetting).toHaveBeenCalledWith("palette", "graphite");
-    expect(localStorage.getItem("parley.palette")).toBe("graphite");
+    expect(localStorage.getItem("chatham.palette")).toBe("graphite");
   });
 
   it("paints before the write resolves — the attribute is not awaited on IPC", async () => {
@@ -90,7 +90,7 @@ describe("setPalette", () => {
 
 describe("applyCachedPalette", () => {
   it("applies the cached design synchronously", () => {
-    localStorage.setItem("parley.palette", "graphite");
+    localStorage.setItem("chatham.palette", "graphite");
     applyCachedPalette();
     expect(paletteAttr()).toBe("graphite");
   });
@@ -106,7 +106,7 @@ describe("applyCachedPalette", () => {
   it("ignores a cached value that is no longer a real design", () => {
     // The launch after a design is withdrawn: the cache still names it, and the
     // attribute must stay unset so warm.css's :root fallback paints instead.
-    localStorage.setItem("parley.palette", "ember");
+    localStorage.setItem("chatham.palette", "ember");
     applyCachedPalette();
     expect(paletteAttr()).toBeNull();
   });

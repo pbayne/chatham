@@ -906,7 +906,7 @@ fn no_tool_returns_an_audio_path() {
     let id = seed(&conn, "Recorded", "the budget came up");
     conn.execute(
         "UPDATE notes SET audio_path = ?1 WHERE id = ?2",
-        rusqlite::params!["/Users/someone/Library/Application Support/no.parley.app/recordings/x/playback.wav", id],
+        rusqlite::params!["/Users/someone/Library/Application Support/no.chatham.app/recordings/x/playback.wav", id],
     )
     .unwrap();
 
@@ -997,7 +997,7 @@ fn the_shared_tool_vocabulary_matches_the_chat_surface() {
         (TOOL_LIST, "mcp", ARG_LIMIT),
         // MCP-only: the absolute half of the date window. Chat keeps the relative
         // form alone for two reasons — its specs are pinned pairwise against
-        // parley-cloud, so an argument here would be a cross-repo change; and it runs
+        // chatham-cloud, so an argument here would be a cross-repo change; and it runs
         // on models small enough that calendar arithmetic is where they go wrong. An
         // MCP client asks "what happened in June" and has the arithmetic to back it.
         (TOOL_SEARCH, "mcp", ARG_SINCE),

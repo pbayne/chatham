@@ -3,7 +3,7 @@ import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import type { CheckoutSource } from "./cloud";
 
 /**
- * What a `parley://` link asks for. The backend acts on every link itself — it
+ * What a `chatham://` link asks for. The backend acts on every link itself — it
  * brings the window forward, or starts or stops a recording (`deep_link.rs`) —
  * so anything unrecognised here is a `focus` and needs no further work.
  */
@@ -20,7 +20,7 @@ export function linkSource(value: string | null | undefined): CheckoutSource | u
     : undefined;
 }
 
-/** Parse a `parley://` URL; null for anything that isn't one. */
+/** Parse a `chatham://` URL; null for anything that isn't one. */
 export function parseDeepLink(raw: string): DeepLinkAction | null {
   let url: URL;
   try {
@@ -28,9 +28,9 @@ export function parseDeepLink(raw: string): DeepLinkAction | null {
   } catch {
     return null;
   }
-  if (url.protocol !== "parley:") return null;
-  // `parley://new-workspace` puts the route in the host; `parley:///new-workspace`
-  // and `parley:new-workspace` put it in the path. `deep_link::parse` (Rust)
+  if (url.protocol !== "chatham:") return null;
+  // `chatham://new-workspace` puts the route in the host; `chatham:///new-workspace`
+  // and `chatham:new-workspace` put it in the path. `deep_link::parse` (Rust)
   // reads the recording routes the same way; change both.
   const route = `${url.host}${url.pathname}`.replace(/^\/+|\/+$/g, "").toLowerCase();
   if (route === "new-workspace") {

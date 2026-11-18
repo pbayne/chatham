@@ -73,7 +73,7 @@ impl LoopbackServer {
                     Ok(code) => {
                         respond(
                             &mut stream,
-                            "Parley is connected to Google Calendar. You can close this tab.",
+                            "Chatham is connected to Google Calendar. You can close this tab.",
                         )
                         .await;
                         return Ok(code);
@@ -137,9 +137,9 @@ fn parse_redirect(target: &str, expected_state: &str) -> Result<String> {
 async fn respond(stream: &mut tokio::net::TcpStream, message: &str) {
     let body = format!(
         "<!doctype html><html><head><meta charset=utf-8>\
-         <title>Parley</title></head><body style=\"font-family:-apple-system,\
+         <title>Chatham</title></head><body style=\"font-family:-apple-system,\
          sans-serif;padding:3rem;text-align:center;color:#222\">\
-         <h2>Parley</h2><p>{message}</p></body></html>"
+         <h2>Chatham</h2><p>{message}</p></body></html>"
     );
     let resp = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\

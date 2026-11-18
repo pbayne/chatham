@@ -174,7 +174,7 @@ pub(super) fn resolve_provider(
             Ok(ResolvedProvider {
                 provider: id,
                 base_url,
-                api_key: "parley-local".into(),
+                api_key: "chatham-local".into(),
                 model,
                 think,
                 copilot: None,
@@ -322,7 +322,7 @@ pub(super) fn resolve_auto(language: &str, note: &Note) -> String {
     }
 }
 
-/// The language a note's text is in, as far as Parley knows: the note's own
+/// The language a note's text is in, as far as Chatham knows: the note's own
 /// language, the global default when the note follows it (empty), and `auto`
 /// resolved to what was detected ([`resolve_auto`]). Still `auto` when nothing
 /// was detected. The one rule the summary, the title and the webhook payload
@@ -673,7 +673,7 @@ mod tests {
         let (_dir, conn) = temp_conn();
         db::set_setting(&conn, "summary_provider", "custom").unwrap();
         // Used as typed: surrounding whitespace is an input artifact, the
-        // trailing slash is not Parley's to remove.
+        // trailing slash is not Chatham's to remove.
         db::set_setting(&conn, "custom_base_url", "  https://openrouter.ai/api/v1/ ").unwrap();
         db::set_setting(&conn, "custom_model", "deepseek/deepseek-chat").unwrap();
         db::set_setting(&conn, "local_llm_model", "gemma4:12b-mlx").unwrap();

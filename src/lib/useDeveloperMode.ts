@@ -6,7 +6,7 @@ import { ipc } from "./ipc";
 // in About.tsx; consumers (DiagnosticsLinks, threshold sliders) listen
 // for the event so they react immediately instead of waiting for their
 // next mount.
-export const DEV_MODE_EVENT = "parley:dev-mode-changed";
+export const DEV_MODE_EVENT = "chatham:dev-mode-changed";
 
 export function useDeveloperMode(): boolean {
   const [on, setOn] = useState(false);

@@ -122,7 +122,7 @@ export function RecordingSection({
       <Section title="Menu bar">
         <Row
           label="Open at login"
-          description="Parley starts in the menu bar when you log in, without opening its window. If you added Parley to Login Items in System Settings, remove it there."
+          description="Chatham starts in the menu bar when you log in, without opening its window. If you added Chatham to Login Items in System Settings, remove it there."
           control={<LaunchAtLoginField />}
         />
         <Row
@@ -132,8 +132,8 @@ export function RecordingSection({
           // rather than describing the switch.
           description={
             closeToTray
-              ? "Closing the window hides Parley in the menu bar and drops its Dock icon. Quit from the menu-bar icon."
-              : "Closing the window quits Parley. The menu-bar icon is still there while it runs."
+              ? "Closing the window hides Chatham in the menu bar and drops its Dock icon. Quit from the menu-bar icon."
+              : "Closing the window quits Chatham. The menu-bar icon is still there while it runs."
           }
           control={
             <Toggle
@@ -198,7 +198,7 @@ function SilenceAutoStopSection() {
       {enabled && (
         <Row
           label="Stop after"
-          description="How long the room can stay quiet before Parley stops and summarizes."
+          description="How long the room can stay quiet before Chatham stops and summarizes."
           control={
             <div className="flex items-center gap-2">
               <input

@@ -83,7 +83,7 @@ function Check({
 // A hint that answers "here is a thing that exists" with "now go find it
 // yourself" spends the one moment of intent it had; the sheet leads with the
 // same pitch Settings would have shown and carries on to a working workspace.
-const HINT_KEY = "parley.teamHint.exportDismissed";
+const HINT_KEY = "chatham.teamHint.exportDismissed";
 
 function TeamHint({ onLeave, onCreateTeam }: { onLeave: () => void; onCreateTeam: () => void }) {
   const inWorkspace = useCloudStore((s) => s.status.current_workspace !== null);

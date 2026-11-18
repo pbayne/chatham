@@ -303,7 +303,7 @@ export function TranscriptionTab({
             value={s.custom_vocabulary}
             onChange={(e) => update("custom_vocabulary", e.target.value)}
             rows={3}
-            placeholder="Tauri, Parley, ScreenCaptureKit, Granola"
+            placeholder="Tauri, Chatham, ScreenCaptureKit, Granola"
             className={inputClass + " leading-relaxed"}
             style={{ fontFamily: "var(--font-mono)" }}
           />

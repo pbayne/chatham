@@ -1,9 +1,9 @@
 //! Finding the Copilot CLI, and downloading it when there is none. npm installs
 //! `copilot` as a Node loader around a native binary in a per-platform package;
-//! Parley runs that binary directly, so `node` is never needed. A Finder-
+//! Chatham runs that binary directly, so `node` is never needed. A Finder-
 //! launched app sees only `/usr/bin:/bin:/usr/sbin:/sbin`, so the user's own
 //! install is looked for in the usual roots and then on the login shell's PATH.
-//! When none turns up, Parley downloads the version the SDK was built against,
+//! When none turns up, Chatham downloads the version the SDK was built against,
 //! checks it against a pinned sha512 and GitHub's code signature, and keeps it
 //! under Application Support.
 
@@ -43,7 +43,7 @@ fn npm_arch(arch: &str) -> &str {
     }
 }
 
-/// Where Parley keeps a CLI it downloaded.
+/// Where Chatham keeps a CLI it downloaded.
 pub fn managed_path(app_data: &Path) -> PathBuf {
     app_data.join("copilot").join(VERSION).join("copilot")
 }
@@ -56,8 +56,8 @@ pub struct LoginShell {
     pub npm_prefix: Option<String>,
 }
 
-const PATH_MARK: &str = "__PARLEY_PATH__";
-const NPM_MARK: &str = "__PARLEY_NPM__";
+const PATH_MARK: &str = "__CHATHAM_PATH__";
+const NPM_MARK: &str = "__CHATHAM_NPM__";
 
 impl LoginShell {
     /// Read the shell's answer between markers, ignoring whatever the
@@ -75,7 +75,7 @@ impl LoginShell {
 }
 
 /// Every place the CLI may be, in the order they are tried: an explicit
-/// `COPILOT_CLI_PATH`, Parley's own download, the usual install roots, then the
+/// `COPILOT_CLI_PATH`, Chatham's own download, the usual install roots, then the
 /// login shell's PATH and npm prefix. A download comes before the user's own
 /// install because its version is the one the SDK speaks.
 pub fn candidates(
@@ -345,13 +345,13 @@ mod tests {
 
     #[test]
     fn the_login_shell_answer_is_read_between_its_markers() {
-        let out = "Last login: Tue\nwelcome!\n__PARLEY_PATH__/a:/b__PARLEY_PATH____PARLEY_NPM__/Users/u/.hermes/node__PARLEY_NPM__";
+        let out = "Last login: Tue\nwelcome!\n__CHATHAM_PATH__/a:/b__CHATHAM_PATH____CHATHAM_NPM__/Users/u/.hermes/node__CHATHAM_NPM__";
         assert_eq!(
             LoginShell::parse(out),
             Some(LoginShell { path: "/a:/b".into(), npm_prefix: Some("/Users/u/.hermes/node".into()) })
         );
         assert_eq!(
-            LoginShell::parse("__PARLEY_PATH__/a__PARLEY_PATH____PARLEY_NPM____PARLEY_NPM__"),
+            LoginShell::parse("__CHATHAM_PATH__/a__CHATHAM_PATH____CHATHAM_NPM____CHATHAM_NPM__"),
             Some(LoginShell { path: "/a".into(), npm_prefix: None })
         );
         assert_eq!(LoginShell::parse("zsh: no such file"), None);

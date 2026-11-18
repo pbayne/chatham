@@ -7,7 +7,7 @@ import { Row, Section } from "../components/Section";
 // milestone M2) — shows exactly which upcoming meetings Autopilot would act on
 // and why, before the user ever turns Auto on.
 //
-// Parley does NOT join meetings as a bot. In every mode it records the Mac's own
+// Chatham does NOT join meetings as a bot. In every mode it records the Mac's own
 // mic + system audio; the calendar only decides WHEN to start and stop. That is
 // stated plainly here because it changes what the user should expect.
 
@@ -134,7 +134,7 @@ export function AutopilotTab() {
     <Section title="Autopilot — auto-record meetings">
       <Row
         label="How it works"
-        description="Parley reads your Google Calendar on this Mac to know when meetings start, and records the Mac's own audio — it does not join the call as a bot. Your calendar is used to decide when to start and stop, and to tag each recording with the meeting's title and attendees."
+        description="Chatham reads your Google Calendar on this Mac to know when meetings start, and records the Mac's own audio — it does not join the call as a bot. Your calendar is used to decide when to start and stop, and to tag each recording with the meeting's title and attendees."
       />
 
       <Row

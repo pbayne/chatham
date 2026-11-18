@@ -6,7 +6,7 @@ import { dueColorVar, dueState } from "../lib/due";
 import { useNotesStore } from "../lib/store";
 import { NemotronOffer } from "../components/NemotronOffer";
 import { ReleaseNotes } from "../components/ReleaseNotes";
-import parleyIcon from "../../src-tauri/icons/icon.png";
+import chathamIcon from "../../src-tauri/icons/icon.png";
 
 // Relative "2h ago" / "3d ago" for a unix-ms timestamp. Compact, for the
 // recent-notes list.
@@ -74,13 +74,13 @@ export function Home() {
         <div className="home-welcome">
           <div className="flex flex-col items-center gap-3">
             <img
-              src={parleyIcon}
-              alt="Parley"
+              src={chathamIcon}
+              alt="Chatham"
               width={72}
               height={72}
               style={{ filter: "drop-shadow(0 6px 20px rgba(0, 0, 0, 0.16))" }}
             />
-            <h1 className="text-4xl font-semibold tracking-tight leading-none">Parley</h1>
+            <h1 className="text-4xl font-semibold tracking-tight leading-none">Chatham</h1>
           </div>
           <p className="text-sm text-[var(--color-text-muted)] tabular-nums">
             {notesLabel}, {summarized} summarized

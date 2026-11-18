@@ -1,4 +1,4 @@
-//! Signing in to Parley Cloud, and staying signed in.
+//! Signing in to Chatham Cloud, and staying signed in.
 //!
 //! One session per process, kept across launches: its token lives in the
 //! Keychain beside the email and is renewed with `auth-refresh`. The password
@@ -177,7 +177,7 @@ fn join_names(names: &[String]) -> String {
     }
 }
 
-/// A failed two-factor route (parley-cloud/docs/two-factor.md) as the user reads
+/// A failed two-factor route (chatham-cloud/docs/two-factor.md) as the user reads
 /// it. The server's wording is kept except where its answer carries more than
 /// the wording says: how long a lock lasts, which workspaces stand in the way.
 pub(crate) fn two_factor_error(status: u16, body: &serde_json::Value) -> CloudError {
@@ -228,7 +228,7 @@ pub(crate) fn two_factor_error(status: u16, body: &serde_json::Value) -> CloudEr
 /// authentication answers its routes 404 with no reason, which says nothing
 /// useful in its own words.
 pub(crate) fn route_error(path: &str, status: u16, body: &serde_json::Value) -> CloudError {
-    if status == 404 && path.starts_with("/api/parley/2fa/") && str_field(body, "reason").is_empty() {
+    if status == 404 && path.starts_with("/api/chatham/2fa/") && str_field(body, "reason").is_empty() {
         return CloudError {
             reason: "unsupported".into(),
             message: "This server doesn't support two-factor authentication.".into(),
@@ -265,7 +265,7 @@ pub struct WorkspaceRef {
     pub name: String,
 }
 
-/// `GET /api/parley/2fa/status`. `available` is false on a server that doesn't
+/// `GET /api/chatham/2fa/status`. `available` is false on a server that doesn't
 /// offer it, and the app then shows none of it.
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct TwoFactorStatus {
@@ -433,8 +433,8 @@ pub(crate) fn forget_session_token(token: &str) {
 fn dev_account() -> Option<StoredAccount> {
     #[cfg(debug_assertions)]
     {
-        let email = std::env::var("PARLEY_DEV_SYNC_EMAIL").unwrap_or_default();
-        let password = std::env::var("PARLEY_DEV_SYNC_PASSWORD").unwrap_or_default();
+        let email = std::env::var("CHATHAM_DEV_SYNC_EMAIL").unwrap_or_default();
+        let password = std::env::var("CHATHAM_DEV_SYNC_PASSWORD").unwrap_or_default();
         if !email.is_empty() && !password.is_empty() {
             return Some(StoredAccount { email, password: Some(password), token: None });
         }
@@ -727,7 +727,7 @@ pub async fn cloud_verify_two_factor(
     let mut body = second_factor(code, recovery_code)?;
     body["mfaId"] = serde_json::Value::String(challenge.mfa_id.clone());
     let resp = http()
-        .post(format!("{}/api/parley/2fa/verify", challenge.base))
+        .post(format!("{}/api/chatham/2fa/verify", challenge.base))
         .json(&body)
         .send()
         .await
@@ -796,7 +796,7 @@ async fn authed_call(
 /// The signed-in user's two-factor status, for `cloud_status`. A server that
 /// doesn't offer it, or doesn't answer, reads as unavailable.
 pub(crate) async fn fetch_two_factor_status(base: &str, token: &str) -> TwoFactorStatus {
-    let Ok(resp) = http().get(format!("{base}/api/parley/2fa/status")).bearer_auth(token).send().await
+    let Ok(resp) = http().get(format!("{base}/api/chatham/2fa/status")).bearer_auth(token).send().await
     else {
         return TwoFactorStatus::default();
     };
@@ -827,7 +827,7 @@ pub async fn cloud_two_factor_setup(
 ) -> Result<TwoFactorSetup, CloudError> {
     let mut body = second_factor(code, recovery_code).unwrap_or_else(|_| serde_json::json!({}));
     body["password"] = serde_json::Value::String(password);
-    let val = authed_call(&state, Verb::Post, "/api/parley/2fa/setup", &body, &[]).await?;
+    let val = authed_call(&state, Verb::Post, "/api/chatham/2fa/setup", &body, &[]).await?;
     let otpauth_uri = str_field(&val, "otpauth_uri");
     Ok(TwoFactorSetup { secret: str_field(&val, "secret"), qr: qr_code(&otpauth_uri), otpauth_uri })
 }
@@ -847,7 +847,7 @@ pub async fn cloud_two_factor_enable(
     code: String,
 ) -> Result<Vec<String>, CloudError> {
     let body = second_factor(Some(code), None)?;
-    let val = authed_call(&state, Verb::Post, "/api/parley/2fa/enable", &body, &[]).await?;
+    let val = authed_call(&state, Verb::Post, "/api/chatham/2fa/enable", &body, &[]).await?;
     adopt_response(&state, &val, "", None)?;
     Ok(recovery_codes(val.pointer("/meta/recovery_codes").unwrap_or(&serde_json::Value::Null)))
 }
@@ -862,7 +862,7 @@ pub async fn cloud_two_factor_recovery_codes(
 ) -> Result<Vec<String>, CloudError> {
     let mut body = second_factor(code, recovery_code)?;
     body["password"] = serde_json::Value::String(password);
-    let val = authed_call(&state, Verb::Post, "/api/parley/2fa/recovery-codes", &body, &[]).await?;
+    let val = authed_call(&state, Verb::Post, "/api/chatham/2fa/recovery-codes", &body, &[]).await?;
     Ok(recovery_codes(val.get("recovery_codes").unwrap_or(&serde_json::Value::Null)))
 }
 
@@ -877,7 +877,7 @@ pub async fn cloud_two_factor_disable(
 ) -> Result<(), CloudError> {
     let mut body = second_factor(code, recovery_code)?;
     body["password"] = serde_json::Value::String(password.clone());
-    let val = authed_call(&state, Verb::Post, "/api/parley/2fa/disable", &body, &[]).await?;
+    let val = authed_call(&state, Verb::Post, "/api/chatham/2fa/disable", &body, &[]).await?;
     adopt_response(&state, &val, "", Some(&password))
 
 }
@@ -892,7 +892,7 @@ pub async fn cloud_two_factor_members(
     let val = authed_call(
         &state,
         Verb::Get,
-        "/api/parley/2fa/members",
+        "/api/chatham/2fa/members",
         &serde_json::Value::Null,
         &[("workspace_id", workspace_id.as_str())],
     )
@@ -914,7 +914,7 @@ pub(crate) fn recovery_codes_file(codes: &[String]) -> Result<String, String> {
         return Err("Those aren't recovery codes.".into());
     }
     Ok(format!(
-        "Parley recovery codes\n\nEach code signs you in once, when you can't use your \
+        "Chatham recovery codes\n\nEach code signs you in once, when you can't use your \
          authenticator app.\n\n{}\n",
         codes.join("\n")
     ))
@@ -1076,7 +1076,7 @@ mod tests {
         })
     }
 
-    /// The server's half of parley-cloud/docs/two-factor.md, "Signing in".
+    /// The server's half of chatham-cloud/docs/two-factor.md, "Signing in".
     #[test]
     fn a_password_sign_in_reads_as_signed_in_challenged_or_refused() {
         let signed_in = parse_password_login(200, &auth_body("t1"));
@@ -1170,7 +1170,7 @@ mod tests {
         // 404 keeps its own words.
         let missing = serde_json::json!({ "message": "The requested resource wasn't found." });
         assert_eq!(
-            route_error("/api/parley/2fa/setup", 404, &missing).message,
+            route_error("/api/chatham/2fa/setup", 404, &missing).message,
             "This server doesn't support two-factor authentication."
         );
         assert_eq!(
@@ -1178,7 +1178,7 @@ mod tests {
             "The requested resource wasn't found."
         );
         let gone = serde_json::json!({ "message": "Workspace not found.", "reason": "not_found" });
-        assert_eq!(route_error("/api/parley/2fa/members", 404, &gone).message, "Workspace not found.");
+        assert_eq!(route_error("/api/chatham/2fa/members", 404, &gone).message, "Workspace not found.");
         assert!(!two_factor_error(500, &serde_json::json!({})).message.is_empty());
     }
 
@@ -1237,7 +1237,7 @@ mod tests {
     #[test]
     fn recovery_codes_are_saved_as_a_note_with_the_codes_and_nothing_else() {
         let file = recovery_codes_file(&["ABCDE-12345".into(), "FGHIJ-67890".into()]).unwrap();
-        assert!(file.starts_with("Parley recovery codes\n"));
+        assert!(file.starts_with("Chatham recovery codes\n"));
         assert!(file.ends_with("\nABCDE-12345\nFGHIJ-67890\n"));
         assert!(recovery_codes_file(&["#!/bin/sh".into()]).is_err());
         assert!(recovery_codes_file(&[]).is_err());
@@ -1247,7 +1247,7 @@ mod tests {
     /// row is seven dark modules — a known answer that the encoder didn't write.
     #[test]
     fn the_setup_qr_code_is_a_path_of_its_dark_modules() {
-        let qr = qr_code("otpauth://totp/Parley:m%40example.no?secret=JBSWY3DPEHPK3PXP&issuer=Parley")
+        let qr = qr_code("otpauth://totp/Chatham:m%40example.no?secret=JBSWY3DPEHPK3PXP&issuer=Chatham")
             .expect("fits in a QR code");
         assert!(qr.size >= 21 && (qr.size - 17) % 4 == 0, "a valid version's size: {}", qr.size);
         assert!(qr.path.starts_with("M0 0h7v1h-7z"), "{}", &qr.path[..40.min(qr.path.len())]);

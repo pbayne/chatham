@@ -36,7 +36,7 @@ mod captures;
 mod silence;
 mod voiceprints;
 mod triage;
-// Public so the `parley-mcp` binary (#172) can drive it. Everything below it —
+// Public so the `chatham-mcp` binary (#172) can drive it. Everything below it —
 // `db`, `html_text` — stays private to the crate.
 pub mod mcp;
 pub mod sync;
@@ -132,7 +132,7 @@ pub fn run() {
                 if let Ok(mut f) = std::fs::OpenOptions::new()
                     .create(true)
                     .append(true)
-                    .open(format!("{home}/parley-panic.log"))
+                    .open(format!("{home}/chatham-panic.log"))
                 {
                     let _ = f.write_all(line.as_bytes());
                 }
@@ -176,7 +176,7 @@ where
         // argument is how `menubar::present_at_launch` recognises the launch.
         .plugin(
             tauri_plugin_autostart::Builder::new()
-                .app_name("no.parley.app")
+                .app_name("no.chatham.app")
                 .arg(menubar::LOGIN_LAUNCH_ARG)
                 .build(),
         )
@@ -280,7 +280,7 @@ where
                     let _ = app.emit("menu://check-for-updates", ());
                 }
             });
-            // Diarization models Parley no longer uses, removed once per install.
+            // Diarization models Chatham no longer uses, removed once per install.
             {
                 let state: tauri::State<AppState> = app.state();
                 let conn = state.db.lock();
@@ -335,7 +335,7 @@ where
             // v0.31 — grandfather existing installs past the new first-run
             // onboarding wizard. Marks `onboarding_completed=true` when the DB
             // has notes or a local Whisper model is present on disk, so nobody
-            // already using Parley ever sees the wizard. Deliberately does NOT
+            // already using Chatham ever sees the wizard. Deliberately does NOT
             // read the Keychain (a startup Keychain read can trigger a macOS
             // prompt). Idempotent via the presence of the setting.
             {
@@ -393,7 +393,7 @@ where
             notifications::install(app.handle());
             // Tray + global hotkey. Last in setup so a failure here can't stop
             // the app from coming up — the menu bar is an extra surface, not a
-            // precondition for using Parley.
+            // precondition for using Chatham.
             let tray_installed = match menubar::install(app.handle()) {
                 Ok(()) => true,
                 Err(e) => {
@@ -642,7 +642,7 @@ where
             if let tauri::RunEvent::Exit = event {
                 unsafe { libc::_exit(0) };
             }
-            // Clicking Parley in Finder / Spotlight while it sits hidden in the
+            // Clicking Chatham in Finder / Spotlight while it sits hidden in the
             // menu bar reaches us as a reopen, not a second launch. Without
             // this the app looks dead: LaunchServices activates the running
             // process, which has no window and (as an accessory) no Dock icon
@@ -695,7 +695,7 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         .config()
         .product_name
         .clone()
-        .unwrap_or_else(|| "Parley".to_string());
+        .unwrap_or_else(|| "Chatham".to_string());
 
     let about = PredefinedMenuItem::about(app, None, None)?;
     let check_for_updates = MenuItem::with_id(

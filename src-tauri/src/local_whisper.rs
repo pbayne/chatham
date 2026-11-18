@@ -578,9 +578,9 @@ mod tests {
 ///
 ///   cargo test model_tests -- --ignored --nocapture
 ///
-/// `real_chunks_dir_transcribes` also needs `PARLEY_WHISPER_WAVS=<dir>`;
-/// `PARLEY_WHISPER_LANG` overrides the fixture language (default `es`) and
-/// `PARLEY_WHISPER_QUIET=1` keeps transcript text out of the output.
+/// `real_chunks_dir_transcribes` also needs `CHATHAM_WHISPER_WAVS=<dir>`;
+/// `CHATHAM_WHISPER_LANG` overrides the fixture language (default `es`) and
+/// `CHATHAM_WHISPER_QUIET=1` keeps transcript text out of the output.
 #[cfg(test)]
 mod model_tests {
     use super::*;
@@ -588,7 +588,7 @@ mod model_tests {
     fn installed_model() -> PathBuf {
         let home = std::env::var("HOME").unwrap();
         let model = PathBuf::from(format!(
-            "{home}/Library/Application Support/no.parley.app/models/{}",
+            "{home}/Library/Application Support/no.chatham.app/models/{}",
             default_model().filename
         ));
         assert!(model.exists(), "model not downloaded: {}", model.display());
@@ -596,7 +596,7 @@ mod model_tests {
     }
 
     fn fixture_language() -> String {
-        std::env::var("PARLEY_WHISPER_LANG").unwrap_or_else(|_| "es".into())
+        std::env::var("CHATHAM_WHISPER_LANG").unwrap_or_else(|_| "es".into())
     }
 
     /// Mono 16 kHz WAV of `secs` of faint noise with a tone from `tone_from`
@@ -676,14 +676,14 @@ mod model_tests {
         assert!(segments > 0, "no window produced a segment, so the DTW path was never exercised");
     }
 
-    /// Every WAV in `PARLEY_WHISPER_WAVS` transcribes and reports how many
+    /// Every WAV in `CHATHAM_WHISPER_WAVS` transcribes and reports how many
     /// words carry timings.
     #[tokio::test]
     #[ignore]
     async fn real_chunks_dir_transcribes() {
-        let dir = std::env::var("PARLEY_WHISPER_WAVS")
-            .expect("set PARLEY_WHISPER_WAVS to a directory of 16 kHz mono WAVs");
-        let quiet = std::env::var("PARLEY_WHISPER_QUIET").is_ok();
+        let dir = std::env::var("CHATHAM_WHISPER_WAVS")
+            .expect("set CHATHAM_WHISPER_WAVS to a directory of 16 kHz mono WAVs");
+        let quiet = std::env::var("CHATHAM_WHISPER_QUIET").is_ok();
         let lang = fixture_language();
         let model = installed_model();
         let shared = new_shared();

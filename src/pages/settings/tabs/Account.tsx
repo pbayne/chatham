@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Cloud, CloudOff, LogOut } from "lucide-react";
-import { cloudApi, useCloudStore, PARLEY_CLOUD_URL } from "../../../lib/cloud";
+import { cloudApi, useCloudStore, CHATHAM_CLOUD_URL } from "../../../lib/cloud";
 import { useCloudSignIn } from "../../../lib/useCloudSignIn";
 import { TwoFactorCodeForm } from "../../../components/TwoFactorCodeForm";
 import { TwoFactorSection } from "./TwoFactor";
@@ -13,7 +13,7 @@ import type { SettingsHook } from "../useSettings";
 const inputCls =
   "w-full text-sm px-3 py-2 rounded-md border border-[var(--color-line-visible)] bg-[var(--color-surface)] focus:border-[var(--color-text-muted)] transition-colors";
 
-// Account section: connect to a Parley Cloud server, sign in/out. The server
+// Account section: connect to a Chatham Cloud server, sign in/out. The server
 // URL + credentials drive everything else (workspace management renders
 // below, from Organization.tsx, once signed in). Local-only use needs none
 // of this — it's entirely opt-in.
@@ -52,15 +52,15 @@ export function AccountTab({ s, update }: Pick<SettingsHook, "s" | "update">) {
     }
   }
 
-  // One-click path for downloaders: point at the hosted Parley Cloud and continue
+  // One-click path for downloaders: point at the hosted Chatham Cloud and continue
   // to sign in / create an account — no URL to type.
-  async function useParleyCloud() {
+  async function useChathamCloud() {
     setBusy(true);
     setError(null);
     try {
       // Don't mirror the URL into the self-hosted input — that field is for
       // custom servers only; the hosted URL showing up there reads as a bug.
-      await cloudApi.configure(PARLEY_CLOUD_URL);
+      await cloudApi.configure(CHATHAM_CLOUD_URL);
       await refresh();
     } catch (e) {
       setError(String(e));
@@ -288,10 +288,10 @@ export function AccountTab({ s, update }: Pick<SettingsHook, "s" | "update">) {
     <Section title="Connect to sync">
       <div className="py-3.5 flex flex-col gap-3">
         <p className="text-sm text-[var(--color-text-muted)]">
-          Parley works fully offline. Your notes always live on your Mac first.
+          Chatham works fully offline. Your notes always live on your Mac first.
         </p>
         {error && <div className="text-xs text-[var(--color-danger)]">{error}</div>}
-        {/* Parley Cloud pitch: the one place the hosted offer gets to sell
+        {/* Chatham Cloud pitch: the one place the hosted offer gets to sell
             itself — accent-washed so it stands out from the surrounding
             settings chrome without shouting. */}
         {/* Borderless, matching the create-team-workspace sheet's pitch panel —
@@ -301,7 +301,7 @@ export function AccountTab({ s, update }: Pick<SettingsHook, "s" | "update">) {
             rather than decoration. */}
         <div className="rounded-lg bg-[var(--color-accent-soft)] p-4 flex flex-col gap-1.5">
           <div className="flex items-center gap-1.5 text-sm font-medium">
-            <Cloud size={15} strokeWidth={1.7} /> Parley Cloud
+            <Cloud size={15} strokeWidth={1.7} /> Chatham Cloud
           </div>
           <p className="text-sm text-[var(--color-text-muted)]">
             Share notes across your team — synced to every device, backed up,
@@ -316,11 +316,11 @@ export function AccountTab({ s, update }: Pick<SettingsHook, "s" | "update">) {
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pt-1.5">
             <button
               type="button"
-              onClick={useParleyCloud}
+              onClick={useChathamCloud}
               disabled={busy}
               className="nd-btn nd-btn-primary"
             >
-              {busy ? "Connecting…" : "Upgrade to Parley Cloud"}
+              {busy ? "Connecting…" : "Upgrade to Chatham Cloud"}
             </button>
             <span className="text-xs text-[var(--color-text-muted)] whitespace-nowrap">
               14-day free trial · cancel anytime

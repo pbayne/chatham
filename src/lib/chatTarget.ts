@@ -9,7 +9,7 @@ import type { ChatScope } from "./ipc";
  *
  *  A discriminated union rather than a nullable note id, so "the library" can
  *  never be confused with "a note we haven't loaded yet" — and specifically NOT a
- *  sentinel empty string, which is the ambiguity parley-cloud#26 records the server
+ *  sentinel empty string, which is the ambiguity chatham-cloud#26 records the server
  *  having avoided and #93 mirrored on the Rust side. #110 adds the folder arm,
  *  which is why the union earns its keep a second time: a folder pane also has no
  *  note id, and a nullable one would have made it indistinguishable from the
