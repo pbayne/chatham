@@ -44,8 +44,12 @@ fn label_ranges_by_session(
     let mut out = vec![];
     for (_, dir) in crate::sessions::resolve_sessions(&recordings) {
         let timeline = dir.join("timeline.jsonl");
-        let wav = dir.join("playback.wav");
-        if !timeline.exists() || !wav.exists() {
+        // Prefer compressed `playback.m4a`, fall back to `playback.wav`. The
+        // Swift diarizer (AVAudioFile) decodes AAC natively.
+        let Some(wav) = crate::sessions::resolve_session_audio(&dir, "playback") else {
+            continue;
+        };
+        if !timeline.exists() {
             continue;
         }
         let Ok(text) = std::fs::read_to_string(&timeline) else {

@@ -277,6 +277,37 @@ pub fn resolve_sessions(recordings_dir: &Path) -> Vec<(SessionEntry, PathBuf)> {
     Vec::new()
 }
 
+/// Resolve the on-disk audio file for a session asset `stem` (e.g.
+/// `"playback"`), preferring the compressed `.m4a` written *after*
+/// transcription over the uncompressed `.wav`. Returns `None` when neither
+/// exists.
+///
+/// This is the whole read side of post-transcription compression (#audio-
+/// compress). `playback.wav` is the mixed 16 kHz mono recording the player and
+/// the voiceprint/diarizer sidecar read while a note is fresh; once its
+/// transcription has completed it is re-encoded to a ~5–7× smaller
+/// `playback.m4a` and the `.wav` is deleted. AVAudioFile (the Swift sidecar's
+/// reader, via FluidAudio) and the webview `<audio>` element both decode AAC
+/// `.m4a` natively, so every reader must prefer the `.m4a` when it is present
+/// and fall back to the `.wav` so notes recorded before compression — and any
+/// note still awaiting a deferred transcription, whose `.wav` has deliberately
+/// not been compressed yet — keep resolving.
+///
+/// Deliberately a plain `.exists()` preference and not a manifest field: the
+/// compression is an opportunistic, best-effort rewrite, and the file that is
+/// actually on disk is the only truth a reader can trust.
+pub fn resolve_session_audio(session_dir: &Path, stem: &str) -> Option<PathBuf> {
+    let m4a = session_dir.join(format!("{stem}.m4a"));
+    if m4a.exists() {
+        return Some(m4a);
+    }
+    let wav = session_dir.join(format!("{stem}.wav"));
+    if wav.exists() {
+        return Some(wav);
+    }
+    None
+}
+
 /// Resolve a single session's asset dir by id (honouring the legacy
 /// fallback), or `None` if the id isn't known for this note.
 pub fn resolve_session_dir(recordings_dir: &Path, session_id: &str) -> Option<PathBuf> {
@@ -698,8 +729,8 @@ pub fn session_download_plan(keep_audio: bool) -> Vec<AssetField> {
     plan
 }
 
-/// Every stored audio file under one note's recordings dir: `*.wav` flat in the
-/// dir and in every immediate subdir, sorted for stable output.
+/// Every stored audio file under one note's recordings dir: `*.wav` / `*.m4a`
+/// flat in the dir and in every immediate subdir, sorted for stable output.
 ///
 /// Deliberately a filesystem sweep rather than a walk of
 /// [`resolve_sessions`] × [`AssetField`]. Once a `sessions.json` exists the
@@ -709,8 +740,13 @@ pub fn session_download_plan(keep_audio: bool) -> Vec<AssetField> {
 /// a migrated note, and a `mic.wav` in a dir no manifest mentions all have to
 /// count here, or "delete stored audio" would leave audio behind while
 /// reporting success — the same dishonesty #24 exists to remove.
+///
+/// `.m4a` is counted alongside `.wav`: post-transcription compression
+/// (#audio-compress) rewrites `playback.wav` to `playback.m4a`, and a
+/// compressed recording is every bit as much a recording of the meeting as the
+/// WAV it replaced — the sweep has to find it or the same leak returns.
 pub fn stored_audio_files(recordings_dir: &Path) -> Vec<PathBuf> {
-    fn wavs_in(dir: &Path, out: &mut Vec<PathBuf>) {
+    fn audio_in(dir: &Path, out: &mut Vec<PathBuf>) {
         let Ok(entries) = std::fs::read_dir(dir) else {
             return;
         };
@@ -719,7 +755,7 @@ pub fn stored_audio_files(recordings_dir: &Path) -> Vec<PathBuf> {
             if path.is_file()
                 && path
                     .extension()
-                    .is_some_and(|e| e.eq_ignore_ascii_case("wav"))
+                    .is_some_and(|e| e.eq_ignore_ascii_case("wav") || e.eq_ignore_ascii_case("m4a"))
             {
                 out.push(path);
             }
@@ -727,12 +763,12 @@ pub fn stored_audio_files(recordings_dir: &Path) -> Vec<PathBuf> {
     }
 
     let mut out = Vec::new();
-    wavs_in(recordings_dir, &mut out);
+    audio_in(recordings_dir, &mut out);
     if let Ok(entries) = std::fs::read_dir(recordings_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                wavs_in(&path, &mut out);
+                audio_in(&path, &mut out);
             }
         }
     }
@@ -937,6 +973,60 @@ mod tests {
             fs::create_dir_all(p).unwrap();
         }
         fs::write(path, b"x").unwrap();
+    }
+
+    // ---- post-transcription audio compression resolver (#audio-compress) ----
+
+    #[test]
+    fn resolve_session_audio_prefers_m4a_over_wav() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+        // A note whose playback has been compressed holds both briefly only in
+        // theory — compression deletes the .wav — but a reader must pick the
+        // .m4a whenever it is present regardless of a lingering .wav.
+        touch(&dir.join("playback.wav"));
+        touch(&dir.join("playback.m4a"));
+        assert_eq!(
+            resolve_session_audio(dir, "playback"),
+            Some(dir.join("playback.m4a")),
+            "a compressed note must resolve to the .m4a"
+        );
+    }
+
+    #[test]
+    fn resolve_session_audio_falls_back_to_wav() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+        // A legacy / not-yet-compressed note (or one still awaiting a deferred
+        // transcription) has only the .wav and must keep resolving.
+        touch(&dir.join("playback.wav"));
+        assert_eq!(
+            resolve_session_audio(dir, "playback"),
+            Some(dir.join("playback.wav")),
+            "an uncompressed note must fall back to the .wav"
+        );
+    }
+
+    #[test]
+    fn resolve_session_audio_none_when_absent() {
+        let tmp = TempDir::new().unwrap();
+        assert_eq!(resolve_session_audio(tmp.path(), "playback"), None);
+    }
+
+    #[test]
+    fn stored_audio_sweep_counts_compressed_m4a() {
+        let tmp = TempDir::new().unwrap();
+        let rec = recordings_dir(tmp.path(), "note1");
+        // A take whose playback was compressed: only the .m4a survives, plus an
+        // uncompressed source stream.
+        touch(&rec.join("sess-1").join("playback.m4a"));
+        touch(&rec.join("sess-1").join("mic.wav"));
+        let found = stored_audio_files(&rec);
+        assert!(
+            found.iter().any(|p| p.ends_with("playback.m4a")),
+            "the compressed playback must be swept: {found:?}"
+        );
+        assert!(found.iter().any(|p| p.ends_with("mic.wav")));
     }
 
     #[test]

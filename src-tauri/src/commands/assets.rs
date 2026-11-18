@@ -126,10 +126,11 @@ pub fn note_playback_path(app: AppHandle, note_id: String) -> Result<Option<Stri
     // session-aware player prefers `note_session_playback_path`.
     let app_dir = app.path().app_data_dir().map_err(err)?;
     let recordings = crate::sessions::recordings_dir(&app_dir, &note_id);
-    let path = crate::sessions::latest_session_dir(&recordings).join("playback.wav");
-    if !path.exists() {
+    // Prefer compressed `playback.m4a`, fall back to legacy `playback.wav`.
+    let latest = crate::sessions::latest_session_dir(&recordings);
+    let Some(path) = crate::sessions::resolve_session_audio(&latest, "playback") else {
         return Ok(None);
-    }
+    };
     Ok(path.to_str().map(|s| s.to_string()))
 }
 

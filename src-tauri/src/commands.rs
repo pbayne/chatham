@@ -798,8 +798,12 @@ async fn rediarize_apply_to_chunks(
     .await;
     let playback_ms = ms_since(t_playback);
 
-    // Through the shared commit, so re-diarize inherits its refusal to trade a
-    // non-empty transcript for an empty projection rather than restating it.
+    // Re-compress the freshly rebuilt playback track (#captures/audio-compression):
+    // write_playback_assets just wrote an uncompressed playback.wav; collapse it
+    // back to playback.m4a so re-diarize doesn't leave a large WAV behind. No-op
+    // when keep_audio is off or there's no wav to compress.
+    compress_session_playback(&app, &note_id, &session_id).await;
+
     let full_transcript = match rebuild_note_transcript(&app, &note_id) {
         Ok(t) => t,
         Err(e) => {
@@ -1145,7 +1149,7 @@ pub fn note_sessions(app: AppHandle, note_id: String) -> Result<Vec<NoteSession>
             started_at: e.started_at,
             duration_ms: e.duration_ms,
             streams: e.streams,
-            has_playback: dir.join("playback.wav").exists(),
+            has_playback: sessions::resolve_session_audio(&dir, "playback").is_some(),
             can_transcribe: !e.transcribed && sessions::session_has_replayable_audio(&dir),
             can_retranscribe: sessions::session_has_replayable_audio(&dir),
         })
@@ -1196,10 +1200,10 @@ pub fn note_session_playback_path(
     let Some(dir) = sessions::resolve_session_dir(&recordings, &session_id) else {
         return Ok(None);
     };
-    let path = dir.join("playback.wav");
-    if !path.exists() {
+    // Prefer compressed `playback.m4a`, fall back to legacy `playback.wav`.
+    let Some(path) = sessions::resolve_session_audio(&dir, "playback") else {
         return Ok(None);
-    }
+    };
     Ok(path.to_str().map(|s| s.to_string()))
 }
 
@@ -4939,6 +4943,15 @@ async fn diarize_and_apply(
     .await;
     record_timing(clock, |x| x.playback_assets_ms = ms_since(t_playback));
 
+    // Transcription of this take has completed successfully (we have a
+    // non-empty, labelled transcript and just wrote this take's playback), so
+    // shrink the uncompressed mixed WAV to a ~5–7× smaller AAC .m4a and delete
+    // the source WAV (#audio-compress). Best-effort and gated on keep_audio
+    // inside; never runs on a pending/deferred take (that path returns in
+    // `post_stop_chain_inner` before reaching here). The raw mic/sys streams
+    // are left as WAV — re-transcribe and the unify pass re-read them.
+    compress_session_playback(&app, &note_id, &session_id).await;
+
     // Free the full.wav files ahead of the temp-dir cleanup. Best-effort.
     if let Some(p) = mic_wav { diarize::cleanup_full_wav(&p).await; }
     if let Some(p) = sys_wav { diarize::cleanup_full_wav(&p).await; }
@@ -5554,6 +5567,114 @@ async fn build_playback_wav(
         (None, None) => {}
     }
     Ok(())
+}
+
+/// The bitrate afconvert encodes compressed playback at. 32 kbps mono AAC is
+/// transparent for 16 kHz mono speech — the recording is already band-limited
+/// and single-channel — and takes a ~100 MB hour-long `playback.wav` down to
+/// ~13 MB. Chosen as the knee of the size/quality curve for voice; the diarizer
+/// and the player both decode it natively via AVFoundation / AVAudioFile.
+const PLAYBACK_AAC_BITRATE: &str = "32000";
+
+/// Re-encode a session's `playback.wav` to a far smaller `playback.m4a`
+/// (32 kbps mono AAC) once its transcription has completed, then delete the
+/// source WAV (#audio-compress).
+///
+/// The *only* caller is [`compress_session_playback`], which gates this on
+/// transcription having succeeded and on audio retention being on — so by the
+/// time we run, the `.wav` is no longer needed as a transcription input and
+/// nothing downstream reads it that can't read the `.m4a` instead
+/// (`sessions::resolve_session_audio` prefers the `.m4a` for the player, the
+/// voiceprint embed and re-diarize).
+///
+/// Conservative and idempotent:
+///  - no-op when there's no `playback.wav` (already compressed, or a note that
+///    never kept audio);
+///  - uses the native `/usr/bin/afconvert` via a blocking `std::process::Command`
+///    off the async runtime (no new crates — the dependency proxy blocks them);
+///  - deletes the `.wav` **only** after the `.m4a` exists and is non-empty, so
+///    a failed/killed encode never destroys the one playable copy.
+///
+/// Best-effort throughout: every failure logs and leaves the `.wav` in place,
+/// which still plays and still re-diarizes. Returns `true` when it actually
+/// compressed (used by the test-less callers only for logging).
+async fn compress_playback_wav(session_dir: PathBuf) -> bool {
+    let wav = session_dir.join("playback.wav");
+    let m4a = session_dir.join("playback.m4a");
+    // spawn_blocking: afconvert is a synchronous child process; keep it off the
+    // reactor. The whole body is sync FS + process work.
+    let res = tokio::task::spawn_blocking(move || -> std::io::Result<bool> {
+        if !wav.exists() {
+            return Ok(false); // nothing to compress (already done, or no audio)
+        }
+        // A leftover .m4a from a previous interrupted run is replaced — afconvert
+        // overwrites its output, and we re-verify below before deleting the wav.
+        let output = std::process::Command::new("/usr/bin/afconvert")
+            .arg("-f")
+            .arg("m4af")
+            .arg("-d")
+            .arg("aac")
+            .arg("-b")
+            .arg(PLAYBACK_AAC_BITRATE)
+            .arg(&wav)
+            .arg(&m4a)
+            .output()?;
+        if !output.status.success() {
+            return Err(std::io::Error::other(format!(
+                "afconvert exited {}: {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        // Verify the encode produced a real, non-empty file before removing the
+        // only other copy of this audio.
+        let encoded_ok = std::fs::metadata(&m4a).map(|m| m.len() > 0).unwrap_or(false);
+        if !encoded_ok {
+            return Err(std::io::Error::other(
+                "afconvert reported success but produced an empty/missing .m4a",
+            ));
+        }
+        std::fs::remove_file(&wav)?;
+        Ok(true)
+    })
+    .await;
+    match res {
+        Ok(Ok(did)) => did,
+        Ok(Err(e)) => {
+            eprintln!("compress: playback.wav → .m4a: {e}");
+            false
+        }
+        Err(e) => {
+            eprintln!("compress: playback compression task: {e}");
+            false
+        }
+    }
+}
+
+/// Compress a session's playback audio *after* its transcription has completed
+/// (#audio-compress). The single hook every post-transcription path shares, so
+/// compression can never run on audio a pending/deferred transcription still
+/// needs.
+///
+/// Gated on `keep_audio`: if the device retains no audio there is no
+/// `playback.wav` to compress and nothing to do. Never touches the raw
+/// per-source streams (`mic.wav` / `sys.wav`) — those are re-read verbatim for
+/// re-transcription and the cross-session unify pass, so they stay WAV
+/// (conservative scope; see the task's requirement 4).
+async fn compress_session_playback(app: &AppHandle, note_id: &str, session_id: &str) {
+    if !keep_audio_enabled(app) {
+        return;
+    }
+    let Ok(app_dir) = app.path().app_data_dir() else {
+        return;
+    };
+    let recordings = sessions::recordings_dir(&app_dir, note_id);
+    let Some(dir) = sessions::resolve_session_dir(&recordings, session_id) else {
+        return;
+    };
+    if compress_playback_wav(dir).await {
+        eprintln!("compress: {note_id}/{session_id} playback.wav → playback.m4a");
+    }
 }
 
 /// Serialise the chunk log as a per-chunk JSONL — one entry per
