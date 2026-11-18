@@ -1,13 +1,66 @@
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#232320"/><stop offset="1" stop-color="#17170f"/></linearGradient>
-    <linearGradient id="mark" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ece7da"/></linearGradient>
+    <!-- Warm dark "ink" ground with subtle top-light, matching the Paper theme -->
+    <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a2a26"/>
+      <stop offset="0.55" stop-color="#1c1c16"/>
+      <stop offset="1" stop-color="#121209"/>
+    </linearGradient>
+    <!-- Cream paper mark with a gentle vertical sheen -->
+    <linearGradient id="mark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fbf7ec"/>
+      <stop offset="1" stop-color="#e4dccb"/>
+    </linearGradient>
+    <!-- Record dot: warm ember red with a touch of depth -->
+    <radialGradient id="dot" cx="0.38" cy="0.35" r="0.75">
+      <stop offset="0" stop-color="#d85c49"/>
+      <stop offset="0.6" stop-color="#bf4a37"/>
+      <stop offset="1" stop-color="#a23b2d"/>
+    </radialGradient>
+    <!-- Soft inner vignette for depth on the ground -->
+    <radialGradient id="vignette" cx="0.5" cy="0.42" r="0.75">
+      <stop offset="0" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.35"/>
+    </radialGradient>
+    <!-- Subtle drop shadow under the mark for lift -->
+    <filter id="lift" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
   </defs>
+
+  <!-- Superellipse (squircle) ground -->
   <path d="M512 72 C 300 72 196 72 134 134 C 72 196 72 300 72 512 C 72 724 72 828 134 890 C 196 952 300 952 512 952 C 724 952 828 952 890 890 C 952 828 952 724 952 512 C 952 300 952 196 890 134 C 828 72 724 72 512 72 Z" fill="url(#ground)"/>
-  <!-- Baskerville 'P' as outlined vector (self-contained, no font dependency).
-       Transform: em(2048,Y-up) -> icon(1024,Y-down), size matches font-size 680 at baseline y=740, centered x=512. -->
-  <g transform="translate(320.8 740) scale(0.33203 -0.33203)">
-    <path d="M471 638V353Q471 193 478.5 143.5Q486 94 519.0 70.0Q552 46 643 46H688V0H67V46H103Q190 46 223.5 68.0Q257 90 266.0 136.5Q275 183 275 353V1018Q275 1180 266.0 1227.0Q257 1274 226.0 1292.0Q195 1310 92 1310H67V1356L237 1362Q441 1369 555 1369Q765 1369 878.5 1336.0Q992 1303 1064.5 1219.0Q1137 1135 1137 1007Q1137 896 1087.5 811.0Q1038 726 945.5 682.0Q853 638 620 638ZM471 688H568Q685 688 757.0 711.5Q829 735 877.0 810.0Q925 885 925 995Q925 1163 842.5 1241.5Q760 1320 575 1320Q507 1320 471 1316Z" fill="url(#mark)"/>
+  <path d="M512 72 C 300 72 196 72 134 134 C 72 196 72 300 72 512 C 72 724 72 828 134 890 C 196 952 300 952 512 952 C 724 952 828 952 890 890 C 952 828 952 724 952 512 C 952 300 952 196 890 134 C 828 72 724 72 512 72 Z" fill="url(#vignette)"/>
+  <!-- hairline top edge light -->
+  <path d="M512 72 C 300 72 196 72 134 134 C 110 158 95 190 86 236 C 150 150 320 120 512 120 C 704 120 874 150 938 236 C 929 190 914 158 890 134 C 828 72 724 72 512 72 Z" fill="#ffffff" opacity="0.05"/>
+
+  <!-- A high-contrast Didone-style serif 'C' that also reads as an open
+       speech bubble, opening toward the record dot. Modulated stroke (thin at
+       top/bottom, thick at the sides) with gently flared ball terminals. -->
+  <g filter="url(#lift)">
+    <path fill="url(#mark)" fill-rule="evenodd" d="
+      M 742 352
+      C 683 290 608 256 520 256
+      C 356 256 236 372 236 512
+      C 236 652 356 768 520 768
+      C 610 768 686 733 745 670
+      C 724 648 703 626 682 604
+      C 638 652 585 678 520 678
+      C 405 678 326 609 326 512
+      C 326 415 405 346 520 346
+      C 583 346 635 371 679 418
+      C 700 396 721 374 742 352
+      Z
+    "/>
+    <!-- upper ball terminal (flared, rounded) -->
+    <circle cx="726" cy="368" r="34" fill="url(#mark)"/>
+    <!-- lower ball terminal -->
+    <circle cx="729" cy="654" r="34" fill="url(#mark)"/>
   </g>
-  <circle cx="556" cy="420" r="38" fill="#b84a3a"/>
+
+  <!-- Record dot nested in the C's aperture, vertically centered -->
+  <circle cx="724" cy="512" r="56" fill="url(#dot)"/>
+  <circle cx="724" cy="512" r="56" fill="none" stroke="#ffffff" stroke-opacity="0.12" stroke-width="2"/>
+  <circle cx="707" cy="495" r="15" fill="#ffffff" opacity="0.22"/>
+
 </svg>
