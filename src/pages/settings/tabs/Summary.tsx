@@ -6,7 +6,7 @@ import { SummaryPromptsManager } from "../components/SummaryPromptsManager";
 import { OllamaConnect } from "../../../components/provider/OllamaConnect";
 import { ProviderKeyCard } from "../../../components/provider/ProviderKeyCard";
 import { CommandSnippet } from "../../../components/CommandSnippet";
-import { RECOMMENDED_OLLAMA_MODEL, RECOMMENDED_OLLAMA_MODEL_16GB } from "../../../lib/localModels";
+import { RECOMMENDED_SUMMARY_MODEL, RECOMMENDED_SUMMARY_MODEL_16GB } from "../../../lib/localModels";
 import { SUMMARY_PRESETS, presetLabel } from "../../../lib/presets";
 import { useCloudModels } from "../../../components/provider/useCloudModels";
 import { useProviderKey } from "../../../components/provider/useProviderKey";
@@ -132,12 +132,12 @@ export function SummaryTab({
                 , then pull the recommended model:
               </p>
               <CommandSnippet
-                command={`ollama pull ${RECOMMENDED_OLLAMA_MODEL}`}
+                command={`ollama pull ${RECOMMENDED_SUMMARY_MODEL}`}
                 ariaLabel="Copy Ollama pull command"
               />
               <p className="text-xs text-[var(--color-text-muted)]">
-                On a 16 GB Mac use <code>ollama pull {RECOMMENDED_OLLAMA_MODEL_16GB}</code> instead —{" "}
-                {RECOMMENDED_OLLAMA_MODEL} needs ~24 GB+; 9B and up will OOM during summary.
+                On a 16 GB Mac use <code>ollama pull {RECOMMENDED_SUMMARY_MODEL_16GB}</code> instead —{" "}
+                {RECOMMENDED_SUMMARY_MODEL} needs ~24 GB+; 9B and up will OOM during summary.
               </p>
             </div>
             <Row
