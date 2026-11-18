@@ -61,13 +61,13 @@ describe("hydrate", () => {
   });
 
   it("loads a clamped stored level even when setZoom is unavailable", async () => {
-    localStorage.setItem("humla.zoom", "1.7");
+    localStorage.setItem("parley.zoom", "1.7");
     await useZoomStore.getState().hydrate();
     expect(useZoomStore.getState().zoom).toBe(1.7);
   });
 
   it("falls back to 1 when localStorage holds garbage", async () => {
-    localStorage.setItem("humla.zoom", "banana");
+    localStorage.setItem("parley.zoom", "banana");
     await useZoomStore.getState().hydrate();
     expect(useZoomStore.getState().zoom).toBe(1);
   });
@@ -97,7 +97,7 @@ describe("setZoom / zoomIn / zoomOut / zoomReset", () => {
     // overlapping calls read the same stale zoom and collapse into one step.
     await useZoomStore.getState().setZoom(1.4);
     expect(useZoomStore.getState().zoom).toBe(1.4);
-    expect(localStorage.getItem("humla.zoom")).toBe("1.4");
+    expect(localStorage.getItem("parley.zoom")).toBe("1.4");
   });
 
   it("zoomIn and zoomOut step from the current zoom", async () => {

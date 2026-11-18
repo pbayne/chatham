@@ -1,6 +1,6 @@
-//! The macOS Keychain: Humla's one service, and the cache in front of it.
+//! The macOS Keychain: Parley's one service, and the cache in front of it.
 //!
-//! Every secret Humla keeps — each provider's API key, the webhook endpoint
+//! Every secret Parley keeps — each provider's API key, the webhook endpoint
 //! (#213), the cloud credentials — is an account under [`SERVICE`]. Reads go
 //! through [`Cache`] so a session prompts the Keychain at most once per
 //! account: without it, a signed build whose ACL the user hasn't trusted yet

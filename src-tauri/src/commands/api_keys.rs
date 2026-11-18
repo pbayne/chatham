@@ -1,5 +1,5 @@
 //! Per-provider API key commands + helpers. Stores keys in the macOS
-//! Keychain (service `no.humla.app`), caches them on `AppState`, and
+//! Keychain (service `no.parley.app`), caches them on `AppState`, and
 //! tests them with a lightweight authenticated GET. Commands are
 //! surfaced to the frontend via `commands::provider_key_*` (re-exported
 //! from the parent module). `read_provider_api_key` is also called by

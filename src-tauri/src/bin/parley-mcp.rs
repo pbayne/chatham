@@ -42,7 +42,7 @@ async fn main() {
         }
     };
 
-    let service = match mcp::server::HumlaMcp::new(conn).serve(stdio()).await {
+    let service = match mcp::server::ParleyMcp::new(conn).serve(stdio()).await {
         Ok(s) => s,
         Err(e) => {
             eprintln!("parley-mcp: failed to start: {e}");

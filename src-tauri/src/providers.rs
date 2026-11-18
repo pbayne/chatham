@@ -1,4 +1,4 @@
-//! The one list of providers Humla knows: Keychain account, key test and
+//! The one list of providers Parley knows: Keychain account, key test and
 //! capabilities per id. `src/lib/providers.ts` mirrors `REGISTRY` and
 //! `providers.test.ts` reads this file to keep the two aligned.
 

@@ -1,5 +1,5 @@
 //! One completion through the Copilot CLI: the summary, the title, and chat.
-//! Every session gets Humla's system prompt in place of the CLI's agent prompt
+//! Every session gets Parley's system prompt in place of the CLI's agent prompt
 //! and no built-in tool, so the model is sent the prompt and nothing else.
 //! Chat's tools are declared without handlers: a step ends at the assistant
 //! message that requests them, `chat::run_chat` runs them as for every
@@ -74,7 +74,7 @@ impl Runtime {
                 *self.start_error.lock() = Some(message.clone());
                 bail!(
                     "{message}. If it is an older or newer version than {}, download the one \
-                     Humla supports in Settings.",
+                     Parley supports in Settings.",
                     super::cli::VERSION
                 );
             }
@@ -133,7 +133,7 @@ pub fn cheapest(models: &[ModelInfo]) -> Option<&str> {
 
 /// The single prompt a step sends: the system turns become the system prompt,
 /// and everything after them is written out as one transcript, since a
-/// session carries no history Humla didn't put in this message.
+/// session carries no history Parley didn't put in this message.
 pub fn render_prompt(turns: &[ChatTurn]) -> (String, String) {
     let system = turns
         .iter()
@@ -332,7 +332,7 @@ impl Live {
                 }
                 "assistant.message" => {
                     let msg: AssistantMessageData =
-                        ev.typed_data().context("Copilot sent a message Humla can't read")?;
+                        ev.typed_data().context("Copilot sent a message Parley can't read")?;
                     let requests = msg.tool_requests.unwrap_or_default();
                     if !requests.is_empty() {
                         for r in &requests {
@@ -586,11 +586,11 @@ mod tests {
     }
 
     /// Against the real CLI and account; spends Copilot requests. Run with
-    /// `HUMLA_COPILOT_TOKEN=$(gh auth token) cargo test --lib copilot_live -- --ignored`.
+    /// `PARLEY_COPILOT_TOKEN=$(gh auth token) cargo test --lib copilot_live -- --ignored`.
     #[tokio::test]
     #[ignore]
     async fn copilot_live() {
-        let token = std::env::var("HUMLA_COPILOT_TOKEN").expect("HUMLA_COPILOT_TOKEN");
+        let token = std::env::var("PARLEY_COPILOT_TOKEN").expect("PARLEY_COPILOT_TOKEN");
         let cli = super::super::cli::locate(&std::env::temp_dir()).await.expect("a Copilot CLI");
         let rt = Runtime::default();
         let client = rt.client(&cli, &token).await.unwrap();

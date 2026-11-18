@@ -5,7 +5,7 @@ import { IntegrationsSection } from "./Integrations";
 import { mockTauri } from "../../../test/tauri";
 import { DEFAULTS, type EditableKey } from "../types";
 
-const PATH = "/Applications/Humla.app/Contents/MacOS/humla-mcp";
+const PATH = "/Applications/Parley.app/Contents/MacOS/parley-mcp";
 
 function settings(overrides: Partial<Record<EditableKey, string>> = {}) {
   return { ...DEFAULTS, ...overrides } as Record<EditableKey, string>;

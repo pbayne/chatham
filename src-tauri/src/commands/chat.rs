@@ -1178,7 +1178,7 @@ fn conversation_page(limit: Option<u32>, offset: Option<u32>) -> Option<db::Page
 /// (`chat_sessions.pb.js`). So the workspace list is fetched whole and windowed
 /// here: the UI stays lazy and the DOM stays small, but the request doesn't
 /// shrink and a workspace past 200 conversations would silently lose the tail.
-/// Real server paging is tracked separately — see humla-cloud#33.
+/// Real server paging is tracked separately — see parley-cloud#33.
 fn apply_page<T>(all: Vec<T>, page: Option<db::Page>) -> Vec<T> {
     let Some(page) = page else { return all };
     all.into_iter().skip(page.offset as usize).take(page.limit as usize).collect()
@@ -1256,7 +1256,7 @@ pub async fn chat_delete_conversation(
         let workspace = workspace.to_string();
         super::cloud::cloud_delete_json(
             &state,
-            &format!("/api/humla/chat/conversations/{remote_id}"),
+            &format!("/api/parley/chat/conversations/{remote_id}"),
             &[("workspace_id", workspace.as_str())],
         )
         .await
@@ -1313,7 +1313,7 @@ pub async fn chat_rename_conversation(
         let body = serde_json::json!({ "workspace_id": workspace, "title": capped });
         super::cloud::cloud_patch_json(
             &state,
-            &format!("/api/humla/chat/conversations/{remote_id}"),
+            &format!("/api/parley/chat/conversations/{remote_id}"),
             &body,
         )
         .await
@@ -1568,7 +1568,7 @@ pub async fn chat_usage(app: AppHandle) -> Result<Option<chat::cloud::UsageDto>,
 /// 2. The macOS account's full name.
 ///
 /// The OS name matters because it's the ONLY one the local-only majority has:
-/// Humla has no local account, and a cloud display name exists only once you've
+/// Parley has no local account, and a cloud display name exists only once you've
 /// signed in. Falling back to it is what keeps "what did I promise?" answerable
 /// for a user who never signs in to anything. A short login name (`msmith`) is
 /// deliberately not used — as a referent it's worse than nothing.
@@ -1679,7 +1679,7 @@ async fn usage_cloud(state: &State<'_, AppState>, workspace: &str) -> Option<cha
 
 // ── Workspace chat key (BYOK, issue #75) ─────────────────────────────────────
 // Owner-only set/rotate/remove + member-readable metadata, via the PocketBase
-// hook routes under /api/humla/chat/key* — through the same `cloud_*_json`
+// hook routes under /api/parley/chat/key* — through the same `cloud_*_json`
 // helpers (base/token/one-shot-401-retry) as the other cloud chat calls, mapped
 // with the key taxonomy `chat_key_error_message`. The key value transits Rust
 // memory only: it goes straight into the POST body and is never logged, stored,
@@ -1699,7 +1699,7 @@ pub async fn chat_key_meta(
     let state: State<AppState> = app.state();
     let body = match super::cloud::cloud_get_json(
         &state,
-        "/api/humla/chat/key/meta",
+        "/api/parley/chat/key/meta",
         &[("workspace_id", workspace_id.as_str())],
     )
     .await
@@ -1722,7 +1722,7 @@ async fn chat_key_set_inner(
     api_key: &str,
 ) -> Result<chat::cloud::ChatKeyMeta, String> {
     let body = serde_json::json!({ "workspace_id": workspace_id, "api_key": api_key });
-    let meta = super::cloud::cloud_post_json(state, "/api/humla/chat/key", &body)
+    let meta = super::cloud::cloud_post_json(state, "/api/parley/chat/key", &body)
         .await
         .map_err(|e| e.message(chat::cloud::chat_key_error_message))?;
     Ok(chat::cloud::parse_key_meta(&meta))
@@ -1766,7 +1766,7 @@ pub async fn chat_key_delete(
     let state: State<AppState> = app.state();
     let body = super::cloud::cloud_delete_json(
         &state,
-        "/api/humla/chat/key",
+        "/api/parley/chat/key",
         &[("workspace_id", workspace_id.as_str())],
     )
     .await
@@ -2048,7 +2048,7 @@ struct CloudTurn {
     server_conversation_id: Option<String>,
 }
 
-/// Workspace (Teams) chat turn (issue #50): delegate to the deployed humla-cloud
+/// Workspace (Teams) chat turn (issue #50): delegate to the deployed parley-cloud
 /// `POST /api/chat`, stream the SSE response, and re-emit it on the SAME `chat_*`
 /// events the local loop uses (story 18). The conversation is server-
 /// authoritative — its messages live in the cloud (read-through via
@@ -2162,7 +2162,7 @@ async fn chat_send_cloud(
     // only: it ends the stream so tokens stop appearing, but the server keeps
     // generating and finishes the turn, so a metered turn still counts and the
     // history reload afterwards shows the server's complete answer rather than
-    // the partial. A server-side cancel is the follow-up (humla-cloud#26).
+    // the partial. A server-side cancel is the follow-up (parley-cloud#26).
     let turn_cancel = TurnCancel::register(&state, target.scope_id());
     let mut attempt = 0u8;
     let outcome = loop {
@@ -2415,17 +2415,17 @@ fn map_remote_message(rec: &serde_json::Value) -> Option<ChatMessageDto> {
     Some(ChatMessageDto { id, role, seq, parts, created_at })
 }
 
-// ── Workspace (Teams) session list/create — humla-cloud#19 contract ──────────
+// ── Workspace (Teams) session list/create — parley-cloud#19 contract ──────────
 //
 // Workspace conversations are server-authoritative (issue #50); the desktop
 // keeps a local handle row per server conversation, whose `remote_id` maps to
-// the server record. The two routes below are PocketBase HOOKS under `/api/humla`
+// the server record. The two routes below are PocketBase HOOKS under `/api/parley`
 // (NOT the chat service `/api/chat*`, which the prod Caddyfile routes to a
 // separate service that has no such route). PocketBase bearer token, JSON
 // bodies. Timestamps are PocketBase-native `created` / `updated`, parsed the
 // same way as the `chat_messages` read-through (`map_remote_message`).
 //
-//   GET /api/humla/chat/conversations?workspace_id=<ws>&note_id=<note>
+//   GET /api/parley/chat/conversations?workspace_id=<ws>&note_id=<note>
 //     Authorization: Bearer <pb_token>
 //     → 200 { "conversations": [ {
 //           "id":            <server conversation record id>,
@@ -2438,7 +2438,7 @@ fn map_remote_message(rec: &serde_json::Value) -> Option<ChatMessageDto> {
 //         }, … ] }          // ordered most-recently-updated first (-updated)
 //     Membership is enforced by the token; a non-member → 403 { reason:"not_a_member", error }.
 //
-//   POST /api/humla/chat/conversations
+//   POST /api/parley/chat/conversations
 //     Authorization: Bearer <pb_token>
 //     Content-Type: application/json
 //     { "workspace_id": <ws>, "note_id": <note>, "breadth": "note"|"folder"|"all" }
@@ -2604,13 +2604,13 @@ fn unlisted_legacy_handles<'a>(
         .collect()
 }
 
-/// List a workspace Note's sessions from humla-cloud (issue #61). GETs the server
+/// List a workspace Note's sessions from parley-cloud (issue #61). GETs the server
 /// list (one-shot 401 re-auth, 404 → legacy fallback), reconciles each to a local
 /// handle, then UNIONS in local handles the server omitted (pre-#19 threads not
 /// yet adopted — their message count is read through). Most-recently-updated
 /// first.
 /// Query params for the conversations route. Both ids are optional and select
-/// which of the server's three disjoint populations is addressed (humla-cloud#26,
+/// which of the server's three disjoint populations is addressed (parley-cloud#26,
 /// #110): `note_id` → that Note's threads, `folder_id` → that folder's, NEITHER →
 /// the library-wide ones. The server keys the note-less lists off its own `scope`
 /// field, so an absent id must be omitted rather than sent as a sentinel it would
@@ -2662,7 +2662,7 @@ async fn list_conversations_cloud(
     let params = conversation_route_params(workspace, target);
     let val = match super::cloud::cloud_get_json(
         state,
-        "/api/humla/chat/conversations",
+        "/api/parley/chat/conversations",
         &params,
     )
     .await
@@ -2788,7 +2788,7 @@ async fn legacy_workspace_sessions(
     }])
 }
 
-/// Create a workspace session via humla-cloud (issue #61). The server is a dumb
+/// Create a workspace session via parley-cloud (issue #61). The server is a dumb
 /// creator, so the no-op guard is CLIENT-side: list first (server ∪ legacy) and,
 /// if the most-recent session is empty, reuse it instead of POSTing. Otherwise
 /// POST — inheriting breadth from the Note's most-recent workspace session, which
@@ -2817,7 +2817,7 @@ async fn new_conversation_cloud(
     };
     let body = new_conversation_body(workspace, target, &breadth)?;
     // The POST response is the conversation object itself — no wrapper.
-    let val = match super::cloud::cloud_post_json(state, "/api/humla/chat/conversations", &body)
+    let val = match super::cloud::cloud_post_json(state, "/api/parley/chat/conversations", &body)
         .await
     {
         Ok(val) => val,
@@ -2887,7 +2887,7 @@ mod tests {
 
     /// #93's proof is Rust tests, so the two cloud shapes are asserted directly
     /// rather than left to inspection inside async command bodies. Both encode the
-    /// same humla-cloud#26 rule: the absence of `note_id` is what selects the
+    /// same parley-cloud#26 rule: the absence of `note_id` is what selects the
     /// library-wide list, so a sentinel would be rejected as malformed.
     #[test]
     fn the_cloud_conversation_routes_omit_the_anchor_for_a_library_wide_target() {
@@ -3611,8 +3611,8 @@ mod tests {
     }
 
     /// Cross-repo round-trip of a real workspace `chat_send` against a live
-    /// humla-cloud stack (issue #50, AC6), matching the env-gated shape of the
-    /// cloud-sync roundtrips: skipped unless the HUMLA_TEST_* vars point at a
+    /// parley-cloud stack (issue #50, AC6), matching the env-gated shape of the
+    /// cloud-sync roundtrips: skipped unless the PARLEY_TEST_* vars point at a
     /// booted server (PocketBase + chat-service + an LLM key). It authenticates,
     /// POSTs `/api/chat`, and pumps the SSE stream through the SAME pure helpers
     /// `stream_cloud_turn` uses — asserting the turn reaches a terminal `done`
@@ -3621,13 +3621,13 @@ mod tests {
     async fn cloud_chat_roundtrip() {
         use futures_util::StreamExt;
         let (Ok(pb), Ok(chat), Ok(email), Ok(pass), Ok(ws)) = (
-            std::env::var("HUMLA_TEST_PB_URL"),
-            std::env::var("HUMLA_TEST_CHAT_URL"),
-            std::env::var("HUMLA_TEST_EMAIL"),
-            std::env::var("HUMLA_TEST_PASSWORD"),
-            std::env::var("HUMLA_TEST_WORKSPACE"),
+            std::env::var("PARLEY_TEST_PB_URL"),
+            std::env::var("PARLEY_TEST_CHAT_URL"),
+            std::env::var("PARLEY_TEST_EMAIL"),
+            std::env::var("PARLEY_TEST_PASSWORD"),
+            std::env::var("PARLEY_TEST_WORKSPACE"),
         ) else {
-            eprintln!("cloud_chat_roundtrip: skipped (set HUMLA_TEST_PB_URL/CHAT_URL/EMAIL/PASSWORD/WORKSPACE)");
+            eprintln!("cloud_chat_roundtrip: skipped (set PARLEY_TEST_PB_URL/CHAT_URL/EMAIL/PASSWORD/WORKSPACE)");
             return;
         };
         let client = reqwest::Client::new();

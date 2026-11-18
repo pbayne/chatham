@@ -11,7 +11,7 @@ function status(notifications: string) {
 }
 
 describe("Settings → Permissions: notifications", () => {
-  it("offers to ask when Humla hasn't asked yet, and shows the answer", async () => {
+  it("offers to ask when Parley hasn't asked yet, and shows the answer", async () => {
     const asked: unknown[] = [];
     mockTauri({
       permissions_status: () => status("not_determined"),

@@ -35,7 +35,7 @@ use crate::{db, AppState};
 ///
 /// Picked by elimination, because a global hotkey outranks the focused app:
 ///
-/// - **Not ⌥-based.** On the Norwegian layout most of Humla's users type on,
+/// - **Not ⌥-based.** On the Norwegian layout most of Parley's users type on,
 ///   Option *is* a typing modifier (⌥7 = `|`, ⌥8 = `[`, ⌥⇧8 = `{`). A Carbon
 ///   hotkey swallows the keystroke system-wide, so an Option combination can
 ///   take a character away from the keyboard — and ⌥⌘H is Hide Others besides.
@@ -339,8 +339,8 @@ fn icon_for(glyph: TrayGlyph) -> (Image<'static>, bool) {
 pub fn install(app: &AppHandle) -> tauri::Result<()> {
     let start = MenuItem::with_id(app, ID_START, "Start recording", true, None::<&str>)?;
     let stop = MenuItem::with_id(app, ID_STOP, "Stop recording", false, None::<&str>)?;
-    let open = MenuItem::with_id(app, ID_OPEN, "Open Humla", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, ID_QUIT, "Quit Humla", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, ID_OPEN, "Open Parley", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, ID_QUIT, "Quit Parley", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
         &[
@@ -353,7 +353,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
         ],
     )?;
 
-    let tray = TrayIconBuilder::with_id("humla-tray")
+    let tray = TrayIconBuilder::with_id("parley-tray")
         .icon(icon_for(TrayGlyph::Idle).0)
         // Pure black plus this flag: a macOS template image is read through its
         // alpha channel only, and the system tints the glyph for the bar.
@@ -527,7 +527,7 @@ fn main_window_visible(app: &AppHandle) -> bool {
         .unwrap_or(false)
 }
 
-/// Passed only by the login item Humla registers itself (#207), which is what
+/// Passed only by the login item Parley registers itself (#207), which is what
 /// tells a login launch apart from one the user started. A login item added by
 /// hand in System Settings carries no arguments, so it reads as a manual launch.
 pub const LOGIN_LAUNCH_ARG: &str = "--hidden";
@@ -547,16 +547,16 @@ pub fn starts_hidden(args: impl IntoIterator<Item = String>, onboarded: bool) ->
 pub fn login_item_path_problem(exe: &std::path::Path) -> Option<&'static str> {
     let path = exe.to_string_lossy();
     if path.starts_with("/Volumes/") || path.contains("/AppTranslocation/") {
-        Some("Move Humla to your Applications folder and open it from there first.")
+        Some("Move Parley to your Applications folder and open it from there first.")
     } else {
         None
     }
 }
 
-/// Present the window at launch, or leave Humla in the menu bar after a login
+/// Present the window at launch, or leave Parley in the menu bar after a login
 /// launch. The window is declared invisible in `tauri.conf.json`, so a hidden
 /// launch never flashes it. Without a tray there would be nothing on screen to
-/// reach Humla by, so a launch whose tray failed always shows the window.
+/// reach Parley by, so a launch whose tray failed always shows the window.
 pub fn present_at_launch(app: &AppHandle, tray_installed: bool) {
     let onboarded = app
         .try_state::<AppState>()
@@ -759,7 +759,7 @@ pub(crate) fn headless_note_title(now: chrono::DateTime<chrono::Local>) -> Strin
     format!("Recording {}", now.format("%-d %b %H:%M"))
 }
 
-/// May Humla overwrite this title with a better one? (#90)
+/// May Parley overwrite this title with a better one? (#90)
 ///
 /// The single answer to that question, for every caller. Three titles are ours:
 /// an empty one (`notes_create` leaves it empty and the UI renders "Untitled"),
@@ -770,7 +770,7 @@ pub(crate) fn headless_note_title(now: chrono::DateTime<chrono::Local>) -> Strin
 /// automatically.
 ///
 /// Lives next to the generator whose output it has to recognise (and is pinned
-/// by tests here) so the two can't drift apart. Humla stores no flag recording
+/// by tests here) so the two can't drift apart. Parley stores no flag recording
 /// who wrote a title, so the distinction is read off the title's *shape*: see
 /// the Title entry in `CONTEXT.md`.
 pub fn is_replaceable_title(title: &str) -> bool {
@@ -941,7 +941,7 @@ mod tests {
         assert_eq!(headless_note_title(single_digit), "Recording 3 Aug 09:05");
     }
 
-    // #90: the automatic titler replaces a title Humla wrote and never one a
+    // #90: the automatic titler replaces a title Parley wrote and never one a
     // human did. This predicate is the whole of that rule.
     #[test]
     fn a_timestamp_title_is_ours_to_replace() {
@@ -1069,15 +1069,15 @@ mod tests {
     fn a_login_item_refuses_a_path_that_wont_survive_the_session() {
         use std::path::Path;
         assert!(login_item_path_problem(Path::new(
-            "/Volumes/Humla/Humla.app/Contents/MacOS/humla"
+            "/Volumes/Parley/Parley.app/Contents/MacOS/parley"
         ))
         .is_some());
         assert!(login_item_path_problem(Path::new(
-            "/private/var/folders/x/T/AppTranslocation/ABC/d/Humla.app/Contents/MacOS/humla"
+            "/private/var/folders/x/T/AppTranslocation/ABC/d/Parley.app/Contents/MacOS/parley"
         ))
         .is_some());
         assert!(login_item_path_problem(Path::new(
-            "/Applications/Humla.app/Contents/MacOS/humla"
+            "/Applications/Parley.app/Contents/MacOS/parley"
         ))
         .is_none());
     }
@@ -1088,14 +1088,14 @@ mod tests {
 
     #[test]
     fn only_a_login_launch_starts_hidden() {
-        let exe = "/Applications/Humla.app/Contents/MacOS/humla";
+        let exe = "/Applications/Parley.app/Contents/MacOS/parley";
         assert!(starts_hidden(args(&[exe, LOGIN_LAUNCH_ARG]), true));
         assert!(!starts_hidden(args(&[exe]), true));
     }
 
     #[test]
     fn an_unfinished_onboarding_always_shows_the_window() {
-        let exe = "/Applications/Humla.app/Contents/MacOS/humla";
+        let exe = "/Applications/Parley.app/Contents/MacOS/parley";
         assert!(!starts_hidden(args(&[exe, LOGIN_LAUNCH_ARG]), false));
     }
 

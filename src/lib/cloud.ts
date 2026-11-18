@@ -10,11 +10,11 @@ import { invoke } from "@tauri-apps/api/core";
 import type { SyncStatus } from "./ipc";
 
 /**
- * The hosted Humla Cloud endpoint — the one-click "Use Humla Cloud" button in
+ * The hosted Parley Cloud endpoint — the one-click "Use Parley Cloud" button in
  * Account points here so downloaders don't have to know a URL. Set this to your
- * deployed server's address once Humla Cloud is live.
+ * deployed server's address once Parley Cloud is live.
  */
-export const HUMLA_CLOUD_URL = "https://sync.humla.team";
+export const PARLEY_CLOUD_URL = "https://sync.humla.team";
 
 export type CloudRole = "owner" | "admin" | "member" | "viewer";
 export type PlanStatus = "active" | "trialing" | "past_due" | "canceled" | "none";
@@ -119,7 +119,7 @@ export type CloudStatus = {
   user: CloudUser | null;
   current_workspace: CloudWorkspace | null;
   workspaces: CloudWorkspace[];
-  /** True when the server enforces billing (humla-cloud); false on self-host. */
+  /** True when the server enforces billing (parley-cloud); false on self-host. */
   billing_enabled: boolean;
   /** Per-seat price in cents (Stripe unit_amount, e.g. 500 = $5.00). Absent on older servers. */
   seat_price_cents?: number | null;

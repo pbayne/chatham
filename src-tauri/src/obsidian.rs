@@ -1,6 +1,6 @@
-//! Obsidian vault sync — a one-way mirror of Humla notes into a user-chosen
+//! Obsidian vault sync — a one-way mirror of Parley notes into a user-chosen
 //! vault folder as readable Markdown. Ported in spirit from stenoai's
-//! `obsidian-sync.js`, adapted to Humla's SQLite note store.
+//! `obsidian-sync.js`, adapted to Parley's SQLite note store.
 //!
 //! Design contract (kept identical to the proven stenoai version):
 //!   - **DB IS THE SOURCE OF TRUTH.** A note's row drives its vault copy; the
@@ -141,7 +141,7 @@ fn yaml_quote(v: &str) -> String {
 }
 
 /// Build the Markdown the vault copy should contain, from a note + its folder
-/// and client names. Frontmatter (title/date/folder/customer/source/humla_id) +
+/// and client names. Frontmatter (title/date/folder/customer/source/parley_id) +
 /// summary + typed notes. Transcript deliberately omitted.
 pub fn render_vault_markdown(note: &Note, folder_name: Option<&str>, client_name: Option<&str>, date: &str) -> String {
     let mut fm = vec!["---".to_string(), format!("title: {}", yaml_quote(&note.title))];
@@ -158,8 +158,8 @@ pub fn render_vault_markdown(note: &Note, folder_name: Option<&str>, client_name
             fm.push(format!("customer: {}", yaml_quote(c)));
         }
     }
-    fm.push("source: Humla".to_string());
-    fm.push(format!("humla_id: {}", yaml_quote(&note.id)));
+    fm.push("source: Parley".to_string());
+    fm.push(format!("parley_id: {}", yaml_quote(&note.id)));
     fm.push("---".to_string());
 
     let mut out = fm.join("\n");
@@ -485,7 +485,7 @@ mod tests {
         assert!(!md.contains("SECRET TRANSCRIPT"));
         assert!(md.contains("## Summary"));
         assert!(md.contains("## Notes"));
-        assert!(md.contains("humla_id: \"n1\""));
+        assert!(md.contains("parley_id: \"n1\""));
         assert!(md.contains("title: \"Standup\""));
     }
 

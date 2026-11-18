@@ -5,7 +5,7 @@
 //! This covers auth, workspaces, and membership/roles so the teams UI is fully
 //! functional. The live note/folder *sync worker* (cloud-sync) is wired
 //! separately and is gated by the open-core packaging decision (see the
-//! humla-cloud repo).
+//! parley-cloud repo).
 //!
 //! Session model: `cloud_base_url` + `cloud_workspace_id` persist in the
 //! settings table; the session itself — kept across launches in the Keychain
@@ -63,7 +63,7 @@ pub struct CloudStatus {
     pub user: Option<CloudUser>,
     pub current_workspace: Option<CloudWorkspace>,
     pub workspaces: Vec<CloudWorkspace>,
-    /// True when the server enforces billing (humla-cloud). Self-host → false, and
+    /// True when the server enforces billing (parley-cloud). Self-host → false, and
     /// the client hides the billing UI and never treats a workspace as locked.
     pub billing_enabled: bool,
     /// Per-seat price in the smallest currency unit (Stripe `unit_amount`, e.g.
@@ -544,8 +544,8 @@ async fn list_workspaces_inner(base: &str, session: &Session) -> Result<Vec<Clou
         .collect())
 }
 
-/// Public billing config from `/api/humla/billing/config`. `enabled` says whether
-/// the server enforces billing (humla-cloud) vs runs free (self-host); the seat
+/// Public billing config from `/api/parley/billing/config`. `enabled` says whether
+/// the server enforces billing (parley-cloud) vs runs free (self-host); the seat
 /// price fields are advertised only by servers that support per-seat billing.
 #[derive(Default)]
 struct BillingConfig {
@@ -585,7 +585,7 @@ fn parse_chat_addon(val: &serde_json::Value) -> Option<ChatAddon> {
 /// to the free/self-host experience (`enabled: false`, no pricing). The seat
 /// price fields are optional — today's prod returns only `{ "enabled": true }`.
 async fn fetch_billing_config(base: &str) -> BillingConfig {
-    let Ok(resp) = http().get(format!("{base}/api/humla/billing/config")).send().await else {
+    let Ok(resp) = http().get(format!("{base}/api/parley/billing/config")).send().await else {
         return BillingConfig::default();
     };
     let Ok(val) = resp.json::<serde_json::Value>().await else {
@@ -714,7 +714,7 @@ pub async fn cloud_billing_checkout(
     if let Some(s) = source.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         body["source"] = serde_json::Value::String(s.to_string());
     }
-    let val = authed_post(&base, &session.token, "/api/humla/billing/checkout", body).await?;
+    let val = authed_post(&base, &session.token, "/api/parley/billing/checkout", body).await?;
     val.get("url")
         .and_then(|v| v.as_str())
         .map(String::from)
@@ -729,7 +729,7 @@ pub async fn cloud_billing_portal(state: State<'_, AppState>, workspace_id: Stri
     let val = authed_post(
         &base,
         &session.token,
-        "/api/humla/billing/portal",
+        "/api/parley/billing/portal",
         serde_json::json!({ "workspace_id": workspace_id }),
     )
     .await?;
@@ -752,7 +752,7 @@ pub fn cloud_configure(state: State<'_, AppState>, base_url: String) -> Result<(
 }
 
 /// Create a new account on the configured server, then sign in. Public sign-up
-/// is enabled server-side (`users.createRule = ""`, humla-cloud migration
+/// is enabled server-side (`users.createRule = ""`, parley-cloud migration
 /// 1718900100). `emailVisibility` is set so workspace co-members can see the
 /// email in the roster.
 #[tauri::command]
@@ -1019,12 +1019,12 @@ pub async fn cloud_add_member(
 
     // Resolve email → user id via the server-side superuser hook, so the client
     // needs no read access to the users collection (the list/view rules are
-    // locked down to prevent enumeration — see humla-cloud migration
+    // locked down to prevent enumeration — see parley-cloud migration
     // 1718900000_tighten_users). The hook returns 404 when no account exists.
     let found = match authed_post(
         &base,
         &session.token,
-        "/api/humla/find-user",
+        "/api/parley/find-user",
         serde_json::json!({ "email": email }),
     )
     .await
@@ -1032,7 +1032,7 @@ pub async fn cloud_add_member(
         Ok(v) => v,
         Err(e) if e.contains("404") => {
             return Err(format!(
-                "No Humla account found for {email}. Email invites aren't wired up yet — ask them to sign up first."
+                "No Parley account found for {email}. Email invites aren't wired up yet — ask them to sign up first."
             ));
         }
         Err(e) => return Err(e),
@@ -1065,7 +1065,7 @@ pub async fn cloud_invite_member(
 ) -> Result<String, String> {
     let (base, session) = ensure_session(&state).await?;
     let resp = http()
-        .post(format!("{base}/api/humla/invite"))
+        .post(format!("{base}/api/parley/invite"))
         .bearer_auth(&session.token)
         .json(&serde_json::json!({
             "workspace_id": workspace_id,
@@ -1194,7 +1194,7 @@ pub async fn cloud_delete_workspace(
 }
 
 /// Leave a workspace (remove yourself). Goes through the server-side hook
-/// `POST /api/humla/leave-workspace` because the workspaces `updateRule` is
+/// `POST /api/parley/leave-workspace` because the workspaces `updateRule` is
 /// owner/admin-only — a plain member can't PATCH the workspace to drop their own
 /// membership. The hook rejects the owner (who must delete or transfer instead).
 /// If you leave the active workspace, fall back to Personal and stop the worker.
@@ -1205,7 +1205,7 @@ pub async fn cloud_leave_workspace(
 ) -> Result<(), String> {
     let (base, session) = ensure_session(&state).await?;
     let resp = http()
-        .post(format!("{base}/api/humla/leave-workspace"))
+        .post(format!("{base}/api/parley/leave-workspace"))
         .bearer_auth(&session.token)
         .json(&serde_json::json!({ "workspace_id": workspace_id }))
         .send()
@@ -1224,7 +1224,7 @@ pub async fn cloud_leave_workspace(
 }
 
 /// Transfer workspace ownership to another member. Goes through the server-side
-/// hook `POST /api/humla/transfer-workspace` because `owner` is immutable via
+/// hook `POST /api/parley/transfer-workspace` because `owner` is immutable via
 /// the normal API (an admin must not be able to seize it). The hook enforces
 /// owner-only, requires the new owner to already be a member, promotes them to
 /// admin, and keeps the outgoing owner on as an admin. The active workspace is
@@ -1238,7 +1238,7 @@ pub async fn cloud_transfer_workspace(
 ) -> Result<(), String> {
     let (base, session) = ensure_session(&state).await?;
     let resp = http()
-        .post(format!("{base}/api/humla/transfer-workspace"))
+        .post(format!("{base}/api/parley/transfer-workspace"))
         .bearer_auth(&session.token)
         .json(&serde_json::json!({ "workspace_id": workspace_id, "new_owner_id": new_owner_id }))
         .send()

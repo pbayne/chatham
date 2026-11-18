@@ -465,9 +465,9 @@ function integrationsCase(enabled: boolean, webhook = false): Scenario {
     wrap: settingsWrap,
     render: () => <IntegrationsHarness mcp={enabled} webhook={webhook} />,
     ipc: {
-      mcp_server_path: () => "/Applications/Humla.app/Contents/MacOS/humla-mcp",
+      mcp_server_path: () => "/Applications/Parley.app/Contents/MacOS/parley-mcp",
       webhook_get_endpoint: () => ({
-        url: "https://hooks.example.com/humla/ingest",
+        url: "https://hooks.example.com/parley/ingest",
         headers: ["Authorization"],
       }),
       webhook_set_endpoint: () => undefined,
@@ -1279,7 +1279,7 @@ function capturingLibraryCase(
 
 const MOCK_WORKSPACE = {
   id: "w1",
-  name: "Humla",
+  name: "Parley",
   role: "owner" as const,
   plan_status: "active" as const,
 };
@@ -1730,13 +1730,13 @@ const CASES: Record<string, Scenario> = {
       cloud_status: () => ({
         ...DISCONNECTED,
         logged_in: true,
-        user: { id: "u-me", email: "michael@humla.no", name: "Michael", verified: true },
+        user: { id: "u-me", email: "michael@parley.no", name: "Michael", verified: true },
         current_workspace: MOCK_WORKSPACE,
         workspaces: [MOCK_WORKSPACE],
       }),
       cloud_workspace_members: () => [
-        { id: "u-me", email: "michael@humla.no", name: "Michael", role: "owner" },
-        { id: "u-hege", email: "hege@humla.no", name: "Hege Nordvik", role: "member" },
+        { id: "u-me", email: "michael@parley.no", name: "Michael", role: "owner" },
+        { id: "u-hege", email: "hege@parley.no", name: "Hege Nordvik", role: "member" },
       ],
     },
   },

@@ -21,7 +21,7 @@ pub async fn local_llm_list_models(base_url: String) -> Result<Vec<String>, Stri
 // server's own error be the message.
 #[tauri::command]
 pub async fn local_llm_embed_probe(base_url: String, model: String) -> Result<usize, String> {
-    let vectors = openai::openai_embed(&base_url, None, &model, &["humla".to_string()])
+    let vectors = openai::openai_embed(&base_url, None, &model, &["parley".to_string()])
         .await
         .map_err(err)?;
     vectors.first().map(|v| v.len()).ok_or_else(|| "the server returned no vector".to_string())

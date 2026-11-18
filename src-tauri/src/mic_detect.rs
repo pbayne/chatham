@@ -3,7 +3,7 @@
 //! A companion to calendar autopilot (`autopilot.rs`): instead of (only) the
 //! calendar, a native `mic-monitor` sidecar reports which app opened the
 //! microphone, and this module decides whether that app is a meeting worth
-//! recording. Lets Humla offer to record a Zoom/Teams/Meet call that was never
+//! recording. Lets Parley offer to record a Zoom/Teams/Meet call that was never
 //! on the calendar — the highest-daily-value gap vs. stenoai.
 //!
 //! This file is the PURE, testable core: parsing the sidecar's JSON events,

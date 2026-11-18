@@ -1,4 +1,4 @@
-//! Blocks → a paginated A4 PDF set in Hanken Grotesk, Humla's own typeface.
+//! Blocks → a paginated A4 PDF set in Hanken Grotesk, Parley's own typeface.
 //!
 //! Layout happens first, into per-page lists of drawing ops, so the footer can
 //! say "page n of m"; krilla then draws them. Lines are measured with the same
@@ -541,7 +541,7 @@ pub fn render_pdf(title: &str, sections: &[Section]) -> Result<Vec<u8>, String> 
     let fonts = Fonts::new()?;
     let pages = layout(&fonts, title, sections);
     let mut doc = Document::new();
-    doc.set_metadata(Metadata::new().title(title.to_string()).creator("Humla".to_string()));
+    doc.set_metadata(Metadata::new().title(title.to_string()).creator("Parley".to_string()));
     let count = pages.len();
     for (i, ops) in pages.iter().enumerate() {
         let settings = PageSettings::from_wh(PAGE_W, PAGE_H).ok_or("page size")?;
@@ -618,11 +618,11 @@ mod tests {
         assert!(pdf.starts_with(b"%PDF-"));
     }
 
-    /// Writes a sample to `$HUMLA_EXPORT_SAMPLE` for looking at by eye.
+    /// Writes a sample to `$PARLEY_EXPORT_SAMPLE` for looking at by eye.
     #[test]
     fn writes_a_sample_when_asked() {
-        let Ok(path) = std::env::var("HUMLA_EXPORT_SAMPLE") else { return };
-        let summary = "## Sammendrag\n\nTeamet gikk gjennom **eksportfunksjonen** og ble enige om å legge til *PDF* som eget format. Se [notatet](https://humla.team/notes) for detaljer.\n\n### Beslutninger\n\n- Ren tekst skal ikke inneholde Markdown-tegn\n- PDF bruker Hanken Grotesk\n  - med sidetall i bunnteksten\n  - og en tittel i toppen\n- Lanseres i `0.68`\n\n### Oppfølging\n\n1. Michael tester på en lang møtenotat\n2. Hege ser over typografien\n\n| Oppgave | Eier | Frist |\n|---|---|---|\n| Teksteksport | Michael | Fredag |\n| PDF-oppsett | Hege | Neste uke, etter gjennomgang med teamet |\n\n> Et sitat fra møtet som strekker seg over mer enn én linje for å vise at sitatstreken følger teksten nedover.\n\n```\nlet pdf = render_pdf(title, &sections)?;\n```\n\n---\n\nÆØÅ æøå — «sitat» – ferdig.";
+        let Ok(path) = std::env::var("PARLEY_EXPORT_SAMPLE") else { return };
+        let summary = "## Sammendrag\n\nTeamet gikk gjennom **eksportfunksjonen** og ble enige om å legge til *PDF* som eget format. Se [notatet](https://parley.team/notes) for detaljer.\n\n### Beslutninger\n\n- Ren tekst skal ikke inneholde Markdown-tegn\n- PDF bruker Hanken Grotesk\n  - med sidetall i bunnteksten\n  - og en tittel i toppen\n- Lanseres i `0.68`\n\n### Oppfølging\n\n1. Michael tester på en lang møtenotat\n2. Hege ser over typografien\n\n| Oppgave | Eier | Frist |\n|---|---|---|\n| Teksteksport | Michael | Fredag |\n| PDF-oppsett | Hege | Neste uke, etter gjennomgang med teamet |\n\n> Et sitat fra møtet som strekker seg over mer enn én linje for å vise at sitatstreken følger teksten nedover.\n\n```\nlet pdf = render_pdf(title, &sections)?;\n```\n\n---\n\nÆØÅ æøå — «sitat» – ferdig.";
         let transcript: String = (0..60)
             .map(|i| match i % 3 {
                 0 => format!("Michael: Replikk {i}, der jeg forklarer hvordan eksporten skal fungere når notatet er langt.\n"),

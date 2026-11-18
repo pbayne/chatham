@@ -13,12 +13,12 @@ function settings(webhook: boolean) {
 
 function renderRows(webhook: boolean, handlers: Parameters<typeof mockTauri>[0] = {}) {
   const update = vi.fn();
-  mockTauri({ mcp_server_path: () => "/Applications/Humla.app/Contents/MacOS/humla-mcp", ...handlers });
+  mockTauri({ mcp_server_path: () => "/Applications/Parley.app/Contents/MacOS/parley-mcp", ...handlers });
   render(<IntegrationsSection s={settings(webhook)} update={update} />);
   return { update };
 }
 
-const SAVED = { url: "https://hooks.example.com/humla", headers: ["Authorization"] };
+const SAVED = { url: "https://hooks.example.com/parley", headers: ["Authorization"] };
 
 describe("the webhook switch", () => {
   it("is off out of the box, and reads nothing from the Keychain until it is on", async () => {
@@ -56,7 +56,7 @@ describe("the webhook endpoint", () => {
     const setEndpoint = vi.fn();
     renderRows(true, { webhook_get_endpoint: () => SAVED, webhook_set_endpoint: setEndpoint });
     const url = await screen.findByRole("textbox", { name: "Webhook URL" });
-    fireEvent.change(url, { target: { value: " https://hooks.example.com/humla/v2 " } });
+    fireEvent.change(url, { target: { value: " https://hooks.example.com/parley/v2 " } });
     await userEvent.click(screen.getByRole("button", { name: "Add header" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Header 2 name" }), {
       target: { value: "X-Team" },
@@ -67,7 +67,7 @@ describe("the webhook endpoint", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save webhook" }));
     expect(setEndpoint).toHaveBeenCalledWith({
       endpoint: {
-        url: "https://hooks.example.com/humla/v2",
+        url: "https://hooks.example.com/parley/v2",
         headers: [
           { name: "Authorization", value: null },
           { name: "X-Team", value: "design" },

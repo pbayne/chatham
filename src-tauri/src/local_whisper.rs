@@ -569,9 +569,9 @@ mod tests {
 ///
 ///   cargo test model_tests -- --ignored --nocapture
 ///
-/// `real_chunks_dir_transcribes` also needs `HUMLA_WHISPER_WAVS=<dir>`;
-/// `HUMLA_WHISPER_LANG` overrides the fixture language (default `es`) and
-/// `HUMLA_WHISPER_QUIET=1` keeps transcript text out of the output.
+/// `real_chunks_dir_transcribes` also needs `PARLEY_WHISPER_WAVS=<dir>`;
+/// `PARLEY_WHISPER_LANG` overrides the fixture language (default `es`) and
+/// `PARLEY_WHISPER_QUIET=1` keeps transcript text out of the output.
 #[cfg(test)]
 mod model_tests {
     use super::*;
@@ -587,7 +587,7 @@ mod model_tests {
     }
 
     fn fixture_language() -> String {
-        std::env::var("HUMLA_WHISPER_LANG").unwrap_or_else(|_| "es".into())
+        std::env::var("PARLEY_WHISPER_LANG").unwrap_or_else(|_| "es".into())
     }
 
     /// Mono 16 kHz WAV of `secs` of faint noise with a tone from `tone_from`
@@ -667,14 +667,14 @@ mod model_tests {
         assert!(segments > 0, "no window produced a segment, so the DTW path was never exercised");
     }
 
-    /// Every WAV in `HUMLA_WHISPER_WAVS` transcribes and reports how many
+    /// Every WAV in `PARLEY_WHISPER_WAVS` transcribes and reports how many
     /// words carry timings.
     #[tokio::test]
     #[ignore]
     async fn real_chunks_dir_transcribes() {
-        let dir = std::env::var("HUMLA_WHISPER_WAVS")
-            .expect("set HUMLA_WHISPER_WAVS to a directory of 16 kHz mono WAVs");
-        let quiet = std::env::var("HUMLA_WHISPER_QUIET").is_ok();
+        let dir = std::env::var("PARLEY_WHISPER_WAVS")
+            .expect("set PARLEY_WHISPER_WAVS to a directory of 16 kHz mono WAVs");
+        let quiet = std::env::var("PARLEY_WHISPER_QUIET").is_ok();
         let lang = fixture_language();
         let model = installed_model();
         let shared = new_shared();

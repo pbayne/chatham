@@ -46,7 +46,7 @@ describe("Settings → two-factor authentication", () => {
         setups.push(args);
         return {
           secret: "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
-          otpauth_uri: "otpauth://totp/Humla:m%40example.no?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
+          otpauth_uri: "otpauth://totp/Parley:m%40example.no?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
           qr: { size: 21, path: "M0 0h7v1h-7z" },
         };
       },

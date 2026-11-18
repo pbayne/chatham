@@ -997,7 +997,7 @@ fn the_shared_tool_vocabulary_matches_the_chat_surface() {
         (TOOL_LIST, "mcp", ARG_LIMIT),
         // MCP-only: the absolute half of the date window. Chat keeps the relative
         // form alone for two reasons — its specs are pinned pairwise against
-        // humla-cloud, so an argument here would be a cross-repo change; and it runs
+        // parley-cloud, so an argument here would be a cross-repo change; and it runs
         // on models small enough that calendar arithmetic is where they go wrong. An
         // MCP client asks "what happened in June" and has the arithmetic to back it.
         (TOOL_SEARCH, "mcp", ARG_SINCE),

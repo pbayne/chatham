@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Cloud, CloudOff, LogOut } from "lucide-react";
-import { cloudApi, useCloudStore, HUMLA_CLOUD_URL } from "../../../lib/cloud";
+import { cloudApi, useCloudStore, PARLEY_CLOUD_URL } from "../../../lib/cloud";
 import { useCloudSignIn } from "../../../lib/useCloudSignIn";
 import { TwoFactorCodeForm } from "../../../components/TwoFactorCodeForm";
 import { TwoFactorSection } from "./TwoFactor";
@@ -54,13 +54,13 @@ export function AccountTab({ s, update }: Pick<SettingsHook, "s" | "update">) {
 
   // One-click path for downloaders: point at the hosted Parley Cloud and continue
   // to sign in / create an account — no URL to type.
-  async function useHumlaCloud() {
+  async function useParleyCloud() {
     setBusy(true);
     setError(null);
     try {
       // Don't mirror the URL into the self-hosted input — that field is for
       // custom servers only; the hosted URL showing up there reads as a bug.
-      await cloudApi.configure(HUMLA_CLOUD_URL);
+      await cloudApi.configure(PARLEY_CLOUD_URL);
       await refresh();
     } catch (e) {
       setError(String(e));
@@ -316,7 +316,7 @@ export function AccountTab({ s, update }: Pick<SettingsHook, "s" | "update">) {
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pt-1.5">
             <button
               type="button"
-              onClick={useHumlaCloud}
+              onClick={useParleyCloud}
               disabled={busy}
               className="nd-btn nd-btn-primary"
             >

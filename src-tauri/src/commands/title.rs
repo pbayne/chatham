@@ -1,6 +1,6 @@
 //! Automatic Note titles (#90).
 //!
-//! A Note whose Title Humla owns — empty, a `Recording 19 Aug 14:32`
+//! A Note whose Title Parley owns — empty, a `Recording 19 Aug 14:32`
 //! timestamp, or the `Imported audio` import fallback — gets a short phrase
 //! derived from its own content once that content settles. The model call is
 //! deliberately small and cheap: the head of the typed notes, excerpts from
@@ -12,7 +12,7 @@
 //! Three things this is *not*, all of them settled during the issue's
 //! grilling:
 //!
-//! - **Not driven by the summary.** Summarising in Humla is a button the user
+//! - **Not driven by the summary.** Summarising in Parley is a button the user
 //!   presses, so a summary-completion trigger would leave the motivating case
 //!   — a menu-bar recorder who never opens the note — on its timestamp
 //!   forever. A summary that already exists is read, though: it is the best
@@ -241,7 +241,7 @@ fn title_prompt(language: &str) -> String {
     )
 }
 
-/// Title `note_id` if its Title is still one of Humla's — the post-stop
+/// Title `note_id` if its Title is still one of Parley's — the post-stop
 /// recording chain's entry point, spawned rather than awaited.
 ///
 /// Swallows every failure, which is the whole point of it being separate from

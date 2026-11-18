@@ -31,7 +31,7 @@ pub fn deep_links_ready(app: AppHandle) {
     crate::deep_link::release(&app);
 }
 
-/// Whether Humla's own login item is installed (#207). The LaunchAgent on disk
+/// Whether Parley's own login item is installed (#207). The LaunchAgent on disk
 /// is the record; nothing is stored in the settings table.
 #[tauri::command]
 pub fn launch_at_login_get(app: AppHandle) -> Result<bool, String> {

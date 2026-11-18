@@ -489,7 +489,7 @@ pub fn open(path: &Path) -> Result<Connection> {
     );
     // Workspace (Teams) chat (issue #50). A workspace conversation is
     // server-authoritative: the local row is just a (tenant, scope, scope_id)
-    // handle whose `remote_id` maps to the humla-cloud conversation record id.
+    // handle whose `remote_id` maps to the parley-cloud conversation record id.
     // NULL until the first turn creates the server conversation. Personal
     // conversations never set it. Its messages live server-side (read-through),
     // never in the local `messages` table.
@@ -1665,7 +1665,7 @@ pub const CHAT_SCOPE_FOLDER: &str = "folder";
 /// rather than an empty string: the composite key is `(tenant, scope, scope_id)`,
 /// and an empty id already reads as "absent" in too many places to also mean
 /// "the whole library". Never shown to the user, never sent to the server — the
-/// cloud carries its own `scope` field (humla-cloud#26).
+/// cloud carries its own `scope` field (parley-cloud#26).
 pub const CHAT_GLOBAL_SCOPE_ID: &str = "__global__";
 /// Only Personal is used in this slice; workspace tenants arrive with Teams.
 pub const CHAT_TENANT_PERSONAL: &str = "personal";
@@ -1676,7 +1676,7 @@ pub const CHAT_TENANT_PERSONAL: &str = "personal";
 /// longer accidentally pair a global scope with a note's id. Constructed from the
 /// IPC boundary via [`ChatTarget::from_ids`], where **absent** means global and
 /// **empty** is an error — the distinction that keeps `""` from quietly becoming
-/// "everything" (the same trap humla-cloud#26 avoided server-side).
+/// "everything" (the same trap parley-cloud#26 avoided server-side).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChatTarget {
     Note(String),
@@ -1761,7 +1761,7 @@ pub struct Conversation {
     pub scope: String,
     pub scope_id: String,
     pub tenant: String,
-    /// humla-cloud conversation record id for a workspace (Teams) conversation
+    /// parley-cloud conversation record id for a workspace (Teams) conversation
     /// (issue #50); NULL for Personal conversations and until the first
     /// workspace turn creates the server record.
     pub remote_id: Option<String>,
@@ -2070,7 +2070,7 @@ fn backfill_conversation_titles(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// Record the humla-cloud conversation record id for a workspace conversation
+/// Record the parley-cloud conversation record id for a workspace conversation
 /// (issue #50), so later turns resume it and read-through history can find it.
 /// Idempotent — a repeat with the same id is a no-op write.
 pub fn set_conversation_remote_id(conn: &Connection, id: &str, remote_id: &str) -> Result<()> {
@@ -2466,7 +2466,7 @@ pub fn decode_speakers(encoded: &str) -> Vec<String> {
 ///
 /// **This is one of three copies of the same parse** — the others are
 /// `extractSpeakerLabels` in `src/lib/speakers.ts` (frontend) and the indexer's
-/// parse in `humla-cloud/chat-service`. They must agree, so the rule is pinned
+/// parse in `parley-cloud/chat-service`. They must agree, so the rule is pinned
 /// here verbatim and asserted by [`tests::parse_speaker_turns_mirrors_the_frontend_label_rule`]:
 ///
 /// > a label is up to 40 non-colon chars at the start of the line (after leading
@@ -3617,7 +3617,7 @@ pub fn migrate_per_language_v4(conn: &Connection) -> Result<()> {
 }
 
 /// v0.31 grandfathering: mark existing installs so the first-run onboarding
-/// wizard never appears for anyone already using Humla. Writes
+/// wizard never appears for anyone already using Parley. Writes
 /// `onboarding_completed = "true"` when the DB looks lived-in.
 ///
 /// Grandfather predicate (either is sufficient):
@@ -4727,7 +4727,7 @@ mod tests {
     ///
     /// The same label rule now exists three times: here, in `extractSpeakerLabels`
     /// (`src/lib/speakers.ts`, which decides the rename UI's chip strip), and in
-    /// humla-cloud's indexer. They MUST agree — a one-sided change means a chunk is
+    /// parley-cloud's indexer. They MUST agree — a one-sided change means a chunk is
     /// attributed to someone the UI never shows as a speaker, or vice versa. #105's
     /// `client_id` drift passed every test on both sides, so the mitigation is the
     /// one used for the tool schemas: pin the identical case table in each suite.
@@ -5847,7 +5847,7 @@ mod tests {
     }
 
     /// Absent means global; EMPTY is an error. Letting `""` mean global is the
-    /// trap humla-cloud#26 avoided server-side — a typo must not silently become
+    /// trap parley-cloud#26 avoided server-side — a typo must not silently become
     /// a library-wide conversation.
     #[test]
     fn an_absent_note_id_is_global_but_an_empty_one_is_an_error() {

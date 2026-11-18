@@ -1,9 +1,9 @@
-//! Whether macOS lets Humla post notifications. The permission belongs to the
+//! Whether macOS lets Parley post notifications. The permission belongs to the
 //! app bundle, so it is read and requested in this process.
 
 use objc2_user_notifications::UNAuthorizationStatus;
 
-/// macOS's answer to whether Humla may post notifications.
+/// macOS's answer to whether Parley may post notifications.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Authorization {
     Granted,

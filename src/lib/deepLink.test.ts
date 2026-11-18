@@ -44,8 +44,8 @@ describe("parseDeepLink", () => {
     expect(parseDeepLink("parley://new-workspace/extra")).toEqual({ kind: "focus" });
   });
 
-  it("rejects anything that isn't a humla link", () => {
-    expect(parseDeepLink("https://humla.team/new-workspace?source=web")).toBeNull();
+  it("rejects anything that isn't a parley link", () => {
+    expect(parseDeepLink("https://parley.team/new-workspace?source=web")).toBeNull();
     expect(parseDeepLink("not a url")).toBeNull();
   });
 });

@@ -44,7 +44,7 @@ describe("onboarding permissions: notifications", () => {
   });
 
   // macOS's notification prompt waits for an answer; the microphone, which
-  // Humla can't record without, must stay askable meanwhile.
+  // Parley can't record without, must stay askable meanwhile.
   it("keeps the microphone askable while macOS waits on the notifications answer", async () => {
     mockTauri({
       permissions_status: () => status("not_determined", "not_determined"),

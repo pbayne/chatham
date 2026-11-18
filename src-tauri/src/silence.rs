@@ -1,6 +1,6 @@
 //! Silence auto-stop — end a recording after N minutes with no new speech.
 //!
-//! Ported in intent from stenoai's silence auto-stop. Humla's audio-capture
+//! Ported in intent from stenoai's silence auto-stop. Parley's audio-capture
 //! sidecar is VAD-bounded: it only emits a transcript chunk when there is
 //! actual speech, so "no new chunk for N minutes" is a reliable proxy for "the
 //! room has gone quiet" — no raw RMS metering needed. A watchdog spawned at
@@ -114,7 +114,7 @@ pub fn spawn_watchdog(app: AppHandle, note_id: String) {
             if let Err(e) = crate::commands::recording_stop(app2.clone(), st).await {
                 eprintln!("silence auto-stop: recording_stop failed: {e}");
             } else {
-                notify(&app2, "Recording stopped", &format!("No speech for {} min — Humla stopped and is summarizing.", cfg.minutes));
+                notify(&app2, "Recording stopped", &format!("No speech for {} min — Parley stopped and is summarizing.", cfg.minutes));
             }
             return;
         }

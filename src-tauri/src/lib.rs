@@ -36,7 +36,7 @@ mod captures;
 mod silence;
 mod voiceprints;
 mod triage;
-// Public so the `humla-mcp` binary (#172) can drive it. Everything below it —
+// Public so the `parley-mcp` binary (#172) can drive it. Everything below it —
 // `db`, `html_text` — stays private to the crate.
 pub mod mcp;
 pub mod sync;
@@ -280,7 +280,7 @@ where
                     let _ = app.emit("menu://check-for-updates", ());
                 }
             });
-            // Diarization models Humla no longer uses, removed once per install.
+            // Diarization models Parley no longer uses, removed once per install.
             {
                 let state: tauri::State<AppState> = app.state();
                 let conn = state.db.lock();
@@ -335,7 +335,7 @@ where
             // v0.31 — grandfather existing installs past the new first-run
             // onboarding wizard. Marks `onboarding_completed=true` when the DB
             // has notes or a local Whisper model is present on disk, so nobody
-            // already using Humla ever sees the wizard. Deliberately does NOT
+            // already using Parley ever sees the wizard. Deliberately does NOT
             // read the Keychain (a startup Keychain read can trigger a macOS
             // prompt). Idempotent via the presence of the setting.
             {
@@ -393,7 +393,7 @@ where
             notifications::install(app.handle());
             // Tray + global hotkey. Last in setup so a failure here can't stop
             // the app from coming up — the menu bar is an extra surface, not a
-            // precondition for using Humla.
+            // precondition for using Parley.
             let tray_installed = match menubar::install(app.handle()) {
                 Ok(()) => true,
                 Err(e) => {
@@ -642,7 +642,7 @@ where
             if let tauri::RunEvent::Exit = event {
                 unsafe { libc::_exit(0) };
             }
-            // Clicking Humla in Finder / Spotlight while it sits hidden in the
+            // Clicking Parley in Finder / Spotlight while it sits hidden in the
             // menu bar reaches us as a reopen, not a second launch. Without
             // this the app looks dead: LaunchServices activates the running
             // process, which has no window and (as an accessory) no Dock icon

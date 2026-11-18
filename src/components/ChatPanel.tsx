@@ -577,7 +577,7 @@ export function ChatPanel({
     s.status.logged_in ? s.status.current_workspace?.id ?? null : null,
   );
   // BYOK activation surface (issue #76). `billingEnabled` marks the managed
-  // (humla-cloud) server — the only place the activation pane applies; on self-
+  // (parley-cloud) server — the only place the activation pane applies; on self-
   // host it never shows (chat_disabled keeps its existing behaviour). Role +
   // members drive owner-vs-member copy; the add-on config drives the pitch.
   const billingEnabled = useCloudStore((s) => s.status.billing_enabled);

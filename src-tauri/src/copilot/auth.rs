@@ -1,4 +1,4 @@
-//! Signing in to GitHub for Copilot: the OAuth device flow under Humla's own
+//! Signing in to GitHub for Copilot: the OAuth device flow under Parley's own
 //! OAuth app, and keeping its token fresh. The token is a GitHub user token,
 //! which the Copilot CLI exchanges for Copilot access itself. It expires after
 //! 8 h and refreshes for 6 months without a client secret, because it came from
@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Humla's OAuth app. Public by design: the device flow has no secret.
+/// Parley's OAuth app. Public by design: the device flow has no secret.
 pub const CLIENT_ID: &str = "Ov23li0tjvtZ2DAfOFUu";
 pub const GITHUB: &str = "https://github.com";
 
@@ -95,7 +95,7 @@ pub fn parse_token_response(json: &serde_json::Value, now_ms: i64) -> Result<Pol
         )),
         "access_denied" => Ok(Poll::Denied),
         "expired_token" => Ok(Poll::Expired),
-        "" => Err(AuthFailure::Unreachable("GitHub sent an answer Humla can't read.".into())),
+        "" => Err(AuthFailure::Unreachable("GitHub sent an answer Parley can't read.".into())),
         other => Err(AuthFailure::Rejected(
             json.get("error_description")
                 .and_then(|v| v.as_str())
@@ -160,7 +160,7 @@ pub(crate) async fn fresh_token(
 
 /// Honest about who is calling: GitHub rate-limits and audits by it.
 pub fn user_agent() -> String {
-    format!("Humla/{}", env!("CARGO_PKG_VERSION"))
+    format!("Parley/{}", env!("CARGO_PKG_VERSION"))
 }
 
 fn client() -> reqwest::Client {

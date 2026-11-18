@@ -66,7 +66,7 @@ import {
 import {
   cloudApi,
   useCloudStore,
-  HUMLA_CLOUD_URL,
+  PARLEY_CLOUD_URL,
   type CloudWorkspace,
 } from "../../../lib/cloud";
 import { checkoutKind, offersTrial, planIsLive, useCheckout } from "../../../lib/billing";
@@ -301,7 +301,7 @@ function ConnectStage() {
     <div className="flex flex-col gap-3">
       <button
         type="button"
-        onClick={() => connect(HUMLA_CLOUD_URL)}
+        onClick={() => connect(PARLEY_CLOUD_URL)}
         disabled={busy}
         className="nd-btn nd-btn-primary self-start"
       >

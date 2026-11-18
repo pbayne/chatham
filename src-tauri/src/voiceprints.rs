@@ -34,7 +34,7 @@ pub struct VoiceMatch {
     pub score: f32,
 }
 
-/// Cosine thresholds, tuned on real Humla recordings (per-speaker segment
+/// Cosine thresholds, tuned on real Parley recordings (per-speaker segment
 /// embeddings from the FluidAudio WeSpeaker model, L2-normalized 256-d):
 ///   - same-speaker self-matches clustered ~0.55–0.80
 ///   - different speakers clustered ~0.0–0.25

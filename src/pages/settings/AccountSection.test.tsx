@@ -58,7 +58,7 @@ describe("Account section", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("pitches Humla Cloud with a pricing card whose CTA starts the connect flow", async () => {
+  it("pitches Parley Cloud with a pricing card whose CTA starts the connect flow", async () => {
     const configures: unknown[] = [];
     renderApp("/settings?tab=account", {
       cloud_configure: (args) => {
@@ -86,8 +86,10 @@ describe("Account section", () => {
 
     // CTA points the app at the hosted server (sign-in/up renders next).
     expect(configures).toHaveLength(1);
+    // The hosted cloud host is unchanged (sync.humla.team is the external Humla
+    // Cloud service; this fork is local-first and doesn't rebrand that URL).
     expect(String((configures[0] as { baseUrl?: string })?.baseUrl)).toMatch(
-      /humla/i,
+      /sync\.humla\.team/i,
     );
   });
 

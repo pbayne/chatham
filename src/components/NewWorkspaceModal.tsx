@@ -10,7 +10,7 @@ import {
   Users,
 } from "lucide-react";
 import {
-  HUMLA_CLOUD_URL,
+  PARLEY_CLOUD_URL,
   cloudApi,
   formatSeatPrice,
   useCloudStore,
@@ -186,11 +186,11 @@ function ConnectStage({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function useHumlaCloud() {
+  async function useParleyCloud() {
     setBusy(true);
     setError(null);
     try {
-      await cloudApi.configure(HUMLA_CLOUD_URL);
+      await cloudApi.configure(PARLEY_CLOUD_URL);
       await refresh();
     } catch (e) {
       setError(String(e));
@@ -212,7 +212,7 @@ function ConnectStage({ onClose }: { onClose: () => void }) {
       <Footer>
         <button
           type="button"
-          onClick={useHumlaCloud}
+          onClick={useParleyCloud}
           disabled={busy}
           className="nd-btn nd-btn-primary"
         >

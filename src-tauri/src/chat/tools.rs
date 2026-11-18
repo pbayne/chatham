@@ -9,7 +9,7 @@
 //! - **Tool errors are content, never panics.** Bad args or an empty result
 //!   return a structured `ToolOutcome { is_error }` the model reads and recovers
 //!   from — the loop never aborts on a tool (parent stories 16).
-//! - **This file is Personal-only, and mirrors `humla-cloud/chat-service/src/
+//! - **This file is Personal-only, and mirrors `parley-cloud/chat-service/src/
 //!   tools.ts`.** Workspace turns retrieve server-side, so every schema change
 //!   here needs the same change there, verified pairwise. That rule was quietly
 //!   false until #105: `client_id` selected every note tagged with a Client here
@@ -93,7 +93,7 @@ pub struct Pins {
 /// Dropped under `note`, where one note is in scope and it could only take the
 /// anchor away. The one owner of that rule here: `resolve_filter` reads it and so
 /// does the prompt's disclosure. Mirrored by `clientPinApplies` in
-/// `humla-cloud/chat-service/src/tools.ts`, and by `showClientPin` in
+/// `parley-cloud/chat-service/src/tools.ts`, and by `showClientPin` in
 /// `ChatPanel.tsx`, which gates both the picker and the token.
 pub fn client_pin_applies(scope: &ToolScope) -> bool {
     !matches!(scope, ToolScope::Note(_))
@@ -1574,7 +1574,7 @@ mod pairwise_tests {
     }
 
     /// The tool surface, PINNED — and pinned to the same literal in
-    /// `humla-cloud/chat-service/src/tools.test.ts`.
+    /// `parley-cloud/chat-service/src/tools.test.ts`.
     ///
     /// Workspace turns retrieve server-side, so these two schemas have to stay
     /// equivalent, and #105 is what a one-sided change looks like when nothing
@@ -1592,6 +1592,6 @@ mod pairwise_tests {
 search_notes(client_id:string, folder_id:string, mine_only:boolean, query:string!, speaker:string, until_days:integer, within_days:integer)
 get_note(note_id:string!)
 list_notes(client_id:string, folder_id:string, mine_only:boolean, speaker:string, until_days:integer, within_days:integer)";
-        assert_eq!(surface(), expected, "\nupdate humla-cloud/chat-service/src/tools.test.ts in lockstep");
+        assert_eq!(surface(), expected, "\nupdate parley-cloud/chat-service/src/tools.test.ts in lockstep");
     }
 }

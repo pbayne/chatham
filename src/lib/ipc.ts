@@ -216,7 +216,7 @@ export type SettingsKey =
   | "theme"
   | "palette"
   | "developer_mode"
-  // MCP integration (#172). Off until explicitly enabled: the `humla-mcp`
+  // MCP integration (#172). Off until explicitly enabled: the `parley-mcp`
   // server process reads this key on every call, so the switch takes effect
   // without restarting the MCP client.
   | "mcp_enabled"
@@ -734,7 +734,7 @@ export const ipc = {
   // CPU architecture of the running process ("aarch64", "x86_64", …).
   // Onboarding uses it to steer Intel Macs toward cloud transcription.
   systemArch: () => invoke<string>("system_arch"),
-  // Absolute path to the bundled `humla-mcp` executable, so Settings can offer
+  // Absolute path to the bundled `parley-mcp` executable, so Settings can offer
   // a config snippet that actually works on this install (#172).
   mcpServerPath: () => invoke<string>("mcp_server_path"),
   noteDiagnosticsDir: (noteId: string) =>

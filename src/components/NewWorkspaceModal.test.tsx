@@ -77,7 +77,7 @@ describe("stageFor", () => {
 });
 
 describe("the create-workspace sheet", () => {
-  it("sells Humla Cloud before asking for anything, when no server is set", async () => {
+  it("sells Parley Cloud before asking for anything, when no server is set", async () => {
     open({ ...DISCONNECTED, configured: false });
     expect(await screen.findByRole("heading", { name: /create a team workspace/i })).toBeInTheDocument();
     // The complaint this replaces: a bare textbox that explained nothing.

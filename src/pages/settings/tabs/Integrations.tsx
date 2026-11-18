@@ -13,7 +13,7 @@ import { WebhookRows } from "./Webhook";
 //
 // Off by default and explicitly opt-in — this hands an outside agent the
 // contents of real meetings, so installing an update must never quietly open
-// them. The switch writes `mcp_enabled`, which the `humla-mcp` process reads on
+// them. The switch writes `mcp_enabled`, which the `parley-mcp` process reads on
 // every call, so turning it off takes effect on the next tool call rather than
 // at the client's next restart.
 //

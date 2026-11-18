@@ -11,7 +11,7 @@ use tauri::{AppHandle, Manager, Url};
 use crate::menubar;
 use crate::recording::Phase;
 
-/// Act on the links macOS handed Humla.
+/// Act on the links macOS handed Parley.
 pub(crate) fn open(app: &AppHandle, urls: Vec<Url>) {
     let mut focus_window = false;
     for url in &urls {
@@ -26,7 +26,7 @@ pub(crate) fn open(app: &AppHandle, urls: Vec<Url>) {
 }
 
 /// Recording links held until the frontend listens for `recording_status`: a
-/// link that cold-launches Humla would otherwise start a recording the window
+/// link that cold-launches Parley would otherwise start a recording the window
 /// that opens never hears about. `None` once it listens.
 pub(crate) struct Held(Mutex<Option<Vec<RecordLink>>>);
 
@@ -72,7 +72,7 @@ fn follow(app: &AppHandle, link: RecordLink) {
         menubar::notify(
             app,
             "Couldn't follow the link",
-            "Humla's menu bar isn't running, and recording links need it.",
+            "Parley's menu bar isn't running, and recording links need it.",
         );
         return;
     };
@@ -151,11 +151,11 @@ impl Refusal {
             }
             Refusal::StillSaving => (
                 "Couldn't start recording",
-                "Humla is still saving the last recording. Try the link again once it's saved.",
+                "Parley is still saving the last recording. Try the link again once it's saved.",
             ),
             Refusal::Importing => (
                 "Couldn't start recording",
-                "Humla is importing a file. Try the link again once it's done.",
+                "Parley is importing a file. Try the link again once it's done.",
             ),
             Refusal::NotRecording => ("Not recording", "There's no recording for the link to stop."),
             Refusal::StillStarting => (
@@ -253,7 +253,7 @@ mod tests {
     const START: RecordLink = RecordLink::Start { name: None };
 
     #[test]
-    fn a_start_link_starts_a_recording_when_humla_is_idle() {
+    fn a_start_link_starts_a_recording_when_parley_is_idle() {
         assert_eq!(decide(START, Phase::Idle), Outcome::Start { name: None });
         let named = RecordLink::Start { name: Some("Daily Standup".into()) };
         assert_eq!(
@@ -371,7 +371,7 @@ mod tests {
         assert_eq!(title_from_name(Some(&ends_in_space), at()), "a".repeat(199));
     }
 
-    // #90's titler may replace only a title Humla made up.
+    // #90's titler may replace only a title Parley made up.
     #[test]
     fn the_automatic_titler_keeps_a_name_and_replaces_the_start_time() {
         use crate::menubar::is_replaceable_title;

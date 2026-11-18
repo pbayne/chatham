@@ -12,7 +12,7 @@ import { ipc, type SettingsKey } from "./ipc";
 // back — `useLocation()` there returns the same pathname throughout. (That is
 // the whole point of the pin; it's what keeps the view alive underneath.) So
 // the write announces itself instead.
-const SETTING_CHANGED = "humla:setting-changed";
+const SETTING_CHANGED = "parley:setting-changed";
 
 type Detail = { key: SettingsKey; value: string };
 

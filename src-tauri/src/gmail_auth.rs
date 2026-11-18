@@ -1,6 +1,6 @@
 //! Gmail authentication strategy.
 //!
-//! Humla reaches Gmail two ways, chosen by the `gmail_auth_mode` setting:
+//! Parley reaches Gmail two ways, chosen by the `gmail_auth_mode` setting:
 //!
 //!   - `oauth` (default): the app's own OAuth refresh token on `Autopilot`.
 //!     Requires a real Google OAuth client ID compiled in, and requires the
@@ -12,7 +12,7 @@
 //!     whose admin policy blocks NEW third-party OAuth consents but has already
 //!     blessed the user's own gcloud ADC (scope gmail.modify). No OAuth client,
 //!     no consent screen, no policy exception. The token is minted fresh per
-//!     call (the CLI caches + refreshes it), so nothing is stored by Humla.
+//!     call (the CLI caches + refreshes it), so nothing is stored by Parley.
 //!
 //! A resolved `GmailAuth` is just a bearer token plus the headers a request
 //! needs, so the call sites in `gmail_read` / `google_gmail` don't branch on
@@ -29,7 +29,7 @@ const SETTING_MODE: &str = "gmail_auth_mode";
 /// How Gmail calls authenticate. Parsed from the `gmail_auth_mode` setting.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GmailAuthMode {
-    /// Humla's own OAuth refresh token (the Autopilot Google connection).
+    /// Parley's own OAuth refresh token (the Autopilot Google connection).
     Oauth,
     /// The machine's gcloud Application Default Credentials.
     Gcloud,
@@ -81,7 +81,7 @@ pub fn mode(conn: &rusqlite::Connection) -> GmailAuthMode {
 }
 
 /// Mint a gcloud ADC access token by shelling out to the gcloud CLI. The CLI
-/// owns caching + refresh, so this is cheap on the hot path and Humla never
+/// owns caching + refresh, so this is cheap on the hot path and Parley never
 /// persists the token. Errors clearly when gcloud is missing or ADC isn't set
 /// up, so the UI can tell the user to run `gcloud auth application-default
 /// login` rather than failing opaquely.

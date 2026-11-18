@@ -3,7 +3,7 @@ import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import type { CheckoutSource } from "./cloud";
 
 /**
- * What a `humla://` link asks for. The backend acts on every link itself — it
+ * What a `parley://` link asks for. The backend acts on every link itself — it
  * brings the window forward, or starts or stops a recording (`deep_link.rs`) —
  * so anything unrecognised here is a `focus` and needs no further work.
  */
@@ -20,7 +20,7 @@ export function linkSource(value: string | null | undefined): CheckoutSource | u
     : undefined;
 }
 
-/** Parse a `humla://` URL; null for anything that isn't one. */
+/** Parse a `parley://` URL; null for anything that isn't one. */
 export function parseDeepLink(raw: string): DeepLinkAction | null {
   let url: URL;
   try {

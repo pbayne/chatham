@@ -70,7 +70,7 @@ impl Center {
         std::mem::forget(delegate);
     }
 
-    /// Replaces every category macOS holds for Humla with `categories`.
+    /// Replaces every category macOS holds for Parley with `categories`.
     pub(super) fn register(self, categories: &[Category]) {
         let natives: Vec<Retained<UNNotificationCategory>> =
             categories.iter().map(native).collect();
@@ -160,14 +160,14 @@ define_class!(
     // SAFETY: NSObject has no subclassing requirements, and `Delegate` doesn't
     // implement `Drop`.
     #[unsafe(super(NSObject))]
-    #[name = "HumlaNotificationDelegate"]
+    #[name = "ParleyNotificationDelegate"]
     #[ivars = AppHandle]
     struct Delegate;
 
     unsafe impl NSObjectProtocol for Delegate {}
 
     unsafe impl UNUserNotificationCenterDelegate for Delegate {
-        // Without this, macOS shows nothing while Humla is the active app.
+        // Without this, macOS shows nothing while Parley is the active app.
         #[unsafe(method(userNotificationCenter:willPresentNotification:withCompletionHandler:))]
         fn will_present(
             &self,
@@ -227,7 +227,7 @@ mod tests {
 
     #[test]
     fn only_a_bundled_app_asks_macos() {
-        assert!(in_app_bundle(Path::new("/Applications/Humla.app/Contents/MacOS/humla")));
-        assert!(!in_app_bundle(Path::new("/Users/me/humla/src-tauri/target/debug/humla")));
+        assert!(in_app_bundle(Path::new("/Applications/Parley.app/Contents/MacOS/parley")));
+        assert!(!in_app_bundle(Path::new("/Users/me/parley/src-tauri/target/debug/parley")));
     }
 }
