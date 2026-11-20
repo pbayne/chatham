@@ -22,6 +22,11 @@ const DEFAULT_COPY: Record<
     description: "Claude summaries and chat.",
     placeholder: "sk-ant-…",
   },
+  gemini: {
+    label: "Google Gemini",
+    description: "Gemini cloud summaries.",
+    placeholder: "AIza…",
+  },
   deepgram: {
     label: "Deepgram",
     description: "Nova-3 and Nova-2 cloud transcription.",

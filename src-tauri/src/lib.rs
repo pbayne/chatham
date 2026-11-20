@@ -4,6 +4,7 @@ mod export_doc;
 mod keychain;
 mod openai;
 mod anthropic;
+mod gemini;
 mod copilot;
 mod local_whisper;
 mod diarize;
@@ -581,6 +582,8 @@ where
             commands::diarize_status,
             commands::diarize_download,
             commands::diarize_delete,
+            commands::asr_status,
+            commands::asr_download,
             commands::recording_start,
             commands::recording_stop,
             commands::import_audio,

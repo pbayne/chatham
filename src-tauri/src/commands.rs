@@ -3562,6 +3562,18 @@ async fn ensure_provider_ready(
                 )
             }
         }
+        crate::stt::ProviderConfig::Parakeet(_) => {
+            // On-device via the sidecar; the prerequisite is the Parakeet model
+            // on disk, not an API key. A missing sidecar reports not-installed.
+            match crate::diarize::asr_status(app).await {
+                Ok(s) if s.installed => None,
+                Ok(_) => Some(
+                    "Parakeet model not downloaded. Download it in Settings → Transcription."
+                        .to_string(),
+                ),
+                Err(e) => Some(format!("Couldn't check the Parakeet model: {e}")),
+            }
+        }
         crate::stt::ProviderConfig::Custom(custom) => {
             let conn = state.db.lock();
             if crate::custom_endpoint::base_url(&conn).is_err() {
@@ -7487,7 +7499,14 @@ async fn transcribe_chunk(
     } else {
         None
     };
-    let adapter = crate::stt::build_adapter(&provider_cfg, local_deps);
+    // Parakeet runs in the speaker-diarize sidecar, so its adapter needs the
+    // AppHandle to spawn it — `build_adapter` has no handle, so build it here.
+    let adapter: Box<dyn crate::stt::BatchSttAdapter> =
+        if matches!(provider_cfg, crate::stt::ProviderConfig::Parakeet(_)) {
+            Box::new(crate::stt::ParakeetAdapter::new(app.clone()))
+        } else {
+            crate::stt::build_adapter(&provider_cfg, local_deps)
+        };
     let ctx = crate::stt::TranscribeCtx {
         model: provider_cfg.model(),
         language: &language,

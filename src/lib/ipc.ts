@@ -254,7 +254,11 @@ export type ProviderConfig =
   | { provider: "local"; model_id: string; preset: string; use_gpu: boolean }
   | { provider: "deepgram"; model: string; base_url?: string }
   | { provider: "groq"; model: string }
-  | { provider: "custom"; model: string };
+  | { provider: "custom"; model: string }
+  // On-device Parakeet via the speaker-diarize sidecar. Parakeet v3 is the one
+  // model, so the variant carries no fields — mirror of Rust's fieldless
+  // `ProviderConfig::Parakeet`.
+  | { provider: "parakeet" };
 
 /** One half of the custom endpoint's Test (`custom_endpoint::Probe`). */
 export type CustomProbe = { outcome: "ok" | "failed" | "skipped"; message: string };
@@ -329,6 +333,19 @@ export type DiarizeDownloadProgress = {
 };
 
 export type DiarizeEngine = "community1" | "nemotron3";
+
+// Parakeet on-device ASR model status (sidecar `asr-status`). `installed` is
+// the only field — Parakeet v3 is the one model, no warm-up step.
+export type AsrStatus = {
+  installed: boolean;
+};
+
+// Parakeet model download progress (sidecar `asr-download`), emitted on the
+// `asr_download_progress` channel. No `engine` discriminator — one ASR model.
+export type AsrDownloadProgress = {
+  fraction: number;
+  phase: "listing" | "downloading" | "compiling";
+};
 
 // Word-level timing in stream-absolute milliseconds. Drives the
 // playback view's word-by-word highlight when present. Empty for
@@ -903,6 +920,10 @@ export const ipc = {
   diarizeDelete: (engine?: DiarizeEngine) =>
     invoke<void>("diarize_delete", { engine }),
 
+  // Parakeet on-device ASR model (shares the speaker-diarize sidecar).
+  asrStatus: () => invoke<AsrStatus>("asr_status"),
+  asrDownload: () => invoke<void>("asr_download"),
+
   localLlmListModels: (baseUrl: string) =>
     invoke<string[]>("local_llm_list_models", { baseUrl }),
 
@@ -1384,6 +1405,9 @@ export function onCopilotCliDownload(cb: (e: CopilotCliDownloadEvent) => void): 
 }
 export function onDiarizeDownloadProgress(cb: (e: DiarizeDownloadProgress) => void): Promise<UnlistenFn> {
   return listen<DiarizeDownloadProgress>("diarize_download_progress", (e) => cb(e.payload));
+}
+export function onAsrDownloadProgress(cb: (e: AsrDownloadProgress) => void): Promise<UnlistenFn> {
+  return listen<AsrDownloadProgress>("asr_download_progress", (e) => cb(e.payload));
 }
 // "The notes table changed underneath you — refetch." Two emitters: the cloud
 // sync worker, after it applies pulled remote changes (only when sync is active

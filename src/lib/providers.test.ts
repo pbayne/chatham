@@ -24,7 +24,7 @@ describe("providers.ts mirrors providers.rs", () => {
   });
 
   it("derives the key providers from the keychain flag", () => {
-    expect(KEY_PROVIDERS).toEqual(["openai", "anthropic", "deepgram", "groq", "custom"]);
+    expect(KEY_PROVIDERS).toEqual(["openai", "anthropic", "gemini", "deepgram", "groq", "custom"]);
     expect(isKeyProvider("local")).toBe(false);
     expect(isKeyProvider("groq")).toBe(true);
   });

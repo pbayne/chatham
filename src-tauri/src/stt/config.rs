@@ -21,7 +21,19 @@ pub enum ProviderConfig {
     Groq(GroqConfig),
     #[serde(rename = "custom")]
     Custom(CustomConfig),
+    /// On-device Parakeet (FluidAudio / Neural Engine) via the
+    /// `speaker-diarize` sidecar's `transcribe` subcommand. Parakeet v3 is the
+    /// single model, so there is nothing to pick — the config carries no
+    /// fields. Like local Whisper it needs no API key, so `provider()` reports
+    /// `ProviderId::Local` (the "stays on your Mac, no key" bucket) and
+    /// `model()` returns the fixed model id.
+    #[serde(rename = "parakeet")]
+    Parakeet(ParakeetConfig),
 }
+
+/// The fixed Parakeet model id. Parakeet v3 is the only model, so this is a
+/// constant rather than a stored setting.
+pub const PARAKEET_MODEL: &str = "parakeet-tdt-0.6b-v3";
 
 impl ProviderConfig {
     pub fn provider(&self) -> ProviderId {
@@ -31,6 +43,8 @@ impl ProviderConfig {
             ProviderConfig::Deepgram(_) => ProviderId::Deepgram,
             ProviderConfig::Groq(_) => ProviderId::Groq,
             ProviderConfig::Custom(_) => ProviderId::Custom,
+            // On-device, no API key — same bucket as local Whisper.
+            ProviderConfig::Parakeet(_) => ProviderId::Local,
         }
     }
 
@@ -45,6 +59,7 @@ impl ProviderConfig {
             ProviderConfig::Deepgram(c) => &c.model,
             ProviderConfig::Groq(c) => &c.model,
             ProviderConfig::Custom(c) => &c.model,
+            ProviderConfig::Parakeet(_) => PARAKEET_MODEL,
         }
     }
 
@@ -60,6 +75,8 @@ impl ProviderConfig {
             // The one custom endpoint's URL is a setting shared with summaries
             // and chat (`custom_endpoint::base_url`), read at dispatch.
             ProviderConfig::Custom(_) => None,
+            // On-device; no endpoint.
+            ProviderConfig::Parakeet(_) => None,
         }
     }
 }
@@ -94,6 +111,12 @@ pub struct GroqConfig {
 pub struct CustomConfig {
     pub model: String,
 }
+
+/// Parakeet carries no user-tunable fields — v3 is the one model and it runs
+/// on-device. The empty struct keeps the tagged-enum pattern (every variant
+/// wraps a config) so serde emits/parses `{"provider":"parakeet"}` cleanly.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct ParakeetConfig {}
 
 /// Top-level transcription configuration. Wraps a default `ProviderConfig`
 /// plus a map of per-language overrides keyed by ISO 639-1 code (matching
@@ -155,6 +178,7 @@ pub fn from_legacy_settings(
             preset: whisper_preset.unwrap_or("quality").to_string(),
             use_gpu: whisper_use_gpu.unwrap_or(true),
         }),
+        "parakeet" => ProviderConfig::Parakeet(ParakeetConfig {}),
         _ => ProviderConfig::OpenAi(OpenAiConfig {
             model: transcribe_model.unwrap_or("whisper-1").to_string(),
             base_url: None,
@@ -261,6 +285,32 @@ mod tests {
         let back: ProviderConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(cfg, back);
         assert!(json.contains(r#""provider":"groq""#));
+    }
+
+    #[test]
+    fn parakeet_round_trips_through_json() {
+        let cfg = ProviderConfig::Parakeet(ParakeetConfig {});
+        let json = serde_json::to_string(&cfg).unwrap();
+        let back: ProviderConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(cfg, back);
+        // Fieldless variant serialises to just its tag.
+        assert_eq!(json, r#"{"provider":"parakeet"}"#);
+    }
+
+    #[test]
+    fn parakeet_reports_local_bucket_and_fixed_model() {
+        let cfg = ProviderConfig::Parakeet(ParakeetConfig {});
+        // On-device, no API key — shares the Local provider bucket.
+        assert_eq!(cfg.provider(), ProviderId::Local);
+        assert_eq!(cfg.provider_id(), "local");
+        assert_eq!(cfg.model(), PARAKEET_MODEL);
+        assert_eq!(cfg.base_url(), None);
+    }
+
+    #[test]
+    fn legacy_migration_parakeet() {
+        let cfg = from_legacy_settings(Some("parakeet"), None, None, None, None);
+        assert_eq!(cfg, ProviderConfig::Parakeet(ParakeetConfig {}));
     }
 
     #[test]

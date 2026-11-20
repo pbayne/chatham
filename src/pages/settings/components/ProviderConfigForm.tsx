@@ -102,7 +102,7 @@ export function ProviderConfigForm({
         onChange={(v) => onChange({ provider: "groq", model: v })}
         options={GROQ_MODELS.map((m) => ({ value: m, label: m }))}
       />
-    ) : value.provider === "custom" ? null : (
+    ) : value.provider === "custom" || value.provider === "parakeet" ? null : (
       <Select
         value={value.model_id}
         onChange={(v) => onChange({ ...value, model_id: v })}
@@ -167,8 +167,14 @@ export function ProviderConfigForm({
           onChange={(model) => onChange({ provider: "custom", model })}
           description={MODEL_DESCRIPTIONS.custom}
         />
+      ) : value.provider === "parakeet" ? (
+        <Row
+          label="Model"
+          description="Parakeet TDT v3 — on-device, runs on the Neural Engine. No model to choose."
+          control={null}
+        />
       ) : (
-        <Row label="Model" description={MODEL_DESCRIPTIONS[provider]} control={modelSelect} />
+        <Row label="Model" description={(MODEL_DESCRIPTIONS as Record<string, string>)[provider] ?? ""} control={modelSelect} />
       )}
 
       {value.provider === "local" && (

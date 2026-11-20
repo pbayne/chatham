@@ -10,6 +10,7 @@ mod keychain;
 mod local;
 mod openai;
 mod openai_compat;
+mod parakeet;
 
 use std::path::PathBuf;
 
@@ -17,7 +18,7 @@ pub use adapter::{BatchSttAdapter, TranscribeCtx, TranscribeResult, Word};
 pub use auth::Auth;
 pub use config::{
     from_legacy_settings, CustomConfig, DeepgramConfig, GroqConfig, LocalWhisperConfig,
-    OpenAiConfig, ProviderConfig, TranscribeConfig,
+    OpenAiConfig, ParakeetConfig, ProviderConfig, TranscribeConfig, PARAKEET_MODEL,
 };
 pub use custom::CustomAdapter;
 pub use keychain::{keychain_account_for, requires_api_key};
@@ -25,6 +26,7 @@ pub use deepgram::DeepgramAdapter;
 pub use groq::GroqAdapter;
 pub use local::LocalWhisperAdapter;
 pub use openai::OpenAiAdapter;
+pub use parakeet::ParakeetAdapter;
 
 use crate::local_whisper;
 
@@ -46,6 +48,11 @@ pub struct LocalDeps {
 /// `local_deps` is required for `ProviderConfig::Local` and unused for
 /// other variants. Constructed by the caller because `ProviderConfig`
 /// can't carry runtime state.
+///
+/// `ProviderConfig::Parakeet` is NOT built here: it needs a Tauri
+/// `AppHandle` to spawn the sidecar, which this signature doesn't take.
+/// The recording pipeline constructs `ParakeetAdapter::new(app)` directly
+/// and never calls this for Parakeet; the arm panics to catch a miswire.
 pub fn build_adapter(
     cfg: &ProviderConfig,
     local_deps: Option<LocalDeps>,
@@ -64,6 +71,9 @@ pub fn build_adapter(
         ProviderConfig::Groq(_) => Box::new(GroqAdapter::new()),
         ProviderConfig::Deepgram(_) => Box::new(DeepgramAdapter::new()),
         ProviderConfig::Custom(_) => Box::new(CustomAdapter::new()),
+        ProviderConfig::Parakeet(_) => {
+            panic!("ParakeetAdapter must be built with an AppHandle at the call site, not via build_adapter")
+        }
     }
 }
 

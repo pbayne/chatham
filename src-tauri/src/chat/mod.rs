@@ -585,8 +585,8 @@ pub fn build_chat_adapter(provider: ProviderId) -> Result<Box<dyn ChatAdapter>> 
             anyhow::bail!("Copilot chat runs on a started CLI; build CopilotChatAdapter::new instead")
         }
         ProviderId::Custom => Ok(Box::new(CustomChatAdapter)),
-        ProviderId::Deepgram | ProviderId::Groq => {
-            anyhow::bail!("{provider} is a transcription provider and can't chat")
+        ProviderId::Gemini | ProviderId::Deepgram | ProviderId::Groq => {
+            anyhow::bail!("{provider} is not a chat provider")
         }
     }
 }

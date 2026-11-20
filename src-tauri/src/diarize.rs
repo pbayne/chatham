@@ -929,6 +929,248 @@ pub async fn delete(app: &AppHandle, engine: Engine) -> Result<()> {
     Ok(())
 }
 
+// ---- Parakeet ASR (on-device transcription via the same sidecar) ----------
+//
+// The sidecar's `transcribe`/`asr-status`/`asr-download` subcommands wrap
+// FluidAudio's Parakeet path. Unlike diarization, ASR is a batch call: a whole
+// chunk WAV in, one JSON object out. These helpers mirror the diarize spawn
+// pattern (`sidecar_path`, `humla-error:` stderr contract, streamed download
+// progress) so the STT adapter and the `asr_status`/`asr_download` commands
+// can reuse them.
+
+/// Whether the Parakeet model files are present on disk, per the sidecar's
+/// `asr-status`. Returns Ok(installed=false) when the sidecar binary itself is
+/// missing — the UI then treats Parakeet as "needs download" rather than
+/// erroring.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AsrStatus {
+    pub installed: bool,
+}
+
+pub async fn asr_status(app: &AppHandle) -> Result<AsrStatus> {
+    let sidecar = match sidecar_path(app) {
+        Ok(p) => p,
+        Err(_) => return Ok(AsrStatus { installed: false }),
+    };
+    let output = Command::new(&sidecar)
+        .arg("asr-status")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .map_err(|e| anyhow!("spawn speaker-diarize asr-status: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!("speaker-diarize asr-status: {stderr}"));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    serde_json::from_str(stdout.trim())
+        .map_err(|e| anyhow!("parse asr-status JSON: {e} -- {stdout}"))
+}
+
+/// Download (+ compile) the Parakeet model via the sidecar's `asr-download`,
+/// emitting `asr_download_progress` Tauri events for each progress line so the
+/// Settings UI can show a bar. Mirrors [`download`] for the diarizer: phases
+/// are FluidAudio's `listing` → `downloading` → `compiling`; a failure's
+/// message names which of the two steps (fetch vs prepare) failed.
+pub async fn asr_download(app: &AppHandle) -> Result<()> {
+    let _turn = DOWNLOAD_TURN.lock().await;
+    if matches!(asr_status(app).await, Ok(s) if s.installed) {
+        return Ok(());
+    }
+    let mut step = DownloadStep::Fetch;
+    let outcome = run_asr_download(app, &mut step).await;
+    outcome.map_err(|e| anyhow!("{}", step.failure(&e.to_string())))
+}
+
+/// Parakeet download progress. Separate event payload from the diarizer's
+/// (no `engine` discriminator — there is only one ASR model).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AsrDownloadProgress {
+    pub fraction: f64,
+    pub phase: String,
+}
+
+async fn run_asr_download(app: &AppHandle, step: &mut DownloadStep) -> Result<()> {
+    let sidecar = sidecar_path(app)?;
+    let mut child = Command::new(&sidecar)
+        .arg("asr-download")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| anyhow!("spawn speaker-diarize asr-download: {e}"))?;
+
+    let stdout = child.stdout.take().ok_or_else(|| anyhow!("no stdout"))?;
+    let stderr = child.stderr.take().ok_or_else(|| anyhow!("no stderr"))?;
+
+    let stderr_handle = tokio::spawn(async move {
+        let mut reader = BufReader::new(stderr).lines();
+        let mut buf = String::new();
+        while let Ok(Some(line)) = reader.next_line().await {
+            buf.push_str(&line);
+            buf.push('\n');
+        }
+        buf
+    });
+
+    let mut reader = BufReader::new(stdout).lines();
+    while let Ok(Some(line)) = reader.next_line().await {
+        let Some(v) = download_event(&line) else { continue };
+        *step = step.after(&v);
+        match v.get("event").and_then(|e| e.as_str()) {
+            Some("progress") => {
+                let progress = AsrDownloadProgress {
+                    fraction: v.get("fraction").and_then(|f| f.as_f64()).unwrap_or(0.0),
+                    phase: v
+                        .get("phase")
+                        .and_then(|p| p.as_str())
+                        .unwrap_or("downloading")
+                        .to_string(),
+                };
+                let _ = app.emit("asr_download_progress", progress);
+            }
+            Some("done") => {}
+            _ => {}
+        }
+    }
+
+    let exit = child.wait().await.map_err(|e| anyhow!("wait: {e}"))?;
+    if !exit.success() {
+        let stderr_text = stderr_handle.await.unwrap_or_default();
+        eprintln!("speaker-diarize asr-download failed:\n{stderr_text}");
+        return Err(anyhow!("{}", asr_sidecar_error(&stderr_text, exit)));
+    }
+    Ok(())
+}
+
+/// One word's text + millisecond bounds from Parakeet's `tokenTimings`.
+#[derive(Debug, Clone, Deserialize)]
+struct TokenTiming {
+    token: String,
+    /// Seconds from the start of the chunk.
+    start: f64,
+    end: f64,
+}
+
+/// The sidecar's `transcribe` payload: one JSON object with the text and
+/// optional per-token timings. Confidence/duration/rtfx are parsed for
+/// completeness but only the text + timings reach the transcript.
+#[derive(Debug, Clone, Deserialize)]
+struct TranscribePayload {
+    text: String,
+    #[serde(default)]
+    confidence: f64,
+    #[serde(default)]
+    duration: f64,
+    #[serde(default)]
+    rtfx: f64,
+    #[serde(default, rename = "tokenTimings")]
+    token_timings: Option<Vec<TokenTiming>>,
+}
+
+/// The result of a Parakeet transcribe: the full text plus word-level timings
+/// (ms, chunk-relative) ready to feed the same downstream path as Whisper.
+#[derive(Debug, Clone)]
+pub struct ParakeetTranscript {
+    pub text: String,
+    pub words: Vec<(String, u64, u64)>,
+}
+
+/// Transcribe one WAV via the sidecar's `transcribe` subcommand. `language` is
+/// an ISO 639-1 code or "auto"; "auto" (and any code the sidecar's `Language`
+/// enum doesn't know) is passed through as no `--language`, letting Parakeet
+/// use its default. Errors surface the sidecar's `humla-error:` line.
+pub async fn transcribe_file(
+    app: &AppHandle,
+    audio_path: &Path,
+    language: &str,
+) -> Result<ParakeetTranscript> {
+    let sidecar = sidecar_path(app)?;
+    let path_str = audio_path
+        .to_str()
+        .ok_or_else(|| anyhow!("non-utf8 audio path"))?;
+
+    let mut cmd = Command::new(&sidecar);
+    cmd.arg("transcribe").arg(path_str);
+    // The sidecar only knows a handful of language codes; "auto" and unknown
+    // codes are left off so Parakeet falls back to its own default rather than
+    // the sidecar rejecting the flag.
+    if language != "auto" && !language.trim().is_empty() {
+        cmd.arg("--language").arg(language);
+    }
+    let output = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .map_err(|e| anyhow!("spawn speaker-diarize transcribe: {e}"))?;
+
+    if !output.status.success() {
+        let clean = asr_sidecar_error(&String::from_utf8_lossy(&output.stderr), output.status);
+        return Err(anyhow!("{clean}"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let payload = parse_transcribe_payload(&stdout)
+        .map_err(|e| anyhow!("parse transcribe JSON: {e} -- {stdout}"))?;
+    let _ = (payload.confidence, payload.duration, payload.rtfx);
+    let words = payload
+        .token_timings
+        .unwrap_or_default()
+        .into_iter()
+        .map(|t| {
+            let start_ms = (t.start * 1000.0).max(0.0) as u64;
+            let end_ms = (t.end * 1000.0).max(0.0) as u64;
+            (t.token, start_ms, end_ms.max(start_ms))
+        })
+        .collect();
+    Ok(ParakeetTranscript { text: payload.text, words })
+}
+
+/// Extract the transcribe object from the sidecar's stdout. Like
+/// `parse_segment_payload`, a stray FluidAudio `print()` can trail our payload,
+/// so scan for the line that parses as the object rather than trusting the
+/// whole buffer.
+fn parse_transcribe_payload(stdout: &str) -> serde_json::Result<TranscribePayload> {
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.starts_with('{') {
+            if let Ok(p) = serde_json::from_str::<TranscribePayload>(line) {
+                return Ok(p);
+            }
+        }
+    }
+    serde_json::from_str::<TranscribePayload>(stdout.trim())
+}
+
+/// The ASR path tags its single error line `humla-error:` (see the sidecar's
+/// `writeError`), where the diarize path uses `chatham-error:`. Otherwise
+/// identical to [`sidecar_error`]: the tagged line wins; an untagged crash
+/// falls back to its last line + how the process exited.
+fn asr_sidecar_error(stderr: &str, exit: impl std::fmt::Display) -> String {
+    const TAG: &str = "humla-error:";
+    let tagged = stderr
+        .lines()
+        .filter_map(|l| l.strip_prefix(TAG))
+        .map(str::trim)
+        .filter(|m| !m.is_empty())
+        .last();
+    if let Some(message) = tagged {
+        return message.to_string();
+    }
+    let last = stderr
+        .lines()
+        .rev()
+        .map(str::trim)
+        .find(|l| !l.is_empty() && !l.starts_with(TAG));
+    match last {
+        Some(line) => format!("{line} (speaker-diarize {exit})"),
+        None => format!("speaker-diarize {exit}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -3315,6 +3315,7 @@ function SpeakersPicker({
 const CHIP_LABEL: Record<SummaryProvider, string> = {
   openai: "Cloud",
   anthropic: "Claude",
+  gemini: "Gemini",
   copilot: "Copilot",
   local: "Local",
   custom: "Custom",

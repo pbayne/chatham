@@ -119,6 +119,8 @@ function summariseProvider(cfg: ProviderConfig): string {
       return `Custom · ${cfg.model}`;
     case "local":
       return `Local · ${cfg.model_id} · ${cfg.preset} preset · GPU ${cfg.use_gpu ? "on" : "off"}`;
+    case "parakeet":
+      return "Parakeet · on-device (Neural Engine)";
   }
 }
 

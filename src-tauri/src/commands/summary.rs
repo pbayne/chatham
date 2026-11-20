@@ -12,6 +12,7 @@ use crate::db::{self, Note, NotePatch};
 use crate::languages;
 use crate::anthropic;
 use crate::custom_endpoint;
+use crate::gemini;
 use crate::openai;
 use crate::presets::{self, DEFAULT_SUMMARY_PRESET};
 use crate::providers::ProviderId;
@@ -41,6 +42,7 @@ pub(super) struct ResolvedProvider {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(super) enum Dispatch {
     Anthropic,
+    Gemini,
     Copilot,
     /// The user's own endpoint, which is never treated as OpenAI or Ollama
     /// whatever its URL looks like.
@@ -52,6 +54,7 @@ impl ResolvedProvider {
     pub(super) fn dispatch(&self) -> Dispatch {
         match self.provider {
             ProviderId::Anthropic => Dispatch::Anthropic,
+            ProviderId::Gemini => Dispatch::Gemini,
             ProviderId::Copilot => Dispatch::Copilot,
             ProviderId::Custom => Dispatch::Custom,
             _ => Dispatch::OpenAiCompatible,
@@ -72,6 +75,10 @@ impl ResolvedProvider {
         match self.dispatch() {
             Dispatch::Anthropic => {
                 anthropic::summarize(&self.api_key, &self.model, system_prompt, user_message, on_chunk)
+                    .await
+            }
+            Dispatch::Gemini => {
+                gemini::summarize(&self.api_key, &self.model, system_prompt, user_message, on_chunk)
                     .await
             }
             Dispatch::Copilot => {
@@ -208,6 +215,24 @@ pub(super) fn resolve_provider(
             Ok(ResolvedProvider {
                 provider: id,
                 base_url: anthropic::BASE.into(),
+                api_key,
+                model,
+                think: false,
+                copilot: None,
+            })
+        }
+        ProviderId::Gemini => {
+            let api_key = api_key
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| anyhow::anyhow!("Google Gemini API key not set"))?;
+            let model = db::get_setting(conn, "gemini_model")?
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| gemini::DEFAULT_MODEL.to_string());
+            eprintln!("[llm] resolved gemini: model={model}");
+            Ok(ResolvedProvider {
+                provider: id,
+                base_url: gemini::BASE.into(),
                 api_key,
                 model,
                 think: false,

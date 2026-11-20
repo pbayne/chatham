@@ -6,6 +6,7 @@
 export const PROVIDERS = [
   { id: "openai", label: "OpenAI", keychain: true, summarize: true, chat: true, transcribe: true },
   { id: "anthropic", label: "Anthropic", keychain: true, summarize: true, chat: true, transcribe: false },
+  { id: "gemini", label: "Google Gemini", keychain: true, summarize: true, chat: false, transcribe: false },
   { id: "copilot", label: "GitHub Copilot", keychain: false, summarize: true, chat: true, transcribe: false },
   { id: "deepgram", label: "Deepgram", keychain: true, summarize: false, chat: false, transcribe: true },
   { id: "groq", label: "Groq", keychain: true, summarize: false, chat: false, transcribe: true },
@@ -52,8 +53,8 @@ export function providerLabel(p: Provider): string {
   return PROVIDERS.find((s) => s.id === p)!.label;
 }
 
-export function isTranscribeKeyProvider(p: Provider): p is TranscribeKeyProvider {
-  return (TRANSCRIBE_KEY_PROVIDERS as readonly Provider[]).includes(p);
+export function isTranscribeKeyProvider(p: Provider | string): p is TranscribeKeyProvider {
+  return (TRANSCRIBE_KEY_PROVIDERS as readonly string[]).includes(p);
 }
 
 export function isKeyProvider(p: Provider): p is KeyProvider {

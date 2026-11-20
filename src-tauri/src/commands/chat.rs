@@ -582,7 +582,7 @@ fn resolve_chat(
             think: false,
             embed: EmbedOverride::default(),
         }),
-        ProviderId::Deepgram | ProviderId::Groq => unreachable!("filtered on the chat capability"),
+        ProviderId::Gemini | ProviderId::Deepgram | ProviderId::Groq => unreachable!("filtered on the chat capability"),
     }
 }
 

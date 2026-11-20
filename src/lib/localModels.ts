@@ -12,12 +12,14 @@ export const RECOMMENDED_OLLAMA_MODEL_16GB = "qwen3.5:4b";
 // Recommended model for SUMMARIZATION specifically (Summary tab / onboarding
 // summary step). Unlike the chat recommendation above — which is picked for
 // agentic tool-calling — summary quality hinges on long-context handling,
-// instruction-following and structured (bullet / action-item) output. Qwen2.5
-// is explicitly tuned for structured output and instruction-following, and the
-// 14B tier is the quality-per-GB sweet spot that still co-runs with Whisper on
-// a 24 GB+ Mac (~9 GB weights at the default q4_K_M). 16 GB Macs fall back to
-// the same small model as chat. See docs/research (STT/summary re-eval 2026).
-export const RECOMMENDED_SUMMARY_MODEL = "qwen2.5:14b";
+// instruction-following and structured (bullet / action-item) output.
+// Qwen3-30B-A3B is a Mixture-of-Experts with only ~3B active params per token,
+// so it decodes about as fast as a dense ~4-8B model while delivering ~30B-class
+// summary quality, with a native 256K context ideal for long transcripts. Its
+// ~19 GB weights co-run comfortably with Whisper on a 32 GB+ Mac. On a 24 GB Mac
+// prefer qwen2.5:14b (~9 GB); 16 GB Macs fall back to the small chat model.
+// See docs/research (STT/summary re-eval 2026).
+export const RECOMMENDED_SUMMARY_MODEL = "qwen3:30b";
 export const RECOMMENDED_SUMMARY_MODEL_16GB = RECOMMENDED_OLLAMA_MODEL_16GB;
 
 /// The recommendations in preference order, highest RAM tier first. Callers that

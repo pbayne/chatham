@@ -44,6 +44,23 @@ pub async fn diarize_delete(app: AppHandle, engine: Option<String>) -> Result<()
     diarize::delete(&app, parse_engine(engine)?).await.map_err(err)
 }
 
+// ---- Parakeet ASR model management -----------------------------------------
+//
+// Parakeet transcription runs in the same `speaker-diarize` sidecar as the
+// diarizer, so its model lifecycle mirrors `diarize_status`/`diarize_download`
+// — just no `engine` arg (Parakeet v3 is the one model). The download streams
+// `asr_download_progress` Tauri events; the Settings UI shows a bar off those.
+
+#[tauri::command]
+pub async fn asr_status(app: AppHandle) -> Result<diarize::AsrStatus, String> {
+    diarize::asr_status(&app).await.map_err(err)
+}
+
+#[tauri::command]
+pub async fn asr_download(app: AppHandle) -> Result<(), String> {
+    diarize::asr_download(&app).await.map_err(err)
+}
+
 // ---- Local Whisper model management ----------------------------------------
 
 fn local_model_dir(app: &AppHandle) -> Result<PathBuf, String> {

@@ -8,6 +8,8 @@ use std::fmt;
 pub enum ProviderId {
     OpenAi,
     Anthropic,
+    /// Google Gemini, through the `generateContent` API (summary only).
+    Gemini,
     /// GitHub Copilot, through the user's subscription and the Copilot CLI.
     /// Signed in by OAuth rather than a pasted key (`copilot::auth`).
     Copilot,
@@ -29,6 +31,8 @@ pub enum AuthScheme {
     /// Anthropic: the key rides in `x-api-key`, and the API version header is
     /// mandatory on every request.
     AnthropicKey,
+    /// Google Gemini: the key rides in `x-goog-api-key`.
+    GoogleKey,
 }
 
 impl AuthScheme {
@@ -39,6 +43,7 @@ impl AuthScheme {
             AuthScheme::Bearer => vec![("Authorization", format!("Bearer {key}"))],
             AuthScheme::Token => vec![("Authorization", format!("Token {key}"))],
             AuthScheme::AnthropicKey => crate::anthropic::headers(key),
+            AuthScheme::GoogleKey => crate::gemini::headers(key),
         }
     }
 }
@@ -92,6 +97,17 @@ pub const REGISTRY: &[ProviderSpec] = &[
             auth: AuthScheme::AnthropicKey,
         }),
         capabilities: Capabilities { summarize: true, chat: true, transcribe: false },
+    },
+    ProviderSpec {
+        id: ProviderId::Gemini,
+        id_str: "gemini",
+        label: "Google Gemini",
+        keychain_account: Some("gemini_api_key"),
+        key_test: Some(KeyTest {
+            url: "https://generativelanguage.googleapis.com/v1beta/models",
+            auth: AuthScheme::GoogleKey,
+        }),
+        capabilities: Capabilities { summarize: true, chat: false, transcribe: false },
     },
     ProviderSpec {
         id: ProviderId::Copilot,
@@ -216,6 +232,7 @@ mod tests {
     fn keychain_accounts_are_unchanged() {
         assert_eq!(ProviderId::OpenAi.keychain_account(), Some("openai_api_key"));
         assert_eq!(ProviderId::Anthropic.keychain_account(), Some("anthropic_api_key"));
+        assert_eq!(ProviderId::Gemini.keychain_account(), Some("gemini_api_key"));
         assert_eq!(ProviderId::Deepgram.keychain_account(), Some("deepgram_api_key"));
         assert_eq!(ProviderId::Groq.keychain_account(), Some("groq_api_key"));
         assert_eq!(ProviderId::Local.keychain_account(), None);
@@ -271,6 +288,18 @@ mod tests {
     }
 
     #[test]
+    fn gemini_summarises_only_on_the_google_key_scheme() {
+        assert_eq!(ProviderId::parse("gemini"), Some(ProviderId::Gemini));
+        assert_eq!(
+            ProviderId::Gemini.capabilities(),
+            Capabilities { summarize: true, chat: false, transcribe: false }
+        );
+        let test = ProviderId::Gemini.spec().key_test.unwrap();
+        assert_eq!(test.url, format!("{}/models", crate::gemini::BASE));
+        assert_eq!(test.auth, AuthScheme::GoogleKey);
+    }
+
+    #[test]
     fn auth_header_values() {
         assert_eq!(AuthScheme::Bearer.headers("k"), vec![("Authorization", "Bearer k".to_string())]);
         assert_eq!(AuthScheme::Token.headers("k"), vec![("Authorization", "Token k".to_string())]);
@@ -280,6 +309,10 @@ mod tests {
                 ("x-api-key", "k".to_string()),
                 ("anthropic-version", crate::anthropic::VERSION.to_string()),
             ]
+        );
+        assert_eq!(
+            AuthScheme::GoogleKey.headers("k"),
+            vec![("x-goog-api-key", "k".to_string())]
         );
     }
 }

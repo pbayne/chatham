@@ -97,6 +97,16 @@ export async function computeSetupStatus(): Promise<SetupStatus> {
       provider: "local",
       model: modelId,
     };
+  } else if (def?.provider === "parakeet") {
+    // On-device Parakeet (FluidAudio/ANE). Ready once its model is downloaded,
+    // which the ASR sidecar reports via asr_status (no whisper model file).
+    const installed = await ipc.asrStatus().then((s) => s.installed).catch(() => false);
+    stt = {
+      working: installed,
+      kind: "local",
+      provider: "local",
+      model: "parakeet-tdt-v3",
+    };
   } else if (def?.provider === "custom") {
     stt = {
       working: await customDefaultWorking(def),

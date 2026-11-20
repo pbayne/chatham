@@ -87,6 +87,7 @@ export const LOCAL_PROVIDER = {
 const PROVIDER_PICKER_LABEL: Record<Provider, string> = {
   openai: "Cloud (OpenAI)",
   anthropic: "Cloud (Anthropic)",
+  gemini: "Cloud (Google Gemini)",
   copilot: "Cloud (GitHub Copilot)",
   local: "Local (any OpenAI-compatible server)",
   custom: "Custom (OpenAI-compatible API)",
