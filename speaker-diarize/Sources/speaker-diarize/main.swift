@@ -414,6 +414,100 @@ func runDiarizeNemotron(audioPath: String) async -> Int32 {
     }
 }
 
+// MARK: - Parakeet ASR (speech-to-text)
+
+/// Parakeet TDT v3, int8 encoder. The same FluidAudio shared cache the diarizer
+/// uses, so the Rust side's `<app_data>/FluidAudio/Models` logic finds it.
+let asrModelVersion: AsrModelVersion = .v3
+let asrEncoderPrecision: ParakeetEncoderPrecision = .int8
+
+func asrModelsDirectory() -> URL {
+    AsrModels.defaultCacheDirectory(for: asrModelVersion)
+}
+
+/// Whether the Parakeet component bundles and vocabulary are on disk for this
+/// version/precision — the same check FluidAudio runs before a download.
+func asrFilesPresent() -> Bool {
+    AsrModels.modelsExist(
+        at: asrModelsDirectory(),
+        version: asrModelVersion,
+        encoderPrecision: asrEncoderPrecision
+    )
+}
+
+func parseStringFlag(_ flag: String) -> String? {
+    guard let i = args.firstIndex(of: flag), i + 1 < args.count else { return nil }
+    return args[i + 1]
+}
+
+func runAsrStatus() {
+    writeStdout(["installed": asrFilesPresent()])
+}
+
+func runAsrDownload() async -> Int32 {
+    do {
+        // downloadAndLoad fetches the compiled components + vocab into the shared
+        // cache and loads them once, so the first transcribe after a stop neither
+        // fetches nor compiles. Defaults to the FluidAudio cache directory.
+        _ = try await AsrModels.downloadAndLoad(
+            version: asrModelVersion,
+            encoderPrecision: asrEncoderPrecision,
+            progressHandler: forwardDownloadProgress
+        )
+        writeStdout(["event": "done"])
+        return 0
+    } catch {
+        writeDownloadFailure(error, filesOnDisk: asrFilesPresent())
+        return 1
+    }
+}
+
+func runTranscribe(audioPath: String, language: Language?) async -> Int32 {
+    do {
+        // Loading a missing model would download it here, after a recording
+        // stopped; make the caller run `asr-download` first instead.
+        guard asrFilesPresent() else {
+            writeError("Parakeet model not downloaded")
+            return 1
+        }
+        // loadLocal reads straight from the cache with no network, mirroring the
+        // reference batch path's `--local-model-dir` branch.
+        let models = try AsrModels.loadLocal(
+            from: asrModelsDirectory(),
+            version: asrModelVersion,
+            encoderPrecision: asrEncoderPrecision
+        )
+        let manager = AsrManager()
+        try await manager.loadModels(models)
+
+        // ASRConfig.default enables internal streaming for files over ~30s, so a
+        // single transcribe(url:) handles multi-minute meeting WAVs.
+        var decoderState = TdtDecoderState.make(decoderLayers: await manager.decoderLayerCount)
+        let result = try await manager.transcribe(
+            URL(fileURLWithPath: audioPath),
+            decoderState: &decoderState,
+            language: language
+        )
+
+        var payload: [String: Any] = [
+            "text": result.text,
+            "confidence": Double(result.confidence),
+            "duration": result.duration,
+            "rtfx": Double(result.rtfx),
+        ]
+        if let timings = result.tokenTimings {
+            payload["tokenTimings"] = timings.map { t in
+                ["token": t.token, "start": t.startTime, "end": t.endTime] as [String: Any]
+            }
+        }
+        writeStdout(payload)
+        return 0
+    } catch {
+        writeError(error)
+        return 1
+    }
+}
+
 let semaphore = DispatchSemaphore(value: 0)
 var exitCode: Int32 = 0
 
@@ -490,6 +584,23 @@ case "embed":
     let ranges = parseRanges()
     Task {
         exitCode = await runEmbed(audioPath: path, ranges: ranges)
+        semaphore.signal()
+    }
+    semaphore.wait()
+case "transcribe":
+    guard args.count >= 3 else { usage() }
+    let path = args[2]
+    let language = parseStringFlag("--language").flatMap { Language(rawValue: $0.lowercased()) }
+    Task {
+        exitCode = await runTranscribe(audioPath: path, language: language)
+        semaphore.signal()
+    }
+    semaphore.wait()
+case "asr-status":
+    runAsrStatus()
+case "asr-download":
+    Task {
+        exitCode = await runAsrDownload()
         semaphore.signal()
     }
     semaphore.wait()

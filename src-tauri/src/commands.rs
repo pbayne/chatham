@@ -7417,6 +7417,23 @@ async fn transcribe_chunk(
         if rms < rms_floor {
             return Ok(());
         }
+        // Silence auto-stop activity clock (#silence): a chunk that clears the
+        // RMS gate IS audible sound — bump the watchdog's clock HERE, before
+        // transcription, not only after a chunk successfully reaches the note.
+        // Transcription can stall, queue behind the per-session gate, error, or
+        // be dropped by the live-append guard while people are still talking;
+        // keying the clock to "audible chunk arrived" rather than "chunk
+        // transcribed + appended" is what keeps an active meeting from being
+        // cut off at the silence threshold. (The post-append bump below stays as
+        // a harmless belt-and-suspenders refresh.)
+        {
+            let state: State<AppState> = app.state();
+            let s = state.recording.lock();
+            *s.last_activity.lock() = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+        }
     }
 
     // Serialize transcription per session: each chunk's initial_prompt must

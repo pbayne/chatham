@@ -170,28 +170,13 @@ const PAUSE_BAR_HALF_W: f32 = 0.05;
 const PAUSE_BAR_CENTRE: f32 = 0.105;
 const PAUSE_RADIUS: f32 = 0.022;
 
-/// Proportions of the glyph, as fractions of its box: a bumblebee — a rounded
-/// body with two antennae — matching the mark the app itself uses (see
-/// `icons/bee.svg`). The values are optically corrected for the 18pt the menu
-/// bar renders at, which is the only size this is ever seen at: strokes that
-/// look right in the app's icon come out sub-pixel here.
-const BODY_CX: f32 = 0.5;
-/// The body is the *upper* half of an ellipse centred on its own flat bottom
-/// edge — a dome, not a disc.
-const BODY_BOTTOM: f32 = 0.90;
-const BODY_RX: f32 = 0.44;
-const BODY_RY: f32 = 0.43;
-/// Each antenna is a stroke from the top of the body out to the upper corner.
-const ANTENNA_INNER: (f32, f32) = (0.42, 0.50);
-const ANTENNA_OUTER: (f32, f32) = (0.24, 0.13);
-const ANTENNA_HALF_WIDTH: f32 = 0.042;
-
-/// The bee glyph as straight (non-premultiplied) RGBA.
+/// The Chatham mark glyph as straight (non-premultiplied) RGBA — three
+/// concentric "C" sound-ripple arcs, matching the app icon.
 ///
 /// Drawn rather than shipped as a PNG so there is no second asset to keep in
 /// sync with the app's own mark, and no image decoder feature to enable.
-/// Coverage is 3×3 supersampled, which is what keeps the dome's edge and the
-/// antennae from looking notched at this size.
+/// Coverage is 3×3 supersampled, which keeps the arc edges from looking
+/// notched at the 18pt the menu bar renders at.
 pub(crate) fn bee_glyph_rgba(size: u32, rgb: (u8, u8, u8)) -> Vec<u8> {
     let s = size as f32;
     let mut out = Vec::with_capacity((size * size * 4) as usize);
@@ -213,29 +198,27 @@ pub(crate) fn bee_glyph_rgba(size: u32, rgb: (u8, u8, u8)) -> Vec<u8> {
     out
 }
 
-/// Is this point (in 0..1 glyph space) inside the bee?
+/// Is this point (in 0..1 glyph space) inside the Chatham mark — three
+/// concentric "C" sound-ripple arcs opening to the right, matching the app
+/// icon. A point is covered if it lands within the stroke of any arc and is
+/// not in the right-hand opening gap.
 fn covers(px: f32, py: f32) -> bool {
-    // Body: the top half of an ellipse sitting on `BODY_BOTTOM`.
-    let dx = (px - BODY_CX) / BODY_RX;
-    let dy = (py - BODY_BOTTOM) / BODY_RY;
-    if py <= BODY_BOTTOM && dx * dx + dy * dy <= 1.0 {
-        return true;
+    // Centre of the glyph; radii/stroke as fractions of the box, tuned to read
+    // at the 18pt the menu bar renders at.
+    let (cx, cy) = (0.5f32, 0.5f32);
+    let (dx, dy) = (px - cx, py - cy);
+    let r = (dx * dx + dy * dy).sqrt();
+    // Angle from +x axis; the opening is a wedge on the right (|angle| < gap).
+    let ang = dy.atan2(dx).abs(); // 0 at +x (right), PI at -x (left)
+    const HALF_STROKE: f32 = 0.035;
+    // (radius, half-opening-angle) for each ring: outer -> inner, gap widens inward.
+    const RINGS: [(f32, f32); 3] = [(0.42, 0.60), (0.28, 0.72), (0.14, 0.92)];
+    for (ring_r, gap) in RINGS {
+        if (r - ring_r).abs() <= HALF_STROKE && ang >= gap {
+            return true;
+        }
     }
-    // Antennae: one stroke and its mirror image.
-    let mirrored = (1.0 - px, py);
-    on_antenna(px, py) || on_antenna(mirrored.0, mirrored.1)
-}
-
-/// Distance from a point to the antenna segment, as a round-capped stroke.
-fn on_antenna(px: f32, py: f32) -> bool {
-    let (ax, ay) = ANTENNA_OUTER;
-    let (bx, by) = ANTENNA_INNER;
-    let (vx, vy) = (bx - ax, by - ay);
-    let (wx, wy) = (px - ax, py - ay);
-    let t = ((wx * vx + wy * vy) / (vx * vx + vy * vy)).clamp(0.0, 1.0);
-    let (cx, cy) = (ax + vx * t, ay + vy * t);
-    let (ddx, ddy) = (px - cx, py - cy);
-    ddx * ddx + ddy * ddy <= ANTENNA_HALF_WIDTH * ANTENNA_HALF_WIDTH
+    false
 }
 
 
@@ -1049,18 +1032,23 @@ mod tests {
             let yi = (y * px as f32) as u32;
             rgba[((yi * px + xi) * 4 + 3) as usize]
         };
-        // Solid through the middle of the body, empty in the bottom corners:
-        // a dome sitting on its own flat edge, not a box and not a full disc.
-        assert_eq!(alpha(0.5, 0.7), 255);
-        assert_eq!(alpha(0.02, 0.88), 0);
-        assert_eq!(alpha(0.98, 0.88), 0);
-        // Nothing below the body's flat bottom.
-        assert_eq!(alpha(0.5, 0.97), 0);
-        // Two antennae up top, and clear sky between them — the gap is what
-        // makes it read as a bee rather than a blob.
-        assert_eq!(alpha(0.22, 0.13), 255);
-        assert_eq!(alpha(0.78, 0.13), 255);
-        assert_eq!(alpha(0.5, 0.13), 0);
+        // Three concentric "C" arcs opening to the right. On the LEFT side
+        // (angle = PI) every ring's stroke is drawn, so the left edge of each
+        // ring stroke is drawn, so the left edge of each ring radius is solid:
+        // outer r=0.42 -> x=0.08, mid r=0.28 -> x=0.22, inner r=0.14 -> x=0.36
+        // (all at y=0.5).
+        assert_eq!(alpha(0.08, 0.5), 255);
+        assert_eq!(alpha(0.22, 0.5), 255);
+        assert_eq!(alpha(0.36, 0.5), 255);
+        // Gaps BETWEEN the rings on the left are empty (r=0.35, r=0.21).
+        assert_eq!(alpha(0.15, 0.5), 0);
+        assert_eq!(alpha(0.29, 0.5), 0);
+        // The dead centre is empty.
+        assert_eq!(alpha(0.5, 0.5), 0);
+        // The RIGHT side is the opening of the C — the arcs don't close there,
+        // so the mid-right points at each ring radius are empty.
+        assert_eq!(alpha(0.90, 0.5), 0);
+        assert_eq!(alpha(0.76, 0.5), 0);
         // Colour is carried on every pixel; only alpha shapes the glyph.
         assert_eq!(&rgba[0..3], &[1, 2, 3]);
     }
