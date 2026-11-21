@@ -28,12 +28,14 @@ import { bindDeepLinks } from "./lib/deepLink";
 import { useThemeBoot } from "./lib/theme";
 import { usePaletteBoot } from "./lib/palette";
 import { useZoomBoot } from "./lib/zoom";
+import { useTimeFormatBoot } from "./lib/timeFormat";
 
 export default function App() {
   useGlobalShortcuts();
   useThemeBoot();
   usePaletteBoot();
   useZoomBoot();
+  useTimeFormatBoot();
   const refresh = useNotesStore((s) => s.refresh);
   const refreshCloud = useCloudStore((s) => s.refresh);
 

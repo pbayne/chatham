@@ -1,13 +1,47 @@
 import { type MouseEvent, type KeyboardEvent, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Link } from "react-router-dom";
-import { Building2, Check, Folder as FolderIcon, Lock, Users } from "lucide-react";
+import { Building2, Check, Folder as FolderIcon, Lock, Users, FileText, AudioLines, Captions, Sparkles, type LucideIcon } from "lucide-react";
 import { type Client, type Folder, type Note } from "../lib/ipc";
-import { formatNoteDate, noteExcerpt, noteState, noteFacets, NOTE_STATE_LABEL, NOTE_FACET_LABEL, NOTE_FACET_COLOR, NOTE_FACET_ORDER, type NoteState } from "../lib/noteList";
+import { formatNoteDate, noteExcerpt, noteState, noteFacets, NOTE_STATE_LABEL, NOTE_FACET_LABEL, NOTE_FACET_COLOR, NOTE_FACET_ORDER, type NoteState, type NoteFacet } from "../lib/noteList";
 import { cn } from "../lib/cn";
 import { noteActivity } from "../lib/noteActivity";
 import { useRecordingStore } from "../lib/store";
 import { formatTime, useCaptureElapsed } from "../lib/captureClock";
+
+// What a note holds, as a glyph: notes body, audio, transcript, summary.
+// The colours come from NOTE_FACET_COLOR so the icon and the (card) chip agree.
+const FACET_ICON: Record<NoteFacet, LucideIcon> = {
+  notes: FileText,
+  audio: AudioLines,
+  transcribed: Captions,
+  summarized: Sparkles,
+};
+
+// A row of facet glyphs — the at-a-glance "what's in this note" readout.
+// `title` on each gives the hover label; the set is also announced for a11y.
+function FacetIcons({ facets, size = 13 }: { facets: Set<NoteFacet>; size?: number }) {
+  const present = NOTE_FACET_ORDER.filter((f) => facets.has(f));
+  if (present.length === 0) return null;
+  return (
+    <span className="inline-flex items-center gap-1.5 shrink-0" aria-label={`Contains: ${present.map((f) => NOTE_FACET_LABEL[f]).join(", ")}`}>
+      {present.map((f) => {
+        const Icon = FACET_ICON[f];
+        return (
+          <span key={f} title={NOTE_FACET_LABEL[f]} className="inline-flex">
+            <Icon
+              size={size}
+              strokeWidth={1.8}
+              aria-hidden
+              style={{ color: NOTE_FACET_COLOR[f] }}
+            />
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 
 // Selection intent reported to the parent. Only the shift flag matters (range
 // vs toggle); works for a modifier-click, the checkbox, and the keyboard toggle.
@@ -129,6 +163,7 @@ export function NoteCard({
           <span className="text-[15px] font-medium leading-tight text-[var(--color-text)] truncate min-w-0 flex-1">
             {title}
           </span>
+          <FacetIcons facets={facets} size={13} />
           {client && (
             <span className="hidden sm:inline-flex items-center gap-1 text-[11.5px] text-[var(--color-text-muted)] shrink-0 max-w-[10rem]">
               <Building2 size={11} strokeWidth={1.7} aria-hidden className="opacity-70 shrink-0" />
@@ -218,26 +253,10 @@ export function NoteCard({
             {shown.label}
             {activity?.timed && <LiveElapsed />}
           </span>
-          {/* Facet chips: color-coded markers for what the note holds, so you
-              can tell at a glance what's done vs still to do. */}
-          {NOTE_FACET_ORDER.filter((f) => facets.has(f)).map((f) => (
-            <span
-              key={f}
-              className="inline-flex items-center gap-1 whitespace-nowrap rounded-full px-1.5 py-0.5"
-              style={{
-                color: NOTE_FACET_COLOR[f],
-                background: `color-mix(in srgb, ${NOTE_FACET_COLOR[f]} 12%, transparent)`,
-              }}
-              title={NOTE_FACET_LABEL[f]}
-            >
-              <span
-                aria-hidden
-                className="w-[5px] h-[5px] rounded-full shrink-0"
-                style={{ background: NOTE_FACET_COLOR[f] }}
-              />
-              {NOTE_FACET_LABEL[f]}
-            </span>
-          ))}
+          {/* Facet glyphs: color-coded icons for what the note holds (body,
+              audio, transcript, summary), so you can tell at a glance what's
+              done vs still to do. */}
+          <FacetIcons facets={facets} size={14} />
           {note.private && note.workspace_id && (
             // Only inside a workspace: every Personal note is private, so the
             // glyph would say nothing there and appear on every card (#191).

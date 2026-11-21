@@ -5,6 +5,7 @@ import { formatBytes, s as plural } from "../components/format";
 import { HotkeyField } from "../components/HotkeyField";
 import { LaunchAtLoginField } from "../components/LaunchAtLoginField";
 import { Row, Section } from "../components/Section";
+import { Segmented } from "../components/Segmented";
 import { Toggle } from "../components/Toggle";
 import type { SettingsHook } from "../useSettings";
 
@@ -72,6 +73,7 @@ export function RecordingSection({
           />
         )}
         <StoredAudioCleanup />
+        <AudioQualityRow s={s} update={update} />
         <PastCaptureCompress />
       </Section>
 
@@ -222,6 +224,43 @@ function SilenceAutoStopSection() {
   );
 }
 
+// Audio compression quality (#audio-compress). Standard is transparent for
+// voice; Small / Tiny use HE-AAC to trade fidelity for disk. All three stay
+// natively playable + re-diarizable (no Opus decoder needed). New recordings
+// compress to the chosen tier; "Compress old recordings" re-encodes to it too.
+const AUDIO_QUALITY_OPTIONS: { value: string; label: string }[] = [
+  { value: "standard", label: "Standard" },
+  { value: "small", label: "Small" },
+  { value: "tiny", label: "Tiny" },
+];
+
+function AudioQualityRow({
+  s,
+  update,
+}: Pick<SettingsHook, "s" | "update">) {
+  const quality = s.audio_quality || "standard";
+  const desc =
+    quality === "tiny"
+      ? "Tiny: ~16 kbps HE-AAC — smallest files, rougher voice. Good for archiving."
+      : quality === "small"
+        ? "Small: ~24 kbps HE-AAC — clearly smaller, still clean for speech."
+        : "Standard: 32 kbps AAC — transparent for voice. The default.";
+  return (
+    <Row
+      label="Audio quality"
+      description={desc}
+      control={
+        <Segmented
+          label="Audio quality"
+          value={quality}
+          onChange={(v) => update("audio_quality", v)}
+          options={AUDIO_QUALITY_OPTIONS}
+        />
+      }
+    />
+  );
+}
+
 // Batch-compress old captures' leftover playback.wav → .m4a (#audio-compress).
 // New recordings compress automatically after transcription; this backfills
 // anything recorded before that, reclaiming disk with no quality loss for
@@ -238,12 +277,12 @@ function PastCaptureCompress() {
     try {
       const r = await ipc.compressPastCaptures();
       if (r.converted === 0) {
-        setResult("Nothing to compress — all recordings are already compact.");
+        setResult("Nothing to shrink — every recording is already at or below this quality.");
       } else {
         const saved = formatBytes(r.bytes_saved);
         const failed = r.failed > 0 ? ` (${r.failed} could not be converted)` : "";
         setResult(
-          `Compressed ${r.converted} recording${plural(r.converted)}, reclaimed ${saved}${failed}.`,
+          `Re-encoded ${r.converted} stream${plural(r.converted)}, reclaimed ${saved}${failed}.`,
         );
       }
     } catch (e) {
@@ -256,7 +295,7 @@ function PastCaptureCompress() {
   return (
     <Row
       label="Compress old recordings"
-      description="Shrink previously recorded audio to the compact .m4a format new recordings already use. No quality loss for speech; transcripts, speaker labels and timelines are untouched."
+      description="Re-encode all previously recorded audio down to the Audio quality selected above. Only shrinks streams larger than that tier; transcripts, speaker labels and timelines are untouched."
       control={
         <div className="flex flex-col items-end gap-1">
           <button type="button" className="nd-btn" onClick={run} disabled={busy}>

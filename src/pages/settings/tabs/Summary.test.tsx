@@ -20,6 +20,7 @@ describe("SummaryTab provider setting", () => {
     expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
       "Cloud (OpenAI)",
       "Cloud (Anthropic)",
+      "Cloud (Google Gemini)",
       "Cloud (GitHub Copilot)",
       "Local (any OpenAI-compatible server)",
       "Custom (OpenAI-compatible API)",

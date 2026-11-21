@@ -1,5 +1,6 @@
 import { type Note } from "./ipc";
 import { stripSpeakerLabels } from "./speakers";
+import { hour12Now } from "./timeFormat";
 
 // Shared helpers for the note-list views (All notes, Folder).
 
@@ -18,7 +19,7 @@ export function formatNoteDate(ts: number): string {
   const time = d.toLocaleTimeString(undefined, {
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
+    hour12: hour12Now(),
   });
   return `${date} · ${time}`;
 }

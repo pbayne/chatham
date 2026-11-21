@@ -3,6 +3,7 @@
 // into render groups with session boundaries for dividers.
 
 import type { NoteSession, TimelineEntry } from "./ipc";
+import { hour12Now } from "./timeFormat";
 
 /// Format a millisecond duration as `m:ss` (or `h:mm:ss` past an hour).
 export function formatDuration(ms: number): string {
@@ -54,6 +55,7 @@ export function formatSessionCaption(session: NoteSession): string {
           day: "numeric",
           hour: "2-digit",
           minute: "2-digit",
+          hour12: hour12Now(),
         }),
       );
     }

@@ -3,6 +3,7 @@ import { RotateCcw, Trash2 } from "lucide-react";
 import { ipc, type Note } from "../lib/ipc";
 import { useNotesStore } from "../lib/store";
 import { useCloudStore } from "../lib/cloud";
+import { hour12Now } from "../lib/timeFormat";
 
 function formatDeleted(ts: number | null | undefined): string {
   if (!ts) return "";
@@ -11,7 +12,7 @@ function formatDeleted(ts: number | null | undefined): string {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
+    hour12: hour12Now(),
   });
 }
 

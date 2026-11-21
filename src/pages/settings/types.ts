@@ -29,6 +29,8 @@ export type EditableKey = Exclude<
   | "onboarding_step"
   | "telemetry_enabled"
   | "record_hotkey"
+  // Owned by its own store (src/lib/timeFormat.ts), like theme/palette.
+  | "time_format"
   // Owned by Home's offer card (src/lib/nemotronOffer.ts).
   | "nemotron_offer"
 >;
@@ -45,6 +47,7 @@ export const DEFAULTS: Record<EditableKey, string> = {
   keep_awake: "true",
   capture_screenshots_enabled: "false",
   capture_clipboard_enabled: "false",
+  audio_quality: "standard",
   close_to_tray: "false",
   sync_audio: "true",
   custom_vocabulary: "",

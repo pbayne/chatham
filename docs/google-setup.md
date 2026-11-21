@@ -55,7 +55,7 @@ The code reads the ID from the `GOOGLE_OAUTH_CLIENT_ID` env var at compile time
 For a one-off local build:
 
 ```bash
-cd ~/Development/humla
+cd ~/Development/chatham
 GOOGLE_OAUTH_CLIENT_ID="PASTE_YOUR_CLIENT_ID.apps.googleusercontent.com" \
   ./scripts/build-mcp.sh && \
 GOOGLE_OAUTH_CLIENT_ID="PASTE_YOUR_CLIENT_ID.apps.googleusercontent.com" \

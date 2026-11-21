@@ -49,6 +49,7 @@ import { harvestSpeakerNames } from "../lib/speakerNames";
 import { NEMOTRON_MAX_SPEAKERS } from "../lib/diarizeEngine";
 import { SPEAKER_COUNT_OPTIONS, speakerCountLabel } from "../lib/speakerCount";
 import { htmlToText } from "../lib/noteList";
+import { hour12Now } from "../lib/timeFormat";
 import { formatDateChip, monthGrid, toTimeInput, withTime } from "../lib/noteDate";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/Popover";
 import { shouldAdoptRemoteBody, shouldAdoptRemoteTitle, shouldRequestTitleForBody } from "../lib/noteSync";
@@ -1405,7 +1406,7 @@ export function Note() {
                         day: "numeric",
                         hour: "2-digit",
                         minute: "2-digit",
-                        hour12: false,
+                        hour12: hour12Now(),
                       })}
                     </span>
                     <span className="flex-1 truncate text-[var(--color-text)]">

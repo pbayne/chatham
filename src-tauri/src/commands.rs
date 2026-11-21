@@ -5653,16 +5653,47 @@ fn mix_with_mic_ducking(mic: &[f32], sys: &[f32]) -> Vec<f32> {
     mixed
 }
 
-/// The bitrate afconvert encodes compressed playback at. 32 kbps mono AAC is
-/// transparent for 16 kHz mono speech — the recording is already band-limited
-/// and single-channel — and takes a ~100 MB hour-long `playback.wav` down to
-/// ~13 MB. Chosen as the knee of the size/quality curve for voice; the diarizer
-/// and the player both decode it natively via AVFoundation / AVAudioFile.
-const PLAYBACK_AAC_BITRATE: &str = "32000";
+/// Audio compression tier, from the `audio_quality` setting. Smaller tiers
+/// trade voice fidelity for disk. All three decode natively via AVFoundation /
+/// AVAudioFile (so playback + re-diarize keep working) — HE-AAC ("aach") is
+/// Apple's low-bitrate codec, giving Opus-class sizes without a bundled Opus
+/// decoder (the dependency proxy blocks shipping new binaries).
+#[derive(Clone, Copy)]
+struct AudioQuality {
+    /// afconvert `-d` codec: "aac" (LC-AAC) or "aach" (HE-AAC).
+    codec: &'static str,
+    /// afconvert `-b` bitrate in bits/sec.
+    bitrate: &'static str,
+}
+
+impl AudioQuality {
+    /// Map the stored setting string → tier. Unknown / absent → Standard.
+    fn from_setting(s: Option<&str>) -> Self {
+        match s {
+            // ~24 kbps HE-AAC: clearly smaller, still clean for speech.
+            Some("small") => AudioQuality { codec: "aach", bitrate: "24000" },
+            // ~16 kbps HE-AAC: smallest, Opus-equivalent, rougher voice.
+            Some("tiny") => AudioQuality { codec: "aach", bitrate: "16000" },
+            // 32 kbps LC-AAC: the long-standing default, transparent for voice.
+            _ => AudioQuality { codec: "aac", bitrate: "32000" },
+        }
+    }
+}
+
+/// Read the `audio_quality` setting and resolve it to a tier. Best-effort:
+/// any DB error falls back to Standard.
+fn audio_quality(app: &AppHandle) -> AudioQuality {
+    let stored = {
+        let state = app.state::<crate::AppState>();
+        let conn = state.db.lock();
+        crate::db::get_setting(&conn, "audio_quality").ok().flatten()
+    };
+    AudioQuality::from_setting(stored.as_deref())
+}
 
 /// Re-encode a session's `playback.wav` to a far smaller `playback.m4a`
-/// (32 kbps mono AAC) once its transcription has completed, then delete the
-/// source WAV (#audio-compress).
+/// (codec/bitrate per the `audio_quality` tier) once its transcription has
+/// completed, then delete the source WAV (#audio-compress).
 ///
 /// The *only* caller is [`compress_session_playback`], which gates this on
 /// transcription having succeeded and on audio retention being on — so by the
@@ -5682,9 +5713,11 @@ const PLAYBACK_AAC_BITRATE: &str = "32000";
 /// Best-effort throughout: every failure logs and leaves the `.wav` in place,
 /// which still plays and still re-diarizes. Returns `true` when it actually
 /// compressed (used by the test-less callers only for logging).
-async fn compress_playback_wav(session_dir: PathBuf) -> bool {
+async fn compress_playback_wav(session_dir: PathBuf, quality: AudioQuality) -> bool {
     let wav = session_dir.join("playback.wav");
     let m4a = session_dir.join("playback.m4a");
+    let codec = quality.codec;
+    let bitrate = quality.bitrate;
     // spawn_blocking: afconvert is a synchronous child process; keep it off the
     // reactor. The whole body is sync FS + process work.
     let res = tokio::task::spawn_blocking(move || -> std::io::Result<bool> {
@@ -5697,9 +5730,9 @@ async fn compress_playback_wav(session_dir: PathBuf) -> bool {
             .arg("-f")
             .arg("m4af")
             .arg("-d")
-            .arg("aac")
+            .arg(codec)
             .arg("-b")
-            .arg(PLAYBACK_AAC_BITRATE)
+            .arg(bitrate)
             .arg(&wav)
             .arg(&m4a)
             .output()?;
@@ -5735,13 +5768,18 @@ async fn compress_playback_wav(session_dir: PathBuf) -> bool {
     }
 }
 
-/// Batch-compress EVERY past capture's leftover `playback.wav` → `.m4a`
-/// (#audio-compress). New recordings compress automatically after transcription;
-/// this backfills captures made before that shipped (or any left uncompressed by
-/// an interrupted run). Walks `recordings/<note>/<session>/playback.wav`,
-/// reusing the same verified `compress_playback_wav` (afconvert → verify →
-/// delete the wav) so a half-written `.m4a` can never destroy the only copy.
-/// Returns how many files it converted and how many bytes that reclaimed.
+/// Re-encode EVERY stored audio stream (playback / mic / sys, whether `.wav` or
+/// an already-`.m4a`) down to the current `audio_quality` tier (#audio-compress).
+///
+/// This is the "make my recordings as small as possible" action: unlike the
+/// post-recording hook (which only touches a fresh `playback.wav`), this walks
+/// all three stream stems in every session and, for each, encodes to the tier's
+/// codec/bitrate when that would actually shrink the file. A stream already at
+/// or below the target bitrate is skipped (no pointless re-encode / quality
+/// loss). Verify-before-replace throughout: the new file is proven non-empty
+/// and shorter before the original is removed, so a failed encode never loses
+/// audio. `.wav` sources always convert (any `.m4a` is smaller); `.m4a` sources
+/// convert only when their measured bitrate exceeds the target.
 #[tauri::command]
 pub async fn compress_past_captures(app: AppHandle) -> Result<PastCaptureCompression, String> {
     let app_dir = app.path().app_data_dir().map_err(err)?;
@@ -5749,28 +5787,24 @@ pub async fn compress_past_captures(app: AppHandle) -> Result<PastCaptureCompres
     if !root.exists() {
         return Ok(PastCaptureCompression { converted: 0, bytes_saved: 0, failed: 0 });
     }
+    let quality = audio_quality(&app);
+    // Target bitrate in bits/sec, for the "already small enough?" check.
+    let target_bps: u64 = quality.bitrate.parse().unwrap_or(32_000);
 
-    // Collect every session dir holding a playback.wav. Layout is
-    // recordings/<note_id>/<session_id>/playback.wav.
-    let mut targets: Vec<(PathBuf, u64)> = Vec::new();
+    // Collect every session dir (recordings/<note>/<session>/).
+    let mut sess_dirs: Vec<PathBuf> = Vec::new();
     let mut note_dirs = tokio::fs::read_dir(&root).await.map_err(err)?;
     while let Ok(Some(note)) = note_dirs.next_entry().await {
         if !note.file_type().await.map(|t| t.is_dir()).unwrap_or(false) {
             continue;
         }
-        let mut sess_dirs = match tokio::fs::read_dir(note.path()).await {
+        let mut inner = match tokio::fs::read_dir(note.path()).await {
             Ok(d) => d,
             Err(_) => continue,
         };
-        while let Ok(Some(sess)) = sess_dirs.next_entry().await {
-            if !sess.file_type().await.map(|t| t.is_dir()).unwrap_or(false) {
-                continue;
-            }
-            let wav = sess.path().join("playback.wav");
-            if let Ok(meta) = tokio::fs::metadata(&wav).await {
-                if meta.len() > 0 {
-                    targets.push((sess.path(), meta.len()));
-                }
+        while let Ok(Some(sess)) = inner.next_entry().await {
+            if sess.file_type().await.map(|t| t.is_dir()).unwrap_or(false) {
+                sess_dirs.push(sess.path());
             }
         }
     }
@@ -5778,15 +5812,23 @@ pub async fn compress_past_captures(app: AppHandle) -> Result<PastCaptureCompres
     let mut converted = 0u64;
     let mut failed = 0u64;
     let mut bytes_saved = 0i64;
-    for (dir, wav_len) in targets {
-        let m4a = dir.join("playback.m4a");
-        if compress_playback_wav(dir).await {
-            converted += 1;
-            // Net reclaimed = original wav minus the new m4a that replaced it.
-            let m4a_len = tokio::fs::metadata(&m4a).await.map(|m| m.len()).unwrap_or(0);
-            bytes_saved += wav_len as i64 - m4a_len as i64;
-        } else {
-            failed += 1;
+    for dir in sess_dirs {
+        // Each of the three stems, preferring the .m4a when present else .wav.
+        for stem in ["playback", "mic", "sys"] {
+            let Some(src) = sessions::resolve_session_audio(&dir, stem) else {
+                continue;
+            };
+            match recompress_audio_file(&src, quality, target_bps).await {
+                Ok(Some(saved)) => {
+                    converted += 1;
+                    bytes_saved += saved;
+                }
+                Ok(None) => {} // already small enough / nothing to do
+                Err(e) => {
+                    failed += 1;
+                    eprintln!("compress: {} failed: {e}", src.display());
+                }
+            }
         }
     }
     Ok(PastCaptureCompression {
@@ -5796,9 +5838,111 @@ pub async fn compress_past_captures(app: AppHandle) -> Result<PastCaptureCompres
     })
 }
 
+/// Re-encode one audio file to `quality` if that would shrink it, replacing the
+/// original in place (as `<stem>.m4a`). Returns `Ok(Some(bytes_saved))` when it
+/// re-encoded, `Ok(None)` when the file was already at/below the target bitrate
+/// (so re-encoding would only lose quality for no real gain). Verify-before-
+/// replace: the new `.m4a` is proven non-empty and smaller before the source is
+/// deleted.
+async fn recompress_audio_file(
+    src: &std::path::Path,
+    quality: AudioQuality,
+    target_bps: u64,
+) -> anyhow::Result<Option<i64>> {
+    let is_m4a = src.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("m4a")).unwrap_or(false);
+    let src_len = tokio::fs::metadata(src).await?.len();
+    if src_len == 0 {
+        return Ok(None);
+    }
+    // An already-compressed file at/below the target bitrate is left alone —
+    // re-encoding lossy→lossy only degrades it with no worthwhile size win.
+    if is_m4a {
+        if let Some(bps) = audio_bitrate_bps(src).await {
+            // 10% slack so a 32k file isn't re-touched when target is 32k, and
+            // tiny rounding differences don't cause churn.
+            if bps <= target_bps + target_bps / 10 {
+                return Ok(None);
+            }
+        }
+    }
+
+    let codec = quality.codec;
+    let bitrate = quality.bitrate;
+    let out = src.with_extension("recompress.m4a");
+    let final_m4a = src.with_extension("m4a");
+    let src_owned = src.to_path_buf();
+    let out_owned = out.clone();
+    let encoded = tokio::task::spawn_blocking(move || -> std::io::Result<bool> {
+        let output = std::process::Command::new("/usr/bin/afconvert")
+            .arg("-f").arg("m4af")
+            .arg("-d").arg(codec)
+            .arg("-b").arg(bitrate)
+            .arg(&src_owned)
+            .arg(&out_owned)
+            .output()?;
+        if !output.status.success() {
+            return Err(std::io::Error::other(format!(
+                "afconvert exited {}: {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        Ok(true)
+    })
+    .await??;
+    if !encoded {
+        return Ok(None);
+    }
+    let new_len = tokio::fs::metadata(&out).await.map(|m| m.len()).unwrap_or(0);
+    if new_len == 0 {
+        let _ = tokio::fs::remove_file(&out).await;
+        anyhow::bail!("afconvert produced an empty file");
+    }
+    // If the re-encode didn't actually shrink it (can happen on already-small
+    // clips), drop the attempt and keep the original.
+    if new_len >= src_len {
+        let _ = tokio::fs::remove_file(&out).await;
+        return Ok(None);
+    }
+    // Replace: remove the source (if it differs from the final name), then move
+    // the temp into place as <stem>.m4a.
+    if src_owned_differs(src, &final_m4a) {
+        let _ = tokio::fs::remove_file(src).await;
+    }
+    tokio::fs::rename(&out, &final_m4a).await?;
+    Ok(Some(src_len as i64 - new_len as i64))
+}
+
+fn src_owned_differs(a: &std::path::Path, b: &std::path::Path) -> bool {
+    a != b
+}
+
+/// A file's audio bitrate in bits/sec via `afinfo`, or None if it can't be read.
+async fn audio_bitrate_bps(path: &std::path::Path) -> Option<u64> {
+    let path = path.to_path_buf();
+    let out = tokio::task::spawn_blocking(move || {
+        std::process::Command::new("/usr/bin/afinfo").arg(&path).output()
+    })
+    .await
+    .ok()?
+    .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    for line in text.lines() {
+        let l = line.trim();
+        if let Some(rest) = l.strip_prefix("bit rate:") {
+            // e.g. "bit rate: 32000 bits per second"
+            let n: String = rest.trim().chars().take_while(|c| c.is_ascii_digit()).collect();
+            if let Ok(v) = n.parse::<u64>() {
+                return Some(v);
+            }
+        }
+    }
+    None
+}
+
 #[derive(serde::Serialize)]
 pub struct PastCaptureCompression {
-    /// How many `playback.wav` files were compressed to `.m4a`.
+    /// How many audio streams were (re-)compressed down to the current tier.
     pub converted: u64,
     /// Approximate disk reclaimed (original WAV sizes minus the new `.m4a`s).
     pub bytes_saved: u64,
@@ -5827,8 +5971,8 @@ async fn compress_session_playback(app: &AppHandle, note_id: &str, session_id: &
     let Some(dir) = sessions::resolve_session_dir(&recordings, session_id) else {
         return;
     };
-    if compress_playback_wav(dir).await {
-        eprintln!("compress: {note_id}/{session_id} playback.wav → playback.m4a");
+    if compress_playback_wav(dir, audio_quality(app)).await {
+        eprintln!("compress: {note_id}/{session_id} playback.wav -> playback.m4a");
     }
 }
 
@@ -8309,6 +8453,21 @@ fn record_detected_language(app: &AppHandle, note_id: &str, chunks: &[ChunkRecor
 #[cfg(test)]
 mod mic_ducking_tests {
     use super::*;
+
+    #[test]
+    fn audio_quality_tiers_map_to_codec_and_bitrate() {
+        let std = AudioQuality::from_setting(None);
+        assert_eq!((std.codec, std.bitrate), ("aac", "32000"));
+        let std2 = AudioQuality::from_setting(Some("standard"));
+        assert_eq!((std2.codec, std2.bitrate), ("aac", "32000"));
+        let small = AudioQuality::from_setting(Some("small"));
+        assert_eq!((small.codec, small.bitrate), ("aach", "24000"));
+        let tiny = AudioQuality::from_setting(Some("tiny"));
+        assert_eq!((tiny.codec, tiny.bitrate), ("aach", "16000"));
+        // Unknown value degrades to Standard rather than erroring.
+        let bogus = AudioQuality::from_setting(Some("ultra"));
+        assert_eq!((bogus.codec, bogus.bitrate), ("aac", "32000"));
+    }
 
     /// A tone-ish signal: constant amplitude `amp` for `n` samples.
     fn level(amp: f32, n: usize) -> Vec<f32> {

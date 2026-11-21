@@ -8,7 +8,7 @@ private). Branch: `feat/inbox-triage`.
 ## Run it
 
 ```bash
-cd ~/Development/humla
+cd ~/Development/chatham
 npm run tauri dev          # or install the built .app
 ```
 

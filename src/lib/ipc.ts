@@ -176,6 +176,11 @@ export type SettingsKey =
   // taken while recording. Both default off; only "true" enables.
   | "capture_screenshots_enabled"
   | "capture_clipboard_enabled"
+  // Clock display: "24h" or "12h" (AM/PM). UI-only; see lib/timeFormat.ts.
+  | "time_format"
+  // Audio compression quality tier: "standard" (32k AAC), "small" (24k HE-AAC),
+  // "tiny" (16k HE-AAC). Smaller tiers trade fidelity for disk. See audio_quality.
+  | "audio_quality"
   // Cloud/teams: upload a finished recording's audio to its workspace note
   // so teammates can play it back. Default on; only the string "false"
   // disables it on the upload path. Surfaced in the Account section.
