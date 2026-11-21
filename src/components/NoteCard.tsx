@@ -47,6 +47,7 @@ export function NoteCard({
   recorded = false,
   selected = false,
   selectionActive = false,
+  variant = "card",
   onSelect,
 }: {
   note: Note;
@@ -59,6 +60,8 @@ export function NoteCard({
   selected?: boolean;
   /** True when any note in the view is selected. Forces every checkbox visible. */
   selectionActive?: boolean;
+  /** "card" = tall grid cell; "row" = compact full-width line. */
+  variant?: "card" | "row";
   onSelect?: (e: SelectIntent) => void;
 }) {
   const title = note.title.trim() || "Untitled";
@@ -97,6 +100,84 @@ export function NoteCard({
   function handleCheckboxChange() {
     onSelect?.({ shiftKey: shiftRef.current });
     shiftRef.current = false;
+  }
+
+  // Row variant: a compact full-width line — date, title, state dot, and the
+  // same checkbox — for scanning many notes at once. Reuses the .nd-notecard
+  // surface (padding is tightened by .nd-notelist .nd-notecard) and all the
+  // same selection behaviour as the card.
+  if (variant === "row") {
+    return (
+      <li className="nd-notecard group relative" data-selected={selected ? "true" : undefined}>
+        <Link
+          to={`/note/${note.id}`}
+          onClick={handleClick}
+          onKeyDown={handleKeyDown}
+          aria-selected={selected}
+          data-selected={selected ? "true" : undefined}
+          className="flex items-center gap-3 min-w-0 focus:outline-none pr-8"
+        >
+          <span
+            aria-hidden
+            className={cn(
+              "w-[7px] h-[7px] rounded-full shrink-0",
+              activity?.animated && "rec-dot",
+            )}
+            style={{ background: shown.color }}
+            title={shown.label}
+          />
+          <span className="text-[15px] font-medium leading-tight text-[var(--color-text)] truncate min-w-0 flex-1">
+            {title}
+          </span>
+          {client && (
+            <span className="hidden sm:inline-flex items-center gap-1 text-[11.5px] text-[var(--color-text-muted)] shrink-0 max-w-[10rem]">
+              <Building2 size={11} strokeWidth={1.7} aria-hidden className="opacity-70 shrink-0" />
+              <span className="truncate">{client.name}</span>
+            </span>
+          )}
+          {showFolder && folder && (
+            <span className="hidden sm:inline-flex items-center gap-1 text-[11.5px] text-[var(--color-text-muted)] shrink-0 max-w-[10rem]">
+              <FolderIcon size={11} strokeWidth={1.7} aria-hidden className="opacity-70 shrink-0" />
+              <span className="truncate">{folder.name}</span>
+            </span>
+          )}
+          <span className="text-[11.5px] text-[var(--color-text-disabled)] tabular-nums shrink-0 w-[92px] text-right">
+            {activity?.timed ? <LiveElapsed /> : formatNoteDate(note.created_at)}
+          </span>
+        </Link>
+        {onSelect && (
+          <div
+            className={cn(
+              "absolute top-1/2 -translate-y-1/2 right-3 w-[24px] h-[24px] grid place-items-center transition-opacity duration-150",
+              checkboxShown ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100",
+            )}
+          >
+            <input
+              type="checkbox"
+              checked={selected}
+              aria-label={`Select ${title}`}
+              onClick={handleCheckboxClick}
+              onChange={handleCheckboxChange}
+              className="peer absolute inset-0 m-0 w-full h-full appearance-none opacity-0 cursor-pointer"
+            />
+            <span
+              aria-hidden
+              className={cn(
+                "w-[17px] h-[17px] rounded-full border transition-colors pointer-events-none",
+                "border-[var(--color-line-visible)] bg-[var(--color-surface)] peer-hover:border-[var(--color-text-muted)]",
+                "peer-checked:border-[var(--color-accent-text)] peer-checked:bg-[var(--color-accent-text)]",
+              )}
+            />
+            <Check
+              aria-hidden
+              size={11}
+              strokeWidth={3}
+              className="absolute opacity-0 peer-checked:opacity-100 text-[var(--color-canvas)] pointer-events-none"
+            />
+          </div>
+        )}
+      </li>
+    );
   }
 
   return (

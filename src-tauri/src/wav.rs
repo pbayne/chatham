@@ -39,7 +39,56 @@ pub async fn rms(path: &std::path::Path) -> anyhow::Result<f32> {
 
 // Whole-file 16-bit PCM → f32 in [-1, 1]. The chunk WAVs are already
 // 16 kHz mono, which is exactly what whisper.cpp expects.
+/// Decode a compressed audio file (`.m4a`/AAC) to a temporary 16 kHz mono
+/// 16-bit PCM WAV and return its path, so the raw-WAV readers below can consume
+/// mic/sys streams that have been compressed (#audio-compress). The caller owns
+/// the temp file; it is placed next to the source with a unique suffix and the
+/// readers delete it after reading. `afconvert` ships with macOS and decodes
+/// AAC natively (unlike Opus). WAV inputs skip this entirely.
+async fn decode_to_temp_wav(src: &std::path::Path) -> anyhow::Result<std::path::PathBuf> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let tmp = src.with_extension(format!("decode-{stamp}.wav"));
+    let src = src.to_path_buf();
+    let out = tmp.clone();
+    let status = tokio::task::spawn_blocking(move || {
+        std::process::Command::new("/usr/bin/afconvert")
+            .arg("-f").arg("WAVE")
+            .arg("-d").arg("LEI16@16000") // 16-bit little-endian PCM, 16 kHz
+            .arg("-c").arg("1") // mono
+            .arg(&src)
+            .arg(&out)
+            .output()
+    })
+    .await??;
+    if !status.status.success() {
+        anyhow::bail!(
+            "afconvert decode failed: {}",
+            String::from_utf8_lossy(&status.stderr).trim()
+        );
+    }
+    Ok(tmp)
+}
+
+/// True when the path is a compressed stream the raw-WAV readers can't parse
+/// directly and must decode first.
+fn needs_decode(path: &std::path::Path) -> bool {
+    path.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("m4a")).unwrap_or(false)
+}
+
 pub async fn read_f32_mono_16k(path: &std::path::Path) -> anyhow::Result<Vec<f32>> {
+    if needs_decode(path) {
+        let tmp = decode_to_temp_wav(path).await?;
+        let r = read_f32_mono_16k_wav(&tmp).await;
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return r;
+    }
+    read_f32_mono_16k_wav(path).await
+}
+
+async fn read_f32_mono_16k_wav(path: &std::path::Path) -> anyhow::Result<Vec<f32>> {
     let bytes = tokio::fs::read(path).await?;
     let (off, len) = data_range(&bytes).ok_or_else(|| anyhow::anyhow!("no data chunk"))?;
     let data = &bytes[off..off + len];
@@ -56,6 +105,16 @@ pub async fn read_f32_mono_16k(path: &std::path::Path) -> anyhow::Result<Vec<f32
 // so an hour-long stream is never in memory twice. It must find the samples
 // `data_range` finds.
 pub async fn read_i16_mono_16k(path: &std::path::Path) -> anyhow::Result<Vec<i16>> {
+    if needs_decode(path) {
+        let tmp = decode_to_temp_wav(path).await?;
+        let r = read_i16_mono_16k_wav(&tmp).await;
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return r;
+    }
+    read_i16_mono_16k_wav(path).await
+}
+
+async fn read_i16_mono_16k_wav(path: &std::path::Path) -> anyhow::Result<Vec<i16>> {
     use tokio::io::{AsyncReadExt, AsyncSeekExt};
     let mut file = tokio::fs::File::open(path).await?;
     let file_len = file.metadata().await?.len();

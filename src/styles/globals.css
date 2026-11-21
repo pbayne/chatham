@@ -511,6 +511,22 @@ input::placeholder, textarea::placeholder {
     box-shadow: 0 0 0 2px var(--color-accent-text), 0 12px 26px -18px rgba(0, 0, 0, 0.45);
   }
 
+  /* Row layout: one note per full-width line, denser than cards. Shares
+     .nd-notecard's surface/hover/selected treatment via the same class, with
+     the flow turned horizontal. */
+  .nd-notelist {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .nd-notelist .nd-notecard {
+    padding: 12px 16px;
+  }
+  .nd-notelist .nd-notecard:hover {
+    transform: none;
+    box-shadow: var(--shadow-card), 0 8px 20px -16px rgba(0, 0, 0, 0.4);
+  }
+
   /* A short entrance stagger over the first row or two, written out because
      CSS cannot count siblings into a delay. */
   .nd-notegrid > :nth-child(2) { animation-delay: 20ms; }

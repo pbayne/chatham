@@ -209,10 +209,12 @@ async fn rediarize_note_inner(app: AppHandle, note_id: String) -> Result<(), Str
         .last()
         .map(|(e, _)| e.id.clone())
         .unwrap_or_else(|| sessions::LEGACY_SESSION_ID.to_string());
-    let mic_path = audio_dir.join("mic.wav");
-    let sys_path = audio_dir.join("sys.wav");
-    let mic_wav = if mic_path.exists() { Some(mic_path) } else { None };
-    let sys_wav = if sys_path.exists() { Some(sys_path) } else { None };
+    // Prefer compressed .m4a mic/sys, fall back to legacy .wav (#audio-compress).
+    // The diarize sidecar decodes .m4a via AVFoundation, and the Rust readers
+    // (wav::read_*) transparently afconvert-decode .m4a, so re-diarize works off
+    // either format.
+    let mic_wav = sessions::resolve_session_audio(&audio_dir, "mic");
+    let sys_wav = sessions::resolve_session_audio(&audio_dir, "sys");
     if mic_wav.is_none() && sys_wav.is_none() {
         return Err(
             "No saved audio for this note. Turn on Keep recorded audio in Settings → Recording before recording, then try again on a new recording."
@@ -4316,10 +4318,8 @@ async fn transcribe_takes(
         // At least one of these exists — `takes_to_transcribe` filtered on it,
         // so a take whose audio was swept away by "Delete stored audio" never
         // reaches here and never produced a button either.
-        let mic = dir.join("mic.wav");
-        let sys = dir.join("sys.wav");
-        let mic_wav = mic.exists().then_some(mic);
-        let sys_wav = sys.exists().then_some(sys);
+        let mic_wav = sessions::resolve_session_audio(&dir, "mic");
+        let sys_wav = sessions::resolve_session_audio(&dir, "sys");
 
         // One sink for the whole take: its two streams share a chunk log (the
         // diarize pass has to see both to tell an in-person meeting from a
@@ -6479,8 +6479,8 @@ pub(crate) async fn unify_note_speakers(
         } else {
             Vec::new()
         };
-        let has_mic = dir.join("mic.wav").exists();
-        let has_sys = dir.join("sys.wav").exists();
+        let has_mic = sessions::resolve_session_audio(&dir, "mic").is_some();
+        let has_sys = sessions::resolve_session_audio(&dir, "sys").is_some();
         match session_mode(&chunks) {
             Some(mode) if session_unifiable(mode, has_mic, has_sys) => {
                 unifiable.push(UnifyCandidate { entry, dir, chunks, mode });
@@ -6531,7 +6531,7 @@ async fn unify_apply(
     let sys_paths: Vec<PathBuf> = unifiable
         .iter()
         .filter(|c| c.mode != SessionMode::MicOnly)
-        .map(|c| c.dir.join("sys.wav"))
+        .map(|c| sessions::resolve_session_audio(&c.dir, "sys").unwrap_or_else(|| c.dir.join("sys.wav")))
         .collect();
     let mic_concat = tmp.join("mic-concat.wav");
     let sys_concat = tmp.join("sys-concat.wav");
@@ -6682,8 +6682,10 @@ async fn cancel_each_takes_echo(
     let mut nth = 0;
     let mut echoes = Vec::with_capacity(mic_takes.len());
     for take in mic_takes {
-        let sys = (take.mode == SessionMode::Hybrid).then(|| take.dir.join("sys.wav"));
-        let echo = EchoPass::run(Some(&take.dir.join("mic.wav")), sys.as_deref(), || {
+        let sys = (take.mode == SessionMode::Hybrid)
+            .then(|| sessions::resolve_session_audio(&take.dir, "sys").unwrap_or_else(|| take.dir.join("sys.wav")));
+        let mic = sessions::resolve_session_audio(&take.dir, "mic").unwrap_or_else(|| take.dir.join("mic.wav"));
+        let echo = EchoPass::run(Some(&mic), sys.as_deref(), || {
             nth += 1;
             progress.report(app, StepReport::counted(Step::RemovingEcho, nth, hybrid));
         })
