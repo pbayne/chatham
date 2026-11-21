@@ -113,6 +113,44 @@ These are the REAL line items (PocketBase bundled them; Postgres doesn't):
 4. Only then tackle auth + file storage (the real cost centers) and point the PG
    impl at Neon/Lakebase.
 
+## Backend candidates vs the REAL requirements (efficient storage + encryption + team RBAC/ABAC)
+The goal was never "which SQL engine" — it's "what replaces PocketBase" given
+three needs: efficient storage, encryption, team permissions (RBAC/ABAC). All
+candidates are BaaS platforms with their OWN protocol, so ANY of them is still a
+sync-client rewrite. Ranked by fit:
+
+- **Appwrite — best match to the exact three needs; closest sibling to PocketBase.**
+  - RBAC/ABAC: NATIVE. `Role.team(id)`, `Role.team(id,"owner")`, `Role.user`,
+    `Role.label`; collection- AND document-level rules; Teams are a built-in
+    primitive; cross-tenant access returns 401 from the engine, not an app-code
+    filter. This is the team model we want and PocketBase's weakest area.
+  - Encryption: per-file storage encryption (AES-256-GCM, per-file key wrapped by
+    server key, segmented streaming); encrypted text DB columns (AES-128-GCM) —
+    CAVEAT: encrypted columns can't be queried. Self-host: set `_APP_OPENSSL_KEY_V1`.
+  - Storage: document DB + buckets w/ compression + antivirus. Self-hostable (Docker).
+  - Migration cost: REST shape similar to PocketBase (collections+teams) → SHORTEST
+    rewrite of the real options.
+- **Supabase — most powerful/flexible; Postgres-native (the Neon/Lakebase tie-in).**
+  - RBAC/ABAC: Postgres RLS — arbitrary SQL policies, ABAC = any WHERE clause
+    incl. JWT team claims. More powerful than Appwrite's declarative roles, but
+    YOU author/own every policy (open-table footgun on self-host).
+  - Encryption: AES-256 at rest + TLS; app-layer encryption of secrets via Vault.
+    Disk/column-level, NOT Appwrite's per-file E2E storage model.
+  - Storage: Postgres + S3-backed, RLS-governed. Self-host heavier (PostgREST +
+    GoTrue + Storage + Kong + Studio).
+- **Turso — NO built-in auth/RBAC/teams/file layer.** Pitch is db-per-tenant +
+  encryption + replication; you'd build permissions yourself. Fails the RBAC
+  requirement out of the box. Not recommended for this goal.
+- **PGlite — local dev/CI mirror only** (single-connection). Never the backend.
+- **Cloud-hosted PocketBase — still the zero-rewrite baseline** to beat; its gap
+  vs the above is weaker native RBAC/encryption. If those are must-haves, Appwrite
+  is the upgrade; if not, PocketBase wins on effort.
+
+### Why the `trait SyncBackend` seam matters MORE given this
+The seam lets Appwrite / Supabase / cloud-PocketBase be SWAPPABLE IMPLS evaluated
+with a working spike — not three separate 11k-line rewrites decided on paper.
+Build the seam first; pick the winner behind it.
+
 ## Honest estimate
 Multi-week project, dominated NOT by SQL but by rebuilding auth + file storage +
 access rules that PocketBase gave for free. The DB swap (PGlite↔Neon↔Lakebase) is
