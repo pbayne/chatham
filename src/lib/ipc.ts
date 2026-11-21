@@ -584,6 +584,9 @@ export type InboxStatus = {
 
 export const ipc = {
   listNotes: () => invoke<Note[]>("notes_list"),
+  // Batch-compress every past capture's leftover playback.wav → .m4a (#audio-compress).
+  compressPastCaptures: () =>
+    invoke<{ converted: number; bytes_saved: number; failed: number }>("compress_past_captures"),
   getNote: (id: string) => invoke<Note>("notes_get", { id }),
   createNote: () => invoke<Note>("notes_create"),
   updateNote: (

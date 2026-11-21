@@ -40,7 +40,8 @@
     "macOS": {
       "minimumSystemVersion": "13.0",
       "entitlements": "entitlements.plist",
-      "signingIdentity": "-"
+      "hardenedRuntime": true,
+      "signingIdentity": "70304D84FA8AC991F017E54542097C0CDA4C50CF"
     },
     "externalBin": ["binaries/audio-capture", "binaries/speaker-diarize", "binaries/mic-monitor", "binaries/chatham-mcp"],
     "resources": {

@@ -72,6 +72,7 @@ export function RecordingSection({
           />
         )}
         <StoredAudioCleanup />
+        <PastCaptureCompress />
       </Section>
 
       <Section title="Power">
@@ -221,7 +222,58 @@ function SilenceAutoStopSection() {
   );
 }
 
-// Turning the toggle off is going-forward only — existing notes keep their
+// Batch-compress old captures' leftover playback.wav → .m4a (#audio-compress).
+// New recordings compress automatically after transcription; this backfills
+// anything recorded before that, reclaiming disk with no quality loss for
+// speech (32 kbps mono AAC) and leaving transcripts/labels/timelines intact.
+function PastCaptureCompress() {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run() {
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      const r = await ipc.compressPastCaptures();
+      if (r.converted === 0) {
+        setResult("Nothing to compress — all recordings are already compact.");
+      } else {
+        const saved = formatBytes(r.bytes_saved);
+        const failed = r.failed > 0 ? ` (${r.failed} could not be converted)` : "";
+        setResult(
+          `Compressed ${r.converted} recording${plural(r.converted)}, reclaimed ${saved}${failed}.`,
+        );
+      }
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Row
+      label="Compress old recordings"
+      description="Shrink previously recorded audio to the compact .m4a format new recordings already use. No quality loss for speech; transcripts, speaker labels and timelines are untouched."
+      control={
+        <div className="flex flex-col items-end gap-1">
+          <button type="button" className="nd-btn" onClick={run} disabled={busy}>
+            {busy ? "Compressing…" : "Compress now"}
+          </button>
+          {result && (
+            <p className="text-xs text-[var(--color-text-muted)]">{result}</p>
+          )}
+          {error && (
+            <p className="text-xs text-[var(--color-danger)]">{error}</p>
+          )}
+        </div>
+      }
+    />
+  );
+}
+
 // audio, since silently deleting a user's recordings on a settings change
 // would be worse than the dishonesty #24 fixes. This is the explicit action
 // for what's already on disk.

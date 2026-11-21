@@ -390,6 +390,27 @@ pub async fn tick(app: &AppHandle) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// The calendar event overlapping *now*, if any — used to enrich a mic-detected
+/// recording (which has no event of its own) with real attendees + title.
+/// Best-effort: returns None when the calendar is unconnected, the fetch fails,
+/// or nothing recordable is in progress. Never errors into the caller.
+async fn current_calendar_event(app: &AppHandle) -> Option<CalendarEvent> {
+    let events = fetch_upcoming(app).await.ok()?;
+    let now = now_epoch();
+    events.into_iter().find(|ev| {
+        if !ev.is_recordable() {
+            return false;
+        }
+        let start = ev.start.as_deref().and_then(rfc3339_to_epoch);
+        let end = ev.end.as_deref().and_then(rfc3339_to_epoch);
+        match (start, end) {
+            // A small lead-in tolerance: people join a minute or two early.
+            (Some(s), Some(e)) => now >= s - 120 && now <= e,
+            _ => false,
+        }
+    })
+}
+
 /// Fetch events across the user's primary calendar for the rolling window.
 async fn fetch_upcoming(app: &AppHandle) -> anyhow::Result<Vec<CalendarEvent>> {
     let (http, token) = {
@@ -474,6 +495,25 @@ pub async fn start_ambient_recording(app: &AppHandle, app_name: &str) -> anyhow:
         let _ = crate::db::update_note(&conn, &note.id, &patch);
         note.id
     };
+
+    // A mic-detected call has no calendar event of its own, but one may be
+    // happening *right now* on the user's calendar. If so, borrow its
+    // attendees + real title so an off-calendar-looking Zoom that IS on the
+    // calendar still gets participants and a meaningful name (the user can
+    // still edit the title). Best-effort: calendar may be unconnected or the
+    // lookup may fail — a mic-detected recording must never depend on it.
+    if let Some(ev) = current_calendar_event(app).await {
+        let state = app.state::<crate::AppState>();
+        let conn = state.db.lock();
+        let _ = attach_meta(&conn, &note_id, &ev);
+        // Only override the placeholder title, never a user edit (same rule as
+        // auto-title's is_replaceable check — the title we just wrote is the
+        // "Meeting via …" placeholder, so replacing it here is safe).
+        if let Some(t) = Some(ev.title.trim()).filter(|t| !t.is_empty()) {
+            let patch = crate::db::NotePatch { title: Some(t.to_string()), ..Default::default() };
+            let _ = crate::db::update_note(&conn, &note_id, &patch);
+        }
+    }
 
     // Claim the single-session slot. No scheduled end — a mic-detected meeting
     // has no calendar time, so autopilot's calendar stop won't fire; the user

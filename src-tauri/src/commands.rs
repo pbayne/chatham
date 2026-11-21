@@ -3640,6 +3640,24 @@ async fn dispatch_sidecar_event(
 ) -> bool {
     match event {
         SidecarEvent::Chunk { source, path, start_ms } => {
+            // Silence auto-stop activity clock (#silence): a chunk event means the
+            // sidecar just captured audio — bump the watchdog's clock HERE, the
+            // moment any chunk arrives, BEFORE the manual-transcribe early return
+            // below. This is the only place that fires in EVERY mode: with
+            // "transcribe manually" on, chunks are deleted without ever reaching
+            // transcribe_chunk, so a bump that lives in transcribe_chunk never
+            // runs and the watchdog false-stops an active meeting at the silence
+            // threshold. Keying the clock to "sidecar produced a chunk" rather
+            // than "a chunk was transcribed" is what keeps a live recording
+            // alive regardless of transcription mode.
+            {
+                let state: State<AppState> = app.state();
+                let s = state.recording.lock();
+                *s.last_activity.lock() = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+            }
             let pb = PathBuf::from(path);
             // "Transcribe manually" (#146): the chunk WAV is written, and
             // nothing reads it. Delete it as it arrives rather than letting an
@@ -5561,13 +5579,7 @@ async fn build_playback_wav(
         (Some(m), Some(s)) => {
             let mic_samples = wav::read_f32_mono_16k(m).await?;
             let sys_samples = wav::read_f32_mono_16k(s).await?;
-            let n = mic_samples.len().max(sys_samples.len());
-            let mut mixed = Vec::with_capacity(n);
-            for i in 0..n {
-                let a = mic_samples.get(i).copied().unwrap_or(0.0);
-                let b = sys_samples.get(i).copied().unwrap_or(0.0);
-                mixed.push((a + b) * 0.5);
-            }
+            let mixed = mix_with_mic_ducking(&mic_samples, &sys_samples);
             wav::write_pcm16_mono_16k(out, &mixed).await?;
         }
         (Some(m), None) => {
@@ -5579,6 +5591,66 @@ async fn build_playback_wav(
         (None, None) => {}
     }
     Ok(())
+}
+
+/// Mix mic + system audio into one mono track, ducking the mic whenever the
+/// system stream is active (#echo).
+///
+/// When a call plays through the laptop *speakers* (not headphones), the mic
+/// re-records every remote voice a fraction of a second after the system
+/// stream already captured it cleanly. A naive `(mic + sys) * 0.5` then plays
+/// each far-end voice twice, slightly offset — the hollow, echoey, hard-to-hear
+/// result users report. System audio is the authoritative copy of the far end,
+/// so whenever it is sounding we attenuate the mic (which is then almost
+/// entirely that echo) and let the clean system copy carry the far end. When
+/// the system stream is quiet, the mic is the user actually talking, so it
+/// stays at full level.
+///
+/// The gain follows a smoothed system-energy envelope (fast attack so the duck
+/// catches the start of far-end speech, slow release so it doesn't pump between
+/// words), keeping the near-end voice intact during the user's own turns.
+/// Headphone recordings have no speaker bleed, so the mic and system streams
+/// rarely sound at once and the duck simply never engages — this is safe for
+/// both setups.
+fn mix_with_mic_ducking(mic: &[f32], sys: &[f32]) -> Vec<f32> {
+    // 16 kHz mono. Envelope smoothing constants in samples.
+    const RATE: f32 = 16_000.0;
+    // Fast attack (~10 ms) so the duck lands as far-end speech begins; slow
+    // release (~250 ms) so it rides over inter-word gaps without pumping.
+    let attack = (-1.0 / (0.010 * RATE)).exp();
+    let release = (-1.0 / (0.250 * RATE)).exp();
+    // System level above which the mic is considered pure echo and ducked to
+    // the floor; below the noise gate the mic is untouched.
+    const SYS_GATE: f32 = 0.004; // ~ -48 dBFS: clears room tone / faint hiss.
+    // How far the mic is pulled down when the system stream is fully active.
+    // Not fully muted — a touch of near-end presence survives so the user's
+    // own interjections over the far end aren't erased entirely.
+    const MIN_MIC_GAIN: f32 = 0.15;
+
+    let n = mic.len().max(sys.len());
+    let mut mixed = Vec::with_capacity(n);
+    let mut env: f32 = 0.0; // smoothed |sys| envelope
+    for i in 0..n {
+        let a = mic.get(i).copied().unwrap_or(0.0);
+        let b = sys.get(i).copied().unwrap_or(0.0);
+
+        // Smooth the rectified system signal into an energy envelope.
+        let rectified = b.abs();
+        let coeff = if rectified > env { attack } else { release };
+        env = coeff * env + (1.0 - coeff) * rectified;
+
+        // Map the envelope to a mic gain: full gain below the gate, falling to
+        // MIN_MIC_GAIN as the system stream gets loud.
+        let mic_gain = if env <= SYS_GATE {
+            1.0
+        } else {
+            let over = ((env - SYS_GATE) / SYS_GATE).min(1.0); // 0..1 ramp
+            1.0 - over * (1.0 - MIN_MIC_GAIN)
+        };
+
+        mixed.push((a * mic_gain + b) * 0.5);
+    }
+    mixed
 }
 
 /// The bitrate afconvert encodes compressed playback at. 32 kbps mono AAC is
@@ -5661,6 +5733,77 @@ async fn compress_playback_wav(session_dir: PathBuf) -> bool {
             false
         }
     }
+}
+
+/// Batch-compress EVERY past capture's leftover `playback.wav` → `.m4a`
+/// (#audio-compress). New recordings compress automatically after transcription;
+/// this backfills captures made before that shipped (or any left uncompressed by
+/// an interrupted run). Walks `recordings/<note>/<session>/playback.wav`,
+/// reusing the same verified `compress_playback_wav` (afconvert → verify →
+/// delete the wav) so a half-written `.m4a` can never destroy the only copy.
+/// Returns how many files it converted and how many bytes that reclaimed.
+#[tauri::command]
+pub async fn compress_past_captures(app: AppHandle) -> Result<PastCaptureCompression, String> {
+    let app_dir = app.path().app_data_dir().map_err(err)?;
+    let root = app_dir.join("recordings");
+    if !root.exists() {
+        return Ok(PastCaptureCompression { converted: 0, bytes_saved: 0, failed: 0 });
+    }
+
+    // Collect every session dir holding a playback.wav. Layout is
+    // recordings/<note_id>/<session_id>/playback.wav.
+    let mut targets: Vec<(PathBuf, u64)> = Vec::new();
+    let mut note_dirs = tokio::fs::read_dir(&root).await.map_err(err)?;
+    while let Ok(Some(note)) = note_dirs.next_entry().await {
+        if !note.file_type().await.map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let mut sess_dirs = match tokio::fs::read_dir(note.path()).await {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+        while let Ok(Some(sess)) = sess_dirs.next_entry().await {
+            if !sess.file_type().await.map(|t| t.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            let wav = sess.path().join("playback.wav");
+            if let Ok(meta) = tokio::fs::metadata(&wav).await {
+                if meta.len() > 0 {
+                    targets.push((sess.path(), meta.len()));
+                }
+            }
+        }
+    }
+
+    let mut converted = 0u64;
+    let mut failed = 0u64;
+    let mut bytes_saved = 0i64;
+    for (dir, wav_len) in targets {
+        let m4a = dir.join("playback.m4a");
+        if compress_playback_wav(dir).await {
+            converted += 1;
+            // Net reclaimed = original wav minus the new m4a that replaced it.
+            let m4a_len = tokio::fs::metadata(&m4a).await.map(|m| m.len()).unwrap_or(0);
+            bytes_saved += wav_len as i64 - m4a_len as i64;
+        } else {
+            failed += 1;
+        }
+    }
+    Ok(PastCaptureCompression {
+        converted,
+        bytes_saved: bytes_saved.max(0) as u64,
+        failed,
+    })
+}
+
+#[derive(serde::Serialize)]
+pub struct PastCaptureCompression {
+    /// How many `playback.wav` files were compressed to `.m4a`.
+    pub converted: u64,
+    /// Approximate disk reclaimed (original WAV sizes minus the new `.m4a`s).
+    pub bytes_saved: u64,
+    /// Sessions whose compression failed (left as WAV, untouched).
+    pub failed: u64,
 }
 
 /// Compress a session's playback audio *after* its transcription has completed
@@ -8158,6 +8301,49 @@ fn record_detected_language(app: &AppHandle, note_id: &str, chunks: &[ChunkRecor
         eprintln!("record_detected_language: {e}");
     } else {
         eprintln!("[stt] detected recording language: {lang}");
+    }
+}
+
+#[cfg(test)]
+mod mic_ducking_tests {
+    use super::*;
+
+    /// A tone-ish signal: constant amplitude `amp` for `n` samples.
+    fn level(amp: f32, n: usize) -> Vec<f32> {
+        vec![amp; n]
+    }
+
+    #[test]
+    fn mic_untouched_when_system_is_silent() {
+        // User talking (mic loud), far end silent (sys ~0) → mic kept at full.
+        let mic = level(0.5, 16_000);
+        let sys = level(0.0, 16_000);
+        let mixed = mix_with_mic_ducking(&mic, &sys);
+        // With sys silent, output ≈ (mic * 1.0 + 0) * 0.5 = 0.25.
+        let tail = mixed[8_000]; // past any envelope warm-up
+        assert!((tail - 0.25).abs() < 0.01, "expected ~0.25, got {tail}");
+    }
+
+    #[test]
+    fn mic_ducked_when_system_is_loud() {
+        // Far end loud (sys), mic carrying the same energy as echo → mic pulled
+        // down so the mic's contribution is well below its un-ducked level.
+        let mic = level(0.5, 16_000);
+        let sys = level(0.5, 16_000);
+        let mixed = mix_with_mic_ducking(&mic, &sys);
+        // Steady state: env ≈ 0.5 (well over SYS_GATE), so mic_gain → MIN_MIC_GAIN
+        // (0.15). Output ≈ (0.5*0.15 + 0.5)*0.5 = 0.2875, vs un-ducked
+        // (0.5+0.5)*0.5 = 0.5. The mic's own share collapsed.
+        let tail = mixed[15_000];
+        assert!(tail < 0.32, "expected ducked (<0.32), got {tail}");
+        // And it must still be dominated by the clean sys copy (~0.25 from sys).
+        assert!(tail > 0.24, "sys copy should survive, got {tail}");
+    }
+
+    #[test]
+    fn length_is_max_of_both_streams() {
+        let mixed = mix_with_mic_ducking(&level(0.3, 100), &level(0.3, 250));
+        assert_eq!(mixed.len(), 250);
     }
 }
 

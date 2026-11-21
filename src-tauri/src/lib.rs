@@ -586,6 +586,7 @@ where
             commands::asr_download,
             commands::recording_start,
             commands::recording_stop,
+            commands::compress_past_captures,
             commands::import_audio,
             commands::recording_pause,
             commands::recording_resume,
