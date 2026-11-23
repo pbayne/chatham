@@ -22,11 +22,12 @@ except click Install.
 ## Signing — two DIFFERENT signatures, don't confuse them
 
 - **Updater signature (minisign).** ✅ READY. The private key is at
-  `~/.tauri/humla-updater.key` and its public half MATCHES the `pubkey` in
+  `~/.tauri/chatham-updater.key` and its public half MATCHES the `pubkey` in
   tauri.conf (verified). This is what makes `downloadAndInstall` accept the
-  bundle. Keep this key safe and backed up — lose it and no existing install can
-  ever auto-update again (they'd each need a manual reinstall of a build carrying
-  a new pubkey).
+  bundle. It is YOUR OWN key (generated 2026-11 for the fork, key id
+  `638B6EE38B065587`), distinct from upstream Humla's key — do NOT regenerate it,
+  or existing installs can never auto-update again (they trust the current
+  pubkey). Keep it safe and backed up.
 - **Apple code signing (Gatekeeper).** ⚠️ DECISION NEEDED. tauri.conf's
   `macOS.signingIdentity` is the **self-signed** cert hash `70304D84…` (see the
   `chatham-self-signed-codesigning` skill). That works on YOUR Mac because the
@@ -58,7 +59,7 @@ except click Install.
 3. **Build with updater artifacts** (already on via `createUpdaterArtifacts:true`).
    The build must sign with the updater key:
    ```sh
-   export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/humla-updater.key)"
+   export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/chatham-updater.key)"
    export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""   # set if the key has one
    ./node_modules/.bin/tauri build
    ```
