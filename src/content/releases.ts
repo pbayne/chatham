@@ -11,6 +11,23 @@ export type Release = {
 
 export const releases: Release[] = [
   {
+    version: "0.76.0",
+    date: "2026-11-23",
+    title: "Show times as 12-hour or 24-hour",
+    summary: "Pick whether Chatham shows clock times with AM/PM or on a 24-hour clock.",
+    visual: "date",
+    paragraphs: [
+      "Chatham now lets you choose how it shows the time of day. Under Settings → General there's a new Time format setting: pick 12-hour to see times like 2:30 PM, or 24-hour to see them like 14:30. It changes every time Chatham shows — the time on each note in your list, the date under a note's title, and the label on each recording.",
+      "Your choice is remembered on this Mac and takes effect right away, everywhere a time appears. It follows what you pick rather than your system setting, so you can read 24-hour in Chatham even if the rest of your Mac is on AM/PM, or the other way around.",
+    ],
+    highlights: [
+      "Choose 12-hour (2:30 PM) or 24-hour (14:30) under Settings → General.",
+      "Applies everywhere a time appears — note list, note dates, recordings.",
+      "Remembered on this Mac and applied instantly.",
+    ],
+    issues: [],
+  },
+  {
     version: "0.75.0",
     date: "2026-11-10",
     title: "Share a note with chosen people",
@@ -18,8 +35,8 @@ export const releases: Release[] = [
     visual: "share",
     paragraphs: [
       "Until now a note in a team workspace was either shared with everyone or private to you. Now you can pick who gets it: click the chip under the title, add people from the workspace, and only they can open the note, its transcript and its recording. Everyone else in the workspace doesn't see it, and it doesn't show up when they chat with their notes.",
-      "Only the person who wrote the note can change who has it. The people you add can read and edit it like any other note in the workspace, and they see who else has it. If you take someone off the list, the note is removed from their Mac the next time Humla syncs.",
-      "Also in this release: a microphone with many inputs, like the Focusrite Vocaster Two, now records from its first input instead of silence, and Humla remembers whether you left the side panel open or closed.",
+      "Only the person who wrote the note can change who has it. The people you add can read and edit it like any other note in the workspace, and they see who else has it. If you take someone off the list, the note is removed from their Mac the next time Chatham syncs.",
+      "Also in this release: a microphone with many inputs, like the Focusrite Vocaster Two, now records from its first input instead of silence, and Chatham remembers whether you left the side panel open or closed.",
     ],
     highlights: [
       "Share a note with chosen people in your workspace.",
@@ -35,13 +52,13 @@ export const releases: Release[] = [
     version: "0.74.0",
     date: "2026-11-01",
     title: "Start a team workspace from a link",
-    summary: "Links on humla.team and in our emails now open Humla right where you create a team workspace.",
+    summary: "Links on humla.team and in our emails now open Chatham right where you create a team workspace.",
     paragraphs: [
-      "When you click a link to start a team workspace, for example from humla.team or one of our emails, Humla now opens and goes straight to creating the workspace. That works whether Humla is already running or not. If you're still setting Humla up, it waits until you're done.",
+      "When you click a link to start a team workspace, for example from humla.team or one of our emails, Chatham now opens and goes straight to creating the workspace. That works whether Chatham is already running or not. If you're still setting Chatham up, it waits until you're done.",
     ],
     highlights: [
-      "Links can open Humla straight to Create team workspace.",
-      "Works whether Humla is open or not.",
+      "Links can open Chatham straight to Create team workspace.",
+      "Works whether Chatham is open or not.",
     ],
     issues: [],
   },
@@ -53,7 +70,7 @@ export const releases: Release[] = [
     visual: "custom",
     paragraphs: [
       "Summaries, chat and transcription now have a Custom provider: any service that speaks the OpenAI API, such as OpenRouter, Together, DeepSeek or your company's own gateway. Pick Custom under Settings → Summary, Chat or Transcription, enter the base URL and, if the service needs one, an API key, then type the model you want. One endpoint serves all three, and each picks its own model.",
-      "Humla uses the URL exactly as you type it, and when something's wrong the error shows the full address it tried. Test checks the service's model list and a short reply separately, since some services don't list their models at all. The key is kept in your Keychain.",
+      "Chatham uses the URL exactly as you type it, and when something's wrong the error shows the full address it tried. Test checks the service's model list and a short reply separately, since some services don't list their models at all. The key is kept in your Keychain.",
       "Transcription asks for word timings, so playback can highlight each word as it's spoken. A model that can't give them still transcribes, just without the highlighting. Chat on a custom endpoint searches your notes by keyword.",
     ],
     highlights: [
@@ -68,13 +85,13 @@ export const releases: Release[] = [
   {
     version: "0.72.1",
     date: "2026-10-29",
-    title: "Humla opens on macOS Ventura and Sonoma again",
-    summary: "Humla quit right after opening on Macs older than macOS Sequoia. This fixes it.",
+    title: "Chatham opens on macOS Ventura and Sonoma again",
+    summary: "Chatham quit right after opening on Macs older than macOS Sequoia. This fixes it.",
     paragraphs: [
-      "On macOS 13 Ventura and macOS 14 Sonoma, Humla quit as soon as it opened, with a “Humla quit unexpectedly” message. Part of the on-device transcription code needed something only macOS 15 Sequoia has. Humla now starts on macOS 13 and later again, and uses the newer feature only on Macs that have it.",
+      "On macOS 13 Ventura and macOS 14 Sonoma, Chatham quit as soon as it opened, with a “Chatham quit unexpectedly” message. Part of the on-device transcription code needed something only macOS 15 Sequoia has. Chatham now starts on macOS 13 and later again, and uses the newer feature only on Macs that have it.",
     ],
     highlights: [
-      "Humla opens again on macOS 13 Ventura and macOS 14 Sonoma.",
+      "Chatham opens again on macOS 13 Ventura and macOS 14 Sonoma.",
     ],
     issues: [],
   },
@@ -86,7 +103,7 @@ export const releases: Release[] = [
     visual: "copilot",
     paragraphs: [
       "GitHub Copilot is now a provider for summaries, titles and chat over your notes. Pick it under Settings → Summary or Settings → Chat, sign in with GitHub by entering a short code, and choose a model. You get the models your Copilot plan includes, such as Claude and GPT, and the calls count against your Copilot plan instead of an API key.",
-      "Humla reaches Copilot through GitHub's Copilot CLI. If it's already on your Mac, Humla finds it; if not, Settings downloads it for you (about 120 MB). Chat on Copilot searches your notes by keyword, as it does on Anthropic.",
+      "Chatham reaches Copilot through GitHub's Copilot CLI. If it's already on your Mac, Chatham finds it; if not, Settings downloads it for you (about 120 MB). Chat on Copilot searches your notes by keyword, as it does on Anthropic.",
       "Also fixed: chat on some newer OpenAI models, such as GPT-6.1 Sol, failed with an error about reasoning_effort. It works again.",
     ],
     highlights: [
@@ -106,7 +123,7 @@ export const releases: Release[] = [
     visual: "audio",
     paragraphs: [
       "A note’s ⋯ menu now has Save audio…, right below Export…. It lists every recording on the note with its length, then saves them joined in order as one file, as M4A or WAV, wherever you pick. Use it to keep a meeting somewhere else, share it, or open it in another app.",
-      "Humla only has audio to save when Keep recorded audio is on under Settings → Recording. If some of a note’s recordings aren’t stored on this Mac, the list marks them as missing and the file leaves them out.",
+      "Chatham only has audio to save when Keep recorded audio is on under Settings → Recording. If some of a note’s recordings aren’t stored on this Mac, the list marks them as missing and the file leaves them out.",
     ],
     highlights: [
       "Save a note’s audio from ⋯ → Save audio….",
@@ -125,7 +142,7 @@ export const releases: Release[] = [
     visual: "date",
     paragraphs: [
       "Click the date under a note’s title to pick the day and time the meeting actually happened. The note moves to its place in your notes right away, and the change syncs to your other Macs and your team. Its title stays as it is.",
-      "Imported recordings now get their date from the file. Humla reads the recording time that phones and Voice Memos save in the file, and otherwise uses the file’s own dates, so a recording from last spring no longer shows up as today’s meeting. Notes you imported before this update keep the import date, so set those by hand.",
+      "Imported recordings now get their date from the file. Chatham reads the recording time that phones and Voice Memos save in the file, and otherwise uses the file’s own dates, so a recording from last spring no longer shows up as today’s meeting. Notes you imported before this update keep the import date, so set those by hand.",
     ],
     highlights: [
       "Click the date on a note to change it.",
@@ -139,28 +156,28 @@ export const releases: Release[] = [
   {
     version: "0.69.2",
     date: "2026-10-20",
-    title: "Humla works in Claude Code again",
-    summary: "The latest Claude Code connected to Humla but couldn’t see any of its tools. This fixes it.",
+    title: "Chatham works in Claude Code again",
+    summary: "The latest Claude Code connected to Chatham but couldn’t see any of its tools. This fixes it.",
     paragraphs: [
-      "If you search your notes from Claude Code, recent versions of Claude Code showed Humla as connected but found none of its tools, and reconnecting gave an error about missing fields. Claude Code now opens a connection a newer way, and Humla’s server didn’t handle it. 0.69.2 handles both the new way and the old one, so Claude Code, Codex and other clients can search and read your notes again.",
+      "If you search your notes from Claude Code, recent versions of Claude Code showed Chatham as connected but found none of its tools, and reconnecting gave an error about missing fields. Claude Code now opens a connection a newer way, and Chatham’s server didn’t handle it. 0.69.2 handles both the new way and the old one, so Claude Code, Codex and other clients can search and read your notes again.",
       "Once you’ve updated, run /mcp in Claude Code and reconnect humla.",
     ],
     highlights: [
-      "Humla’s tools show up in Claude Code again.",
+      "Chatham’s tools show up in Claude Code again.",
     ],
     issues: [],
   },
   {
     version: "0.69.1",
     date: "2026-10-18",
-    title: "Humla opens again",
-    summary: "Humla 0.69.0 closed right after opening if you use a team workspace. This fixes it.",
+    title: "Chatham opens again",
+    summary: "Chatham 0.69.0 closed right after opening if you use a team workspace. This fixes it.",
     paragraphs: [
-      "If you use a team workspace, Humla 0.69.0 closed as soon as you opened it. That came from how the new sign-in code started up, and 0.69.1 fixes it. Two-factor authentication and everything else from 0.69.0 work as before.",
+      "If you use a team workspace, Chatham 0.69.0 closed as soon as you opened it. That came from how the new sign-in code started up, and 0.69.1 fixes it. Two-factor authentication and everything else from 0.69.0 work as before.",
       "A Mac on 0.69.0 can’t update itself, since it closes before it gets the chance. Download 0.69.1 from the releases page and install it over the old one. Your notes and settings stay where they are.",
     ],
     highlights: [
-      "Humla opens again for people in a team workspace.",
+      "Chatham opens again for people in a team workspace.",
     ],
     issues: [],
   },
@@ -168,19 +185,19 @@ export const releases: Release[] = [
     version: "0.69.0",
     date: "2026-10-18",
     title: "Two-factor authentication",
-    summary: "Protect your Humla Cloud account with a code from your phone, and require it for a whole team.",
+    summary: "Protect your Chatham Cloud account with a code from your phone, and require it for a whole team.",
     visual: "two-factor",
     paragraphs: [
-      "You can now turn on two-factor authentication for your Humla Cloud account. Signing in then asks for a 6-digit code from an authenticator app, like 1Password, Google Authenticator, Apple Passwords or Authy, as well as your password. Turn it on under Settings → Account. You get ten recovery codes when you do. Keep them somewhere safe: each one gets you in once if you lose your phone.",
+      "You can now turn on two-factor authentication for your Chatham Cloud account. Signing in then asks for a 6-digit code from an authenticator app, like 1Password, Google Authenticator, Apple Passwords or Authy, as well as your password. Turn it on under Settings → Account. You get ten recovery codes when you do. Keep them somewhere safe: each one gets you in once if you lose your phone.",
       "Workspace owners and admins can require it of everyone in the workspace, from the workspace settings under Settings → Account, and see who already has it before they switch it on. Until a member sets it up, the workspace shows as locked in their switcher and nothing in it syncs to their Mac. Changes they made keep waiting, and sync once they have it.",
-      "Humla also stays signed in now. It used to sign in again with your password every time it started. Now it keeps your session in your Mac’s Keychain and renews it, so a restart doesn’t ask for a code. If a session does end, Humla asks you to sign in again.",
+      "Chatham also stays signed in now. It used to sign in again with your password every time it started. Now it keeps your session in your Mac’s Keychain and renews it, so a restart doesn’t ask for a code. If a session does end, Chatham asks you to sign in again.",
     ],
     highlights: [
       "Turn on two-factor authentication under Settings → Account.",
       "Sign in with a code from your authenticator app, or a recovery code.",
       "Require two-factor authentication for a whole workspace.",
       "See which members have it before you require it.",
-      "Humla stays signed in between restarts.",
+      "Chatham stays signed in between restarts.",
     ],
     issues: [
       { title: "Two-factor authentication in the app: sign-in code, setup, workspace requirement", reference: "#221", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/221" },
@@ -192,7 +209,7 @@ export const releases: Release[] = [
     title: "Summaries with GPT-6",
     summary: "Summaries work again when you pick a GPT-6 model.",
     paragraphs: [
-      "If you chose one of OpenAI’s GPT-6 models for summaries, the summary failed with an error about temperature. Humla now handles GPT-6 the way it handles GPT-5. It stops sending the setting those models don’t accept, so summaries, chat and automatic titles all work with them.",
+      "If you chose one of OpenAI’s GPT-6 models for summaries, the summary failed with an error about temperature. Chatham now handles GPT-6 the way it handles GPT-5. It stops sending the setting those models don’t accept, so summaries, chat and automatic titles all work with them.",
     ],
     highlights: [
       "Summaries work with GPT-6 models.",
@@ -207,7 +224,7 @@ export const releases: Release[] = [
     summary: "Save a note as a PDF, and plain text exports come out as clean text.",
     visual: "export",
     paragraphs: [
-      "Export… in a note’s ⋯ menu now has a third format: PDF. You get a ready-to-share document with the title, the summary, the transcript and your notes in the sections you picked, set in Humla’s own typeface, with page numbers at the bottom. Headings, lists, tables and bold text from the summary carry over, and speaker names are in bold.",
+      "Export… in a note’s ⋯ menu now has a third format: PDF. You get a ready-to-share document with the title, the summary, the transcript and your notes in the sections you picked, set in Chatham’s own typeface, with page numbers at the bottom. Headings, lists, tables and bold text from the summary carry over, and speaker names are in bold.",
       "Plain text exports are clean text now. They used to keep the summary’s Markdown, so you got lines full of ## and ** that only make sense in a Markdown editor. Now headings are plain lines, lists get proper bullets, and tables line up in columns. Markdown exports haven’t changed.",
     ],
     highlights: [
@@ -225,7 +242,7 @@ export const releases: Release[] = [
     title: "Moving a note to another workspace",
     summary: "Moving a note now takes you back to your list and tells you where it went.",
     paragraphs: [
-      "When you moved the note you were reading to another workspace, Humla left you on it, even though it was no longer in the workspace you were in. Now you go back to the list you came from, and a short message says where the note went.",
+      "When you moved the note you were reading to another workspace, Chatham left you on it, even though it was no longer in the workspace you were in. Now you go back to the list you came from, and a short message says where the note went.",
       "A moved note also leaves its folder and client behind, since those belong to the old workspace. Before, it kept them and ended up in no folder at all in the new workspace, not even under No folder. You can file it again once it's there.",
     ],
     highlights: [
@@ -242,8 +259,8 @@ export const releases: Release[] = [
     summary: "Titles that name the actual meeting, and a way to send a note to your own tools.",
     visual: "webhook",
     paragraphs: [
-      "Humla now names a meeting after what most of it was about. Titles used to come from the first few minutes, and that’s usually small talk. Now Humla reads a sample from across the whole transcript, plus the summary when there is one. Regenerate title in a note’s ⋯ menu works the same way, and it’s greyed out until there’s something to read.",
-      "You can now send a note to your own webhook, so a knowledge base, an agent or an automation like n8n or Zapier gets the meeting. Turn it on under Settings → General → Integrations, add the URL and any headers it needs, then choose Send to webhook… in a note’s ⋯ menu. Humla asks before every send and never sends anything on its own.",
+      "Chatham now names a meeting after what most of it was about. Titles used to come from the first few minutes, and that’s usually small talk. Now Chatham reads a sample from across the whole transcript, plus the summary when there is one. Regenerate title in a note’s ⋯ menu works the same way, and it’s greyed out until there’s something to read.",
+      "You can now send a note to your own webhook, so a knowledge base, an agent or an automation like n8n or Zapier gets the meeting. Turn it on under Settings → General → Integrations, add the URL and any headers it needs, then choose Send to webhook… in a note’s ⋯ menu. Chatham asks before every send and never sends anything on its own.",
       "The URL and headers stay in your Mac’s Keychain and aren’t synced. Each send is the whole note as JSON: your notes, the summary, the transcript with speaker names, and when it was recorded. Audio is never sent.",
       "Thanks to @jgontrum and @gYonder, whose pull requests started both of these.",
     ],
@@ -263,11 +280,11 @@ export const releases: Release[] = [
     version: "0.66.0",
     date: "2026-10-06",
     title: "Start quietly in the menu bar",
-    summary: "Humla can now open when you log in, hidden in the menu bar and ready to record.",
+    summary: "Chatham can now open when you log in, hidden in the menu bar and ready to record.",
     paragraphs: [
-      "There’s a new Open at login setting under Settings → Recording. Turn it on and Humla starts with your Mac, straight into the menu bar, with no window and no Dock icon. Start a recording from the menu bar icon whenever a meeting begins.",
-      "When you want the window, open Humla from Finder or Spotlight, or pick Open from the menu bar icon. Opening Humla yourself always shows the window as before; only the login launch stays hidden.",
-      "If Humla is still running from the disk image or a Downloads copy macOS has moved aside, the setting asks you to move it to Applications first, since that copy won’t be there at your next login.",
+      "There’s a new Open at login setting under Settings → Recording. Turn it on and Chatham starts with your Mac, straight into the menu bar, with no window and no Dock icon. Start a recording from the menu bar icon whenever a meeting begins.",
+      "When you want the window, open Chatham from Finder or Spotlight, or pick Open from the menu bar icon. Opening Chatham yourself always shows the window as before; only the login launch stays hidden.",
+      "If Chatham is still running from the disk image or a Downloads copy macOS has moved aside, the setting asks you to move it to Applications first, since that copy won’t be there at your next login.",
     ],
     highlights: [
       "Open at login, hidden in the menu bar.",
@@ -275,7 +292,7 @@ export const releases: Release[] = [
       "Finder, Spotlight or the menu bar’s Open bring the window back.",
     ],
     issues: [
-      { title: "Feature Request: Start Humla Minimized / Hidden on macOS", reference: "#207", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/207" },
+      { title: "Feature Request: Start Chatham Minimized / Hidden on macOS", reference: "#207", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/207" },
     ],
   },
   {
@@ -284,7 +301,7 @@ export const releases: Release[] = [
     title: "Local chat answers again",
     summary: "Chat on local models no longer comes back empty, and your notes now have times in MCP.",
     paragraphs: [
-      "If you chat with your notes through a local server like mlx_lm, some models came back with “returned an empty response”. The server was cutting replies off at a few hundred words, and models that think before they answer used all of that thinking. Humla now asks for a much higher limit, so the answer has room to arrive. Local summaries had the same cap and get the same fix. If a reply is still cut short, the message now says the model hit its output limit instead of calling it empty.",
+      "If you chat with your notes through a local server like mlx_lm, some models came back with “returned an empty response”. The server was cutting replies off at a few hundred words, and models that think before they answer used all of that thinking. Chatham now asks for a much higher limit, so the answer has room to arrive. Local summaries had the same cap and get the same fix. If a reply is still cut short, the message now says the model hit its output limit instead of calling it empty.",
       "Apps that read your notes over MCP now get the time of each note, not just the date, in your local time with its UTC offset. A note from just after midnight also stops showing up under the day before, and date filters follow your own midnight instead of UTC’s.",
     ],
     highlights: [
@@ -304,10 +321,10 @@ export const releases: Release[] = [
     title: "Nemotron 3 on macOS 27",
     summary: "The switch to Nemotron 3 now finishes on macOS 27 and on newer Macs.",
     paragraphs: [
-      "On macOS 27, and on some newer Macs, switching to Nemotron 3 stopped right at the end with an error about an “output backing”. The download itself had finished. What failed was the last step, where Humla runs the model once to get it ready. This version moves to an updated build of the model that gets through that step.",
-      "If you already use Nemotron 3, or a new install tried to set it up and couldn’t, Humla fetches the updated model in the background the first time you open this version: another 193 MB and a couple of minutes of setup, once. Until it’s ready, new recordings get their speaker labels from Community-1.",
+      "On macOS 27, and on some newer Macs, switching to Nemotron 3 stopped right at the end with an error about an “output backing”. The download itself had finished. What failed was the last step, where Chatham runs the model once to get it ready. This version moves to an updated build of the model that gets through that step.",
+      "If you already use Nemotron 3, or a new install tried to set it up and couldn’t, Chatham fetches the updated model in the background the first time you open this version: another 193 MB and a couple of minutes of setup, once. Until it’s ready, new recordings get their speaker labels from Community-1.",
       "If the switch from the home screen failed for you, try it again from the card there. And when setup does fail, the message now says which part went wrong, so a problem preparing the model no longer reads like a problem with your connection.",
-      "It’s also harder to lose speaker labels now. If identifying speakers fails on one engine, Humla tries the other one straight away instead of leaving the transcript unlabelled. And after a macOS update, Humla gets Nemotron 3 ready again when it starts, so that setup never lands at the end of a meeting. If that fails, Settings says why and lets you try again.",
+      "It’s also harder to lose speaker labels now. If identifying speakers fails on one engine, Chatham tries the other one straight away instead of leaving the transcript unlabelled. And after a macOS update, Chatham gets Nemotron 3 ready again when it starts, so that setup never lands at the end of a meeting. If that fails, Settings says why and lets you try again.",
     ],
     highlights: [
       "The Nemotron 3 upgrade finishes on macOS 27 and on newer Macs.",
@@ -327,9 +344,9 @@ export const releases: Release[] = [
     summary: "Nemotron 3 tells up to eight voices apart, and call echo no longer adds any.",
     visual: "speakers",
     paragraphs: [
-      "Humla now labels speakers with NVIDIA’s Nemotron 3, which tells up to eight voices apart and counts them itself. A meeting left on Auto used to come back as a single speaker whenever one person did most of the talking; now it doesn’t need the speaker count to get it right. It runs entirely on your Mac, on the Neural Engine.",
-      "New installs get it straight away. If you’ve been using Humla already, nothing changes until you choose it: a card on the home screen offers the switch, a 193 MB download plus about two minutes of one-time setup. Community-1 stays in Settings, and takes over by itself for any note set to more than eight speakers.",
-      "Calls played through your speakers come out better too. The mic hears the other side of the call a second time, as an echo, and Humla used to count that echo as extra people in the room. It’s now taken out before speakers are identified, and stopping after a long call finishes much sooner.",
+      "Chatham now labels speakers with NVIDIA’s Nemotron 3, which tells up to eight voices apart and counts them itself. A meeting left on Auto used to come back as a single speaker whenever one person did most of the talking; now it doesn’t need the speaker count to get it right. It runs entirely on your Mac, on the Neural Engine.",
+      "New installs get it straight away. If you’ve been using Chatham already, nothing changes until you choose it: a card on the home screen offers the switch, a 193 MB download plus about two minutes of one-time setup. Community-1 stays in Settings, and takes over by itself for any note set to more than eight speakers.",
+      "Calls played through your speakers come out better too. The mic hears the other side of the call a second time, as an echo, and Chatham used to count that echo as extra people in the room. It’s now taken out before speakers are identified, and stopping after a long call finishes much sooner.",
     ],
     highlights: [
       "Nemotron 3 labels up to eight speakers and counts them itself.",
@@ -368,7 +385,7 @@ export const releases: Release[] = [
     summary: "Summaries and chat with Anthropic, using your own API key.",
     paragraphs: [
       "You can now pick Anthropic as the provider for AI summaries and for chat over your notes. Add your Claude API key once under Settings, choose a model, and summaries stream into the panel just as they do with OpenAI.",
-      "Model pickers are live for both cloud providers: Humla asks the API for the models your key can use, so new releases show up without waiting for an app update. Chat on Anthropic searches your notes by keyword, since Claude has no embeddings endpoint.",
+      "Model pickers are live for both cloud providers: Chatham asks the API for the models your key can use, so new releases show up without waiting for an app update. Chat on Anthropic searches your notes by keyword, since Claude has no embeddings endpoint.",
     ],
     highlights: [
       "Choose Anthropic for summaries, per note or as the default.",
@@ -383,14 +400,14 @@ export const releases: Release[] = [
     version: "0.62.0",
     date: "2026-09-15",
     title: "A home for what’s new",
-    summary: "The latest from Humla, right on your home screen.",
+    summary: "The latest from Chatham, right on your home screen.",
     visual: "updates",
     paragraphs: [
       "Your home screen now shows the three latest releases, with the newest at the top. Open any entry for a closer look at the changes, illustrated with previews of the features.",
       "Related GitHub issues link directly to the work behind each release. Settings also gets a quieter look, with borderless panels, a sidebar that matches the app, and even padding.",
     ],
     highlights: [
-      "Read detailed release notes without leaving Humla.",
+      "Read detailed release notes without leaving Chatham.",
       "Explore feature previews and related GitHub issues.",
       "Enjoy a cleaner, more consistent Settings panel.",
     ],
@@ -442,7 +459,7 @@ export const releases: Release[] = [
     summary: "Live activity, right on your note cards.",
     visual: "activity",
     paragraphs: [
-      "You no longer need to open a note to see whether Humla is still working on it. Note cards now show activity as it happens, so you can keep browsing while a recording or processing step is underway.",
+      "You no longer need to open a note to see whether Chatham is still working on it. Note cards now show activity as it happens, so you can keep browsing while a recording or processing step is underway.",
       "A recording card also shows elapsed capture time. Its timer follows the recording itself, so navigating away and coming back won’t reset the clock.",
     ],
     highlights: [
