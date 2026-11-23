@@ -151,6 +151,56 @@ The seam lets Appwrite / Supabase / cloud-PocketBase be SWAPPABLE IMPLS evaluate
 with a working spike — not three separate 11k-line rewrites decided on paper.
 Build the seam first; pick the winner behind it.
 
+## BREAKTHROUGH: PocketBase-on-Postgres forks — Postgres with NO client rewrite
+The entire "any Postgres backend = 11k-line rewrite" premise assumed the client
+must speak raw SQL. It doesn't have to. A family of forks keeps PocketBase's REST
+API, filter DSL, realtime, and file API, but runs on PostgreSQL. Chatham's
+existing Rust client (which hand-rolls the PB REST protocol) points at them
+essentially unchanged — Postgres foundation WITHOUT the rewrite.
+
+### Verified compatibility against Chatham's EXACT surface
+Chatham's client uses: collections records CRUD; the composite-cursor filter
+`workspace='…' && (updated > '…' || (updated = '…' && id > '…'))` with
+`sort=updated,id`, `perPage`, `fields`; `auth-with-password`; `/api/realtime`
+SSE; `/api/files/token` + protected file reads. All of this is stock PocketBase
+REST + filter grammar — NOT exotic features.
+
+- **popgres (Robernetes) — RECOMMENDED.** Fork of PocketBase v0.40.6 on PG 17+.
+  States "REST API, JSON responses, filter syntax, and official JS/Dart SDKs are
+  compatible with PocketBase," backed by GOLDEN TESTS vs PB v0.40.6 with
+  enumerated accepted differences. Realtime "works as in PocketBase" (default
+  hooks source; optional WAL-replication source). **Compiles collection API
+  rules to real Postgres RLS** → the team RBAC requirement enforced IN the DB.
+  pgvector included. Embedded Postgres for dev (`serve --dev`) = the PGlite
+  dev-mirror idea, built in. Compat target pinned (PB v0.40.6 REST + JS SDK
+  0.28.x; a target change is a major version bump).
+- **pg-pocketbase (statewright) — maintenance-cleanest.** NOT a fork: a build-tag
+  overlay over PB v0.37.3 (near-zero upstream diff). Concurrent writes via PG
+  MVCC, multi-instance via LISTEN/NOTIFY, cron dedup via advisory locks. Older PB
+  base; you'd verify the filter/realtime compat yourself (no golden-test claim).
+- **fondoger/pocketbase** — straight PB+Postgres fork, 192★, claims 100% of PB's
+  4701 tests pass, wants upstream merge. Most conservative.
+- **bosbase — PASS for now.** 29★, 2 contributors, created Dec 2025; AI/LLM-relay
+  scope Chatham doesn't need. Too immature for a flagship backend.
+
+### Remaining non-fork-specific work (same on ANY self-host, incl. stock PB)
+- Port the custom hooks: `/api/humla/2fa/status` (6 call sites) is YOUR Go/JS
+  hook, not a PB endpoint — must run on whatever you host. Likewise find-user /
+  invite / chat brokering.
+- **Pre-existing inconsistency to fix regardless of backend:** the app layer hits
+  `/api/collections/note_locks/records` (6×) but SELF_HOST_SCHEMA.md found NO
+  `note_locks` collection in the sync crate. Resolve this independently.
+
+### Revised recommendation
+"Cloud-host stock PocketBase" remains the zero-effort baseline. But **cloud-host
+popgres costs barely more and delivers the Postgres foundation + RLS-based team
+RBAC + pgvector that motivated this whole investigation — with the existing
+client, no rewrite.** This supersedes the Appwrite/Supabase/Turso analysis above
+for the stated goal. Next step if pursued: stand up popgres in Docker, point a
+dev Chatham build's "Self-hosted server" at it, and run the existing sync
+end-to-end (create/edit/delete a note across two devices) to confirm the
+composite-cursor pull + realtime behave identically.
+
 ## Honest estimate
 Multi-week project, dominated NOT by SQL but by rebuilding auth + file storage +
 access rules that PocketBase gave for free. The DB swap (PGlite↔Neon↔Lakebase) is
