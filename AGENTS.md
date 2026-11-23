@@ -243,9 +243,9 @@ All existing Humla installs poll the updater endpoint at startup and prompt to i
 
 ### Updater signing key
 
-Tauri's auto-updater uses a separate Ed25519 keypair from the Apple Developer ID — it signs the **update payload** so the app can verify the DMG hasn't been tampered with before installing.
+Tauri's auto-updater uses a separate rsign/minisign keypair from the Apple Developer ID — it signs the **update payload** so the app can verify the DMG hasn't been tampered with before installing.
 
-- **Private key**: `~/.private_keys/humla-updater.key` (passwordless, ~700 perms). Treat with the same care as the notarisation `.p8`. Losing it means you can't ship updates that existing installs will accept — you'd have to publish a new app with a new public key.
+- **Private key**: `~/.tauri/chatham-updater.key` (passwordless, 600 perms). Treat with the same care as the notarisation `.p8`. Losing it means you can't ship updates that existing installs will accept — you'd have to publish a new app with a new public key.
 - **Public key**: lives in `src-tauri/tauri.conf.json` under `plugins.updater.pubkey`. Bundled into every build. Don't change it once you've shipped or every existing install stops accepting updates.
 - The build script reads the private key path from `.env.notarise` (env var `TAURI_SIGNING_PRIVATE_KEY`).
 
