@@ -4,6 +4,12 @@ Reverse-engineered from the Chatham desktop sync client. This is the exact set o
 PocketBase collections + custom API routes the client reads from and writes to, so a
 developer can stand up a matching self-hosted sync server.
 
+> Scope note: most of this doc is derived from the `cloud-sync` crate (the sync
+> engine). One collection the client needs — **`note_locks`** — lives in the app
+> layer (`commands/cloud.rs`), not the engine, and is documented here by reference
+> to its own authoritative spec at `docs/cloud/note-locks.md`. A self-host needs
+> BOTH.
+
 Every field below is cited to the `file:line` where the client serializes it (push),
 parses it (pull/read), or sends it as a query/filter. Types are what PocketBase must
 store so the client's JSON round-trips. Fields the client never reads but that are
@@ -295,6 +301,28 @@ caller doesn't own.
 
 ---
 
+## Collection: `note_locks` (app-layer, NOT synced by the engine — easy to miss)
+
+**Not driven by the `cloud-sync` crate** — it is owned entirely by the app layer
+(`src-tauri/src/commands/cloud.rs`, `recording.rs`, `Note.tsx`), which is why a
+schema reverse-engineered from the sync crate alone omits it. It IS a real server
+collection the client depends on: the **shared-note recording mutex** that stops two
+teammates recording the same workspace note at once (without it, each pushes a
+whole-note LWW record carrying only its own transcript → one wins, the other scatters
+into "(conflict copy)" notes).
+
+Server-authoritative via a `UNIQUE` index on `note`; the client claims with POST,
+heartbeats every 15s (PATCH), releases on stop (DELETE), and reaps stale locks via an
+`expires < @now` delete rule. Inert until the collection exists — a missing collection
+reads as "cloud unreachable" and degrades to recording **unlocked** (the silent failure
+mode: shared-note recording works but no longer mutually excludes).
+
+**Full field-by-field schema, API rules, and a drop-in PocketBase migration live in
+`docs/cloud/note-locks.md`** — that is the authoritative spec for this collection; a
+self-host MUST apply it or shared-note recording has no server-side lock.
+
+---
+
 # Custom (non-collection) API routes
 
 These are PocketBase **hook routes** (and a separate chat service for `/api/chat*`). All
@@ -483,3 +511,4 @@ Same token flow; path uses the `note_sessions` collection + stored suffixed file
 | `chat_messages` | no | read-through | conversation, seq, role, parts, created |
 | `subscriptions` | no | read-only | workspace, status, seats |
 | `conversations` (inferred) | no | via hooks only | id, title, breadth, message_count, created_by, note, workspace |
+| `note_locks` | no (app layer, not the engine) | POST/PATCH/DELETE/GET via commands/cloud.rs | note(UNIQUE), workspace(rel), holder(rel), holder_name, expires — **see docs/cloud/note-locks.md** |
