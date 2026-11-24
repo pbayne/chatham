@@ -1,6 +1,6 @@
 [package]
 name = "chatham"
-version = "0.75.0"
+version = "0.77.0"
 description = "Chatham — personal meeting notes"
 authors = ["Michael Wilhelmsen"]
 edition = "2021"
