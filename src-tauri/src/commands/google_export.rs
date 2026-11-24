@@ -140,7 +140,36 @@ pub async fn generate_followup_email(
     } else {
         format!("[Transcript]\n{}", note.transcript)
     };
-    let user_message = format!("{notes_block}\n\n{transcript_block}");
+
+    // Structured, already-extracted action items (Phase A: owner + due) and the
+    // note's client, pulled from the DB so the draft agrees with the Follow-ups
+    // view rather than re-deriving items. Best-effort: a read failure just omits
+    // the block and the model falls back to the transcript.
+    let (items_block, client_name) = {
+        let conn = state.db.lock();
+        let items = db::list_action_items(&conn, &note_id)
+            .map(|v| {
+                v.into_iter()
+                    .map(|a| (a.text, a.owner, a.due, a.done))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let client = note
+            .client_id
+            .as_deref()
+            .and_then(|id| db::client_name(&conn, id).ok().flatten());
+        (action_items_block(&items), client)
+    };
+
+    let mut user_message = format!("{notes_block}\n\n{transcript_block}");
+    if let Some(ref client) = client_name {
+        user_message.push_str(&format!("\n\n[Client]\n{client}"));
+    }
+    if let Some(ref items) = items_block {
+        user_message.push_str(&format!(
+            "\n\n[Confirmed action items — use THESE verbatim for the Action items section; do not invent others]\n{items}"
+        ));
+    }
     let full_prompt = format!("{FOLLOWUP_SYSTEM_PROMPT}\n\n{}", language_directive(&language));
 
     // No streaming surface for this action — a no-op chunk sink.
@@ -190,6 +219,40 @@ fn title_or_default(title: &str) -> String {
         "Meeting".to_string()
     } else {
         title.trim().to_string()
+    }
+}
+
+/// Format the note's stored (structured) action items into a prompt block the
+/// follow-up draft treats as ground truth, so the email agrees with the
+/// Follow-ups view instead of the model re-deriving items from the transcript.
+/// Only OPEN items (not done) are included — a follow-up is about what's still
+/// outstanding. Each line carries owner and due when known. Returns None when
+/// there are no open items, so the caller can tell the model to fall back to
+/// reading the transcript. Pure + unit-testable (no DB).
+fn action_items_block(items: &[(String, String, String, bool)]) -> Option<String> {
+    // items: (text, owner, due, done)
+    let mut lines = Vec::new();
+    for (text, owner, due, done) in items {
+        if *done || text.trim().is_empty() {
+            continue;
+        }
+        let mut line = String::from("- ");
+        if !owner.trim().is_empty() {
+            line.push_str(owner.trim());
+            line.push_str(": ");
+        }
+        line.push_str(text.trim());
+        if !due.trim().is_empty() {
+            line.push_str(" (due ");
+            line.push_str(due.trim());
+            line.push(')');
+        }
+        lines.push(line);
+    }
+    if lines.is_empty() {
+        None
+    } else {
+        Some(lines.join("\n"))
     }
 }
 
@@ -246,5 +309,36 @@ mod tests {
         // An attendee object without is_self is treated as not-self (included).
         let json = r#"[{"email":"a@b.com","display_name":"A"}]"#;
         assert_eq!(recipients_from_attendees_json(json), vec!["a@b.com"]);
+    }
+
+    fn item(text: &str, owner: &str, due: &str, done: bool) -> (String, String, String, bool) {
+        (text.into(), owner.into(), due.into(), done)
+    }
+
+    #[test]
+    fn action_items_block_formats_owner_and_due() {
+        let items = vec![
+            item("Send the SOW", "Sarah", "2026-03-13", false),
+            item("Book the follow-up", "", "", false),
+        ];
+        let got = action_items_block(&items).unwrap();
+        assert_eq!(
+            got,
+            "- Sarah: Send the SOW (due 2026-03-13)\n- Book the follow-up"
+        );
+    }
+
+    #[test]
+    fn action_items_block_skips_done_and_blank() {
+        let items = vec![
+            item("Already handled", "Pat", "", true),
+            item("   ", "", "", false),
+        ];
+        assert!(action_items_block(&items).is_none());
+    }
+
+    #[test]
+    fn action_items_block_none_when_empty() {
+        assert!(action_items_block(&[]).is_none());
     }
 }
