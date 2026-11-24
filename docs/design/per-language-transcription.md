@@ -9,7 +9,7 @@
 
 ## Problem
 
-Humla currently lets the user pick exactly one transcription provider + model globally (with a per-note override for one-off cases). That forces a single compromise across every language the user records in:
+Chatham currently lets the user pick exactly one transcription provider + model globally (with a per-note override for one-off cases). That forces a single compromise across every language the user records in:
 
 - **Norwegian** is much better served by NB Whisper Large (finetuned by Nasjonalbiblioteket on Norwegian) than by the multilingual Whisper Turbo.
 - **English** is much better served by Deepgram Nova-3 than by OpenAI Whisper-1 (Nova-3 has stronger speaker turn handling, native diarization, and lower WER on conversational English).

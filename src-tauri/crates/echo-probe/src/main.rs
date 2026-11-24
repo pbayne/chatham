@@ -44,7 +44,7 @@ echo-probe — how a take's mic and system streams line up, and its echo removed
       Write a synthetic take with a known answer — mic.wav, sys.wav and the
       playback.wav the app would mix from them — to try the rest on.
 
-Output WAVs are refused inside Humla's own data directory: audio there is
+Output WAVs are refused inside Chatham's own data directory: audio there is
 governed by keep_audio and swept by \"Delete stored audio\".
 ";
 
@@ -143,13 +143,13 @@ fn delay_config(a: &Args) -> Result<DelayConfig, String> {
     Ok(cfg)
 }
 
-/// Refuse to write audio anywhere under Humla's own data directory. A WAV left
+/// Refuse to write audio anywhere under Chatham's own data directory. A WAV left
 /// there would sit outside everything that governs audio in the app — the
 /// `keep_audio` setting and "Delete stored audio" among them. Checked before
 /// anything is created, against the nearest part of the path that exists
 /// (resolved, so a symlink can't hide it) and against the path as given.
 fn refuse_app_data(path: &Path) -> Result<(), String> {
-    let inside = |p: &Path| p.components().any(|c| c.as_os_str() == "no.humla.app");
+    let inside = |p: &Path| p.components().any(|c| c.as_os_str() == "no.chatham.app");
     let mut probe = path.to_path_buf();
     let resolved = loop {
         if let Ok(c) = std::fs::canonicalize(&probe) {
@@ -162,7 +162,7 @@ fn refuse_app_data(path: &Path) -> Result<(), String> {
     };
     if inside(&resolved) || inside(path) {
         return Err(format!(
-            "refusing to write {} inside Humla's data directory — audio there is governed by \
+            "refusing to write {} inside Chatham's data directory — audio there is governed by \
              keep_audio and swept by \"Delete stored audio\". Write it somewhere else.",
             path.display()
         ));

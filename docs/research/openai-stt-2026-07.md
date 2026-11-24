@@ -6,7 +6,7 @@
 >
 > - **Pris — BEKREFTET** mot `developers.openai.com/api/docs/pricing`: `gpt-transcribe` **$0.0045/min**, `gpt-live-transcribe` **$0.017/min**, `gpt-4o-transcribe` $0.006/min, `whisper-1` $0.006/min. Advarselen i pkt. 6 om at tallene måtte verifiseres er dermed innfridd — tallene stemte.
 > - **Streaming-event-skjema — BEKREFTET** mot API-referansen: `stream=true` sender `transcript.text.delta` (felt: `type`, `delta`, `logprobs`) og `transcript.text.done` (felt: `type`, `text`, `logprobs`, `usage`). Hullet i pkt. 3 er lukket.
-> - **`languages` (flertall) erstatter `language` — BEKREFTET** ordrett i transkripsjonsguiden. Viktig tillegg fra lanseringsvideoen: språkhint er **valgfritt**, og modellen følger flerspråklig tale automatisk som standard. Å sende ett enkelt språk kan derfor motvirke code-switching. Se [#125](https://github.com/michaelwilhelmsen/humla/issues/125).
+> - **`languages` (flertall) erstatter `language` — BEKREFTET** ordrett i transkripsjonsguiden. Viktig tillegg fra lanseringsvideoen: språkhint er **valgfritt**, og modellen følger flerspråklig tale automatisk som standard. Å sende ett enkelt språk kan derfor motvirke code-switching. Se [#125](https://github.com/pbayne/chatham/issues/125).
 > - **WER-tallene (~40% → ~19%) — FORKASTET.** Lanseringsvideoen oppgir ingen WER- eller benchmark-tall overhodet. Tallene i pkt. 5 og sammendraget tilhører etter alt å dømme en tidligere modellgenerasjon og **skal ikke siteres** for disse modellene.
 > - **Fortsatt uavklart:** om `gpt-transcribe` aksepterer `timestamp_granularities[]=word`. Dette avgjør om modellen kan bli ny standard — se #125.
 >
@@ -18,7 +18,7 @@
 - Ingen ordrette timestamps, SRT/VTT-subtitle-output, speaker-diarisering eller engelsk-oversettelse ved lansering på noen av de to nye modellene — de funksjonene er reservert `whisper-1` / `gpt-4o-transcribe-diarize` [SANNSYNLIG]
 - Pris: `gpt-transcribe` $0.0045/min (billigere enn `gpt-4o-transcribe`s $0.006/min); `gpt-live-transcribe` $0.017/min (samme som `gpt-realtime-whisper`) [SANNSYNLIG — sekundærkilde, ikke funnet i primær prisside ennå]
 - WER-forbedring rapportert: fra ~40% (whisper-1) til ~19% (gpt-transcribe) på Common Voice 22 språk (tredjepartsrapportering) [SANNSYNLIG]
-- Kritisk for Humla: begge nye modeller mangler funksjoner Humla er avhengig av per språk-chunk (timestamps for diarize-alignment, SRT/VTT) — se konklusjon
+- Kritisk for Chatham: begge nye modeller mangler funksjoner Chatham er avhengig av per språk-chunk (timestamps for diarize-alignment, SRT/VTT) — se konklusjon
 
 ## 1. Modell-ID-er
 
@@ -71,10 +71,10 @@ Kilde: [DOK — developers.openai.com/api/docs/guides/realtime-transcription, he
 
 ## 4. prompt og language
 
-- `prompt` støttes på begge nye modeller: "Free-form context about the recording, such as its topic or setting" — dette er en friteksts kontekst-parameter, IKKE nødvendigvis samme semantikk som Whisper sin `initial_prompt`/fortsettelses-priming som Humla bruker i `prior_context` [DOK for at parameteren finnes — developers.openai.com/api/docs/guides/transcription og realtime-transcription-guiden; SANNSYNLIG at oppførselen er "kontekstbeskrivelse" snarere enn ordrett fortsettelse, basert på ordlyden i dokumentasjonen — ikke eksplisitt testet]
-- `keywords`: literal termer som kan forekomme i lyden — tilsvarer Humlas `custom_vocabulary`-bruk av Deepgrams `keyterm`/`keywords`. Regel: ingen `<>`, linjeskift eller vognretur i verdiene [DOK — realtime-transcription-guiden]
+- `prompt` støttes på begge nye modeller: "Free-form context about the recording, such as its topic or setting" — dette er en friteksts kontekst-parameter, IKKE nødvendigvis samme semantikk som Whisper sin `initial_prompt`/fortsettelses-priming som Chatham bruker i `prior_context` [DOK for at parameteren finnes — developers.openai.com/api/docs/guides/transcription og realtime-transcription-guiden; SANNSYNLIG at oppførselen er "kontekstbeskrivelse" snarere enn ordrett fortsettelse, basert på ordlyden i dokumentasjonen — ikke eksplisitt testet]
+- `keywords`: literal termer som kan forekomme i lyden — tilsvarer Chathams `custom_vocabulary`-bruk av Deepgrams `keyterm`/`keywords`. Regel: ingen `<>`, linjeskift eller vognretur i verdiene [DOK — realtime-transcription-guiden]
 - `language` (entall) er IKKE parameteren — dokumentasjonen bruker konsekvent **`languages`** (flertall), som tar en liste av ISO 639-1-koder (f.eks. `en`, `fr`), enkelte ISO 639-3-koder, og regionale zh-koder, for å angi *forventede* input-språk (ikke tvunget enkelt-språk som Whisper sin `language`-parameter) [DOK — developers.openai.com/api/docs/guides/transcription (WebFetch-utdrag) og realtime-transcription-guiden]
-- Konsekvens for Humla: dagens `TranscribeCtx.language` (singular) og bias-modell må trolig mappes til en liste ved evt. adapter for disse modellene — se Hull og usikkerhet
+- Konsekvens for Chatham: dagens `TranscribeCtx.language` (singular) og bias-modell må trolig mappes til en liste ved evt. adapter for disse modellene — se Hull og usikkerhet
 
 ## 5. Flerspråklighet og benchmarks (WER)
 
@@ -110,9 +110,9 @@ Kilde: [DOK — developers.openai.com/api/docs/guides/realtime-transcription, he
 
 ## Konklusjon / anbefaling
 
-For Humlas `stt::BatchSttAdapter` (OpenAI-adapteren i `stt/openai.rs`):
+For Chathams `stt::BatchSttAdapter` (OpenAI-adapteren i `stt/openai.rs`):
 
-- **`gpt-transcribe` er en god kandidat til å erstatte `whisper-1`/`gpt-4o-transcribe` som default OpenAI batch-provider** på pris (billigere) og rapportert WER — MEN Humla bruker i dag Whisper-stil `prior_context` (siste ~150 ord) som `initial_prompt` for kontinuitet på tvers av chunks. `gpt-transcribe`s `prompt`-parameter er dokumentert som en løs "beskriv opptaket/settingen"-kontekst, ikke nødvendigvis en ordrett fortsettelses-primer. Dette bør A/B-testes før bytte — hallusinasjons-mitigeringen i `transcribe_chunk` (pkt. 4.5 i CLAUDE.md) er bygget rundt Whisper-semantikk og kan oppføre seg annerledes.
-- **Ingen av de nye modellene støtter word-level timestamps eller SRT/VTT** — Humlas VAD-chunk-tilnærming med `start_ms` fra sidecar dekker timing-behovet uavhengig av provider, så dette er trolig ikke en blokkerende begrensning for dagens arkitektur (Humla bruker ikke providerens egne timestamps for diarize-alignment; det gjøres separat via `assign_speaker`).
+- **`gpt-transcribe` er en god kandidat til å erstatte `whisper-1`/`gpt-4o-transcribe` som default OpenAI batch-provider** på pris (billigere) og rapportert WER — MEN Chatham bruker i dag Whisper-stil `prior_context` (siste ~150 ord) som `initial_prompt` for kontinuitet på tvers av chunks. `gpt-transcribe`s `prompt`-parameter er dokumentert som en løs "beskriv opptaket/settingen"-kontekst, ikke nødvendigvis en ordrett fortsettelses-primer. Dette bør A/B-testes før bytte — hallusinasjons-mitigeringen i `transcribe_chunk` (pkt. 4.5 i CLAUDE.md) er bygget rundt Whisper-semantikk og kan oppføre seg annerledes.
+- **Ingen av de nye modellene støtter word-level timestamps eller SRT/VTT** — Chathams VAD-chunk-tilnærming med `start_ms` fra sidecar dekker timing-behovet uavhengig av provider, så dette er trolig ikke en blokkerende begrensning for dagens arkitektur (Chatham bruker ikke providerens egne timestamps for diarize-alignment; det gjøres separat via `assign_speaker`).
 - **`gpt-live-transcribe` (Realtime API) er ikke rett frem å plugge inn** i dagens arkitektur, som er batch/VAD-chunk-basert (ikke en løpende WebSocket-økt mot Whisper). Å ta i bruk den ville kreve en ny adapter-form utenfor `BatchSttAdapter`-trait'et — vurderes ikke som en umiddelbar prioritet.
-- **Anbefaling**: legg `gpt-transcribe` til som en ny `ProviderConfig`-variant ved siden av eksisterende OpenAI-valg (samme mønster som whisper-1/gpt-4o-transcribe-familien), test kvalitet og hallusinasjonsatferd med Humlas faktiske `prior_context`-bruk på norsk/engelsk lydmateriale, og hent `/llms.txt` + den offisielle prissiden før det caps av som default. Ikke invester i `gpt-live-transcribe` før en eventuell fremtidig streaming-arkitektur er på roadmap.
+- **Anbefaling**: legg `gpt-transcribe` til som en ny `ProviderConfig`-variant ved siden av eksisterende OpenAI-valg (samme mønster som whisper-1/gpt-4o-transcribe-familien), test kvalitet og hallusinasjonsatferd med Chathams faktiske `prior_context`-bruk på norsk/engelsk lydmateriale, og hent `/llms.txt` + den offisielle prissiden før det caps av som default. Ikke invester i `gpt-live-transcribe` før en eventuell fremtidig streaming-arkitektur er på roadmap.

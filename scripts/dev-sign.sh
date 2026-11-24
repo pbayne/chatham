@@ -17,7 +17,7 @@
 set -e
 
 case "$(basename "$1")" in
-  humla) ;;
+  chatham) ;;
   *) exec "$@" ;;
 esac
 

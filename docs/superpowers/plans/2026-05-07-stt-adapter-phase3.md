@@ -201,7 +201,7 @@ pnpm tauri dev
 Expected: app opens normally; no panics on startup. Confirm the migration ran by inspecting the SQLite DB while the app is running:
 
 ```bash
-sqlite3 ~/Library/Application\ Support/no.humla.app/notes.sqlite \
+sqlite3 ~/Library/Application\ Support/no.chatham.app/notes.sqlite \
   "SELECT key, value FROM settings WHERE key IN ('migrated_transcribe_config_v3', 'transcribe_config', 'transcribe_provider', 'transcribe_model', 'whisper_preset', 'local_whisper_model', 'local_whisper_use_gpu', 'deepgram_model', 'groq_model');"
 ```
 
@@ -1461,8 +1461,8 @@ git commit -m "settings: ApiKeys tab uses saveProviderKey/testProviderKey direct
 Backup your DB:
 
 ```bash
-cp ~/Library/Application\ Support/no.humla.app/notes.sqlite \
-   ~/Library/Application\ Support/no.humla.app/notes.sqlite.phase3-backup
+cp ~/Library/Application\ Support/no.chatham.app/notes.sqlite \
+   ~/Library/Application\ Support/no.chatham.app/notes.sqlite.phase3-backup
 ```
 
 - [ ] **Step 2: Build dev**
@@ -1483,14 +1483,14 @@ Confirm:
 - [ ] **Step 3: Verify the migration ran cleanly**
 
 ```bash
-sqlite3 ~/Library/Application\ Support/no.humla.app/notes.sqlite \
+sqlite3 ~/Library/Application\ Support/no.chatham.app/notes.sqlite \
   "SELECT key FROM settings WHERE key IN ('transcribe_provider', 'transcribe_model', 'whisper_preset', 'local_whisper_model', 'local_whisper_use_gpu', 'deepgram_model', 'groq_model');"
 ```
 
 Expected: empty.
 
 ```bash
-sqlite3 ~/Library/Application\ Support/no.humla.app/notes.sqlite \
+sqlite3 ~/Library/Application\ Support/no.chatham.app/notes.sqlite \
   "SELECT value FROM settings WHERE key = 'transcribe_config';"
 ```
 
@@ -1501,7 +1501,7 @@ Expected: a JSON blob matching your active provider.
 Stop the app. Reset to a v0.21-shaped DB:
 
 ```bash
-sqlite3 ~/Library/Application\ Support/no.humla.app/notes.sqlite \
+sqlite3 ~/Library/Application\ Support/no.chatham.app/notes.sqlite \
   "DELETE FROM settings WHERE key IN ('transcribe_config', 'migrated_transcribe_config_v3');" \
   "INSERT INTO settings (key, value) VALUES ('transcribe_provider', 'local'), ('local_whisper_model', 'large-v3-turbo-q5'), ('whisper_preset', 'balanced'), ('local_whisper_use_gpu', 'false');"
 ```
@@ -1515,14 +1515,14 @@ pnpm tauri dev
 After launch, confirm the migration ran:
 
 ```bash
-sqlite3 ~/Library/Application\ Support/no.humla.app/notes.sqlite \
+sqlite3 ~/Library/Application\ Support/no.chatham.app/notes.sqlite \
   "SELECT value FROM settings WHERE key = 'transcribe_config';"
 ```
 
 Expected: `{"provider":"local","model_id":"large-v3-turbo-q5","preset":"balanced","use_gpu":false}` (key order may differ).
 
 ```bash
-sqlite3 ~/Library/Application\ Support/no.humla.app/notes.sqlite \
+sqlite3 ~/Library/Application\ Support/no.chatham.app/notes.sqlite \
   "SELECT key FROM settings WHERE key LIKE 'transcribe_%' OR key LIKE 'whisper_%' OR key LIKE 'local_whisper_%' OR key IN ('deepgram_model','groq_model');"
 ```
 
@@ -1533,8 +1533,8 @@ Confirm the app's Settings → Transcription shows Local / large-v3-turbo-q5 / B
 Restore your backup:
 
 ```bash
-mv ~/Library/Application\ Support/no.humla.app/notes.sqlite.phase3-backup \
-   ~/Library/Application\ Support/no.humla.app/notes.sqlite
+mv ~/Library/Application\ Support/no.chatham.app/notes.sqlite.phase3-backup \
+   ~/Library/Application\ Support/no.chatham.app/notes.sqlite
 ```
 
 - [ ] **Step 5: Commit nothing** — this task is verification only.

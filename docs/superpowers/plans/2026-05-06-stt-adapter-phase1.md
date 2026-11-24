@@ -14,7 +14,7 @@
 
 ## Background for the implementer
 
-Humla is a personal Mac meeting-notes app. Recording produces VAD-bounded WAV chunks; each chunk is sent through one of two transcription paths today:
+Chatham is a personal Mac meeting-notes app. Recording produces VAD-bounded WAV chunks; each chunk is sent through one of two transcription paths today:
 
 - `src-tauri/src/openai.rs::transcribe_file` — multipart POST to OpenAI.
 - `src-tauri/src/local_whisper.rs::transcribe_file_with_words` — in-process whisper-rs / Metal.
@@ -1203,7 +1203,7 @@ Set provider to Local Whisper. Record another short test. Verify:
 After the first launch, open the SQLite DB and confirm the `transcribe_config` setting now exists. From a terminal:
 
 ```bash
-sqlite3 ~/Library/Application\ Support/no.humla.app/notes.sqlite \
+sqlite3 ~/Library/Application\ Support/no.chatham.app/notes.sqlite \
   "SELECT key, value FROM settings WHERE key = 'transcribe_config';"
 ```
 

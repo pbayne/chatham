@@ -1,4 +1,4 @@
-# Humla
+# Chatham
 
 Personal macOS meeting-notes app: freeform user notes plus recorded audio, transcribed and AI-summarized. This file is a glossary of project-specific domain vocabulary — not architecture, not implementation.
 
@@ -9,7 +9,7 @@ A single meeting record: the user's typed notes, the audio transcript, and an AI
 _Avoid_: Meeting, recording, entry
 
 **Title**:
-A Note's name, as it shows in the notes list and above the body. Either **user-owned** — typed by the user, or carried in from an imported file's own name or a `humla://record/start` link's `name` — or **generated**, written by Humla for a Note that had no name of its own: the `Recording 19 Aug 14:32` a menu-bar capture starts with, the `Imported audio` an import falls back to when the file had no usable name of its own, and the short phrase derived from the Note's content (the head of its notes, excerpts from across its transcript, and its summary when it has one) once it has content. Only a generated Title is ever overwritten automatically; a user-owned one changes only when the user edits it or explicitly asks for a new one. The distinction is read off the Title's *shape* at the moment it matters — Humla stores no flag recording who wrote it, so a generated Title that happens to look human-written is treated as human-written.
+A Note's name, as it shows in the notes list and above the body. Either **user-owned** — typed by the user, or carried in from an imported file's own name or a `chatham://record/start` link's `name` — or **generated**, written by Chatham for a Note that had no name of its own: the `Recording 19 Aug 14:32` a menu-bar capture starts with, the `Imported audio` an import falls back to when the file had no usable name of its own, and the short phrase derived from the Note's content (the head of its notes, excerpts from across its transcript, and its summary when it has one) once it has content. Only a generated Title is ever overwritten automatically; a user-owned one changes only when the user edits it or explicitly asks for a new one. The distinction is read off the Title's *shape* at the moment it matters — Chatham stores no flag recording who wrote it, so a generated Title that happens to look human-written is treated as human-written.
 _Avoid_: Name, heading, subject, label
 
 **Folder**:
@@ -37,7 +37,7 @@ The Note's spoken words as one readable string, Speaker labels included — the 
 _Avoid_: Text, transcription, log
 
 **Speaker**:
-The label naming who is talking in a transcript turn — the `Hege Tronshaugen:` in `Hege Tronshaugen: …`. A string the user asserted (by renaming the diarizer's `Speaker N:`), not a record of a person: Humla has no Person entity, and a Speaker's identity lives in the transcript text and nowhere else. The set of Speakers in one Note is derived from that text, never stored independently of it. Only ever someone who *spoke* — a silent attendee produces no label, so "participant" and "attendee" claim attendance Humla never observed. See `docs/adr/0002-no-person-entity-speakers-are-derived.md`.
+The label naming who is talking in a transcript turn — the `Hege Tronshaugen:` in `Hege Tronshaugen: …`. A string the user asserted (by renaming the diarizer's `Speaker N:`), not a record of a person: Chatham has no Person entity, and a Speaker's identity lives in the transcript text and nowhere else. The set of Speakers in one Note is derived from that text, never stored independently of it. Only ever someone who *spoke* — a silent attendee produces no label, so "participant" and "attendee" claim attendance Chatham never observed. See `docs/adr/0002-no-person-entity-speakers-are-derived.md`.
 _Avoid_: Contact, person, attendee, participant
 
 **Rollup**:

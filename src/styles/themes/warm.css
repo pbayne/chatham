@@ -1,7 +1,7 @@
 /* ==========================================================================
-   Theme: warm — Humla's shipped design (v0.30.0 redesign).
+   Theme: warm — Chatham's shipped design (v0.30.0 redesign).
 
-   Cream-paper canvas, one typeface (Hanken Grotesk), Humla gold accent. This
+   Cream-paper canvas, one typeface (Hanken Grotesk), Chatham gold accent. This
    file is the reference implementation of the token contract: every value here
    is the value the app shipped with before themes were split apart, so `warm`
    must look pixel-identical to v0.46.
@@ -16,7 +16,7 @@
    surface (pills) → raised, with a visible warm --color-card-border on the
    inset cards so the layers stay distinct.
 
-   Accent is Humla gold (#ffdc6c) — the logo yellow, the SAME value in both
+   Accent is Chatham gold (#ffdc6c) — the logo yellow, the SAME value in both
    modes (gold reads on light and dark alike, so no inversion). Text/icons
    placed ON a filled-gold surface use --color-on-accent (dark ink). For
    accent-COLOURED text/icons/links sitting on a normal surface, use
@@ -102,7 +102,7 @@
   --color-shadow: transparent;
   --color-icon: var(--color-text-muted);
 
-  --color-accent: #ffdc6c;            /* Humla gold — fill for primary action / active */
+  --color-accent: #ffdc6c;            /* Chatham gold — fill for primary action / active */
   --color-accent-2: #f3cb4d;          /* gold hover (slightly deeper) */
   --color-accent-soft: #fff1cd;       /* gold tint behind active states */
   --color-on-accent: #2a2206;         /* dark ink on a filled-gold surface */
@@ -158,7 +158,7 @@
     --color-shadow: transparent;
     --color-icon: var(--color-text-muted);
 
-    --color-accent: #ffdc6c;          /* Humla gold — same value in dark (no inversion) */
+    --color-accent: #ffdc6c;          /* Chatham gold — same value in dark (no inversion) */
     --color-accent-2: #f3cb4d;
     --color-accent-soft: #38301a;     /* gold-tinted dark */
     --color-on-accent: #2a2206;       /* dark ink on filled gold */
@@ -213,7 +213,7 @@
   --color-shadow: transparent;
   --color-icon: var(--color-text-muted);
 
-  --color-accent: #ffdc6c;          /* Humla gold — same value in dark (no inversion) */
+  --color-accent: #ffdc6c;          /* Chatham gold — same value in dark (no inversion) */
   --color-accent-2: #f3cb4d;
   --color-accent-soft: #38301a;     /* gold-tinted dark */
   --color-on-accent: #2a2206;       /* dark ink on filled gold */

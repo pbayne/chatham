@@ -14,7 +14,7 @@ let package = Package(
                 // initializes. Without this, NSApplication.shared briefly
                 // registers a Dock icon before setActivationPolicy(.prohibited)
                 // takes hold on some macOS versions — the tester saw multiple
-                // Humla icons flash in the Dock each time a permission status
+                // Chatham icons flash in the Dock each time a permission status
                 // check spawned the sidecar.
                 .unsafeFlags([
                     "-Xlinker", "-sectcreate",

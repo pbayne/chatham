@@ -1,6 +1,6 @@
 /// Converts community-1's stored clustering threshold to the value FluidAudio takes.
 ///
-/// Humla stores it as a similarity cutoff, where a higher value means more speakers.
+/// Chatham stores it as a similarity cutoff, where a higher value means more speakers.
 /// FluidAudio reads it as a distance between unit-length embeddings, where a higher
 /// value means fewer, and accepts (0, 2]. The two are related by d = √(2 − 2s).
 public func fluidAudioClusteringThreshold(fromStored stored: Double) -> Double {

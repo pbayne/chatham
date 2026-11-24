@@ -1,18 +1,18 @@
-# Humla UI/UX redesign — implementation brief
+# Chatham UI/UX redesign — implementation brief
 
 > ## ⚠️ HISTORICAL — shipped in v0.30.0. Two things below are now WRONG.
 >
-> 1. **The accent is Humla gold `#ffdc6c`, NOT ink**, and it does *not* invert in dark mode (same value both themes). Text/icon uses take `--color-accent-text`; filled uses take `--color-accent` + `--color-on-accent`. §2 below is superseded.
+> 1. **The accent is Chatham gold `#ffdc6c`, NOT ink**, and it does *not* invert in dark mode (same value both themes). Text/icon uses take `--color-accent-text`; filled uses take `--color-accent` + `--color-on-accent`. §2 below is superseded.
 > 2. **`.nd-action`, `.nd-prop-*`, `.nd-select` and `.rec-bar` no longer exist** — deleted as dead CSS after the refactor.
 >
 > `CLAUDE.md` (Frontend → Design system) is the current source of truth. Keep this file for the layout/structure rationale only.
 
 ## Goal
-Refactor the Humla frontend to the new design. This is a **visual + structural UX refactor only** — preserve every existing behavior (recording, transcription, diarization, summarization, cloud sync, version history, playback, speaker rename, read-only / recording-lock / pending-sync states). **No backend, IPC, or schema changes.**
+Refactor the Chatham frontend to the new design. This is a **visual + structural UX refactor only** — preserve every existing behavior (recording, transcription, diarization, summarization, cloud sync, version history, playback, speaker rename, read-only / recording-lock / pending-sync states). **No backend, IPC, or schema changes.**
 
 ## Reference — source of truth for visuals
 - **`design/redesign-prototype.html`** — a clickable prototype of the target. It has a top-right **Screen** switcher (Note / Recording / All notes) and a **Theme** toggle (Light / Dark). This is the spec for layout, spacing, and structure.
-  - To view: `agent-browser open "file:///Users/michaelwilhelmsen/Documents/Development/Claude Code/humla/design/redesign-prototype.html"` then `agent-browser screenshot /tmp/x.png` and read the image. Use `agent-browser eval "..."` to flip theme/screen (see the segmented-control click handlers in the file).
+  - To view: `agent-browser open "file:///Users/michaelwilhelmsen/Documents/Development/Claude Code/chatham/design/redesign-prototype.html"` then `agent-browser screenshot /tmp/x.png` and read the image. Use `agent-browser eval "..."` to flip theme/screen (see the segmented-control click handlers in the file).
   - Translate its plain CSS into the app's **Tailwind v4 + `--color-*` tokens + `.nd-*` utilities** — do **not** paste raw prototype CSS into the app.
 - Read **`CLAUDE.md`** (architecture) and **`src/styles/globals.css`** (current tokens, fonts, `.nd-*` utilities) before touching anything.
 

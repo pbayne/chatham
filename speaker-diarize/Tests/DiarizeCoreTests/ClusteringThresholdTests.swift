@@ -1,7 +1,7 @@
 import Testing
 @testable import DiarizeCore
 
-@Test func humlaDefaultMapsToADistanceOfOne() {
+@Test func chathamDefaultMapsToADistanceOfOne() {
     #expect(abs(fluidAudioClusteringThreshold(fromStored: 0.5) - 1.0) < 1e-12)
 }
 

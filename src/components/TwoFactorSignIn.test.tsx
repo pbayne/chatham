@@ -10,7 +10,7 @@ import { renderApp } from "../test/app";
 const SIGNED_OUT = {
   configured: true,
   logged_in: false,
-  base_url: "https://sync.humla.team",
+  base_url: "https://sync.chatham.team",
   user: null,
   current_workspace: null,
   workspaces: [],

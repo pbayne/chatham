@@ -1,4 +1,4 @@
-//! Measures how a Humla take's mic and system-audio streams line up, and
+//! Measures how a Chatham take's mic and system-audio streams line up, and
 //! cancels the system audio's echo out of the mic, offline.
 //!
 //! The CLI is a measurement tool, and it reads and writes WAVs only where it is

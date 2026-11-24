@@ -25,7 +25,7 @@ except click Install.
   `~/.tauri/chatham-updater.key` and its public half MATCHES the `pubkey` in
   tauri.conf (verified). This is what makes `downloadAndInstall` accept the
   bundle. It is YOUR OWN key (generated 2026-11 for the fork, key id
-  `638B6EE38B065587`), distinct from upstream Humla's key — do NOT regenerate it,
+  `638B6EE38B065587`), distinct from upstream Chatham's key — do NOT regenerate it,
   or existing installs can never auto-update again (they trust the current
   pubkey). Keep it safe and backed up.
 - **Apple code signing (Gatekeeper).** ⚠️ DECISION NEEDED. tauri.conf's
@@ -87,7 +87,7 @@ except click Install.
 ## Known gaps to decide (not blockers for the mechanism)
 - Apple signing path (above) — the only thing standing between "works for me" and
   "clean for the team".
-- `humla.team` still appears in the 0.74.0 release prose and may appear elsewhere
+- `chatham.team` still appears in the 0.74.0 release prose and may appear elsewhere
   in-app; decide the brand/domain story before external-facing use.
 - No CI: releases are manual today. A GitHub Actions release workflow (build +
   sign + draft release) is the natural next step if release cadence picks up;

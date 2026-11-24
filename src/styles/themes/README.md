@@ -13,7 +13,7 @@ typeface, type scale, control metrics and colours without touching a component.
 3. Register it in `src/lib/palette.ts` (`PALETTE_REGISTRY`) — id, label, one-line
    description. Settings picks it up from there; there is no second list to edit.
 4. `@import` it from `../globals.css`.
-5. If it needs a typeface Humla doesn't bundle, add the `@fontsource` package and
+5. If it needs a typeface Chatham doesn't bundle, add the `@fontsource` package and
    import it in **both** `src/main.tsx` and `src/mockBoot.tsx`.
 
 That's the whole surface: one file, one registry row, one import.

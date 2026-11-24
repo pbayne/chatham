@@ -1,14 +1,14 @@
 # Settings PRD triage
 
-Triage of the settings-related PRDs in GitHub issues (`michaelwilhelmsen/humla`), verified claim-by-claim against the codebase on `main` (post-v0.31.1). Date: 2026-07-08.
+Triage of the settings-related PRDs in GitHub issues (`pbayne/chatham`), verified claim-by-claim against the codebase on `main` (post-v0.31.1). Date: 2026-07-08.
 
 **PRDs in scope:**
 
 | # | Title | Status | Size (1–2h evenings) | Verdict |
 |---|---|---|---|---|
-| [#13](https://github.com/michaelwilhelmsen/humla/issues/13) | Settings refactor (1/2): modal shell, IA, and control kit | ready | 7–10 | **Build now** |
-| [#15](https://github.com/michaelwilhelmsen/humla/issues/15) | Settings refactor (2/2): provider & model surfaces | ready (sequenced behind #13) | 6–8 | **Build after #13** |
-| [#14](https://github.com/michaelwilhelmsen/humla/issues/14) | Cleanup: retire legacy + unsurfaced settings keys | ready, but scope overstated | ~1 | **Build with/after #15, after scope correction** |
+| [#13](https://github.com/pbayne/chatham/issues/13) | Settings refactor (1/2): modal shell, IA, and control kit | ready | 7–10 | **Build now** |
+| [#15](https://github.com/pbayne/chatham/issues/15) | Settings refactor (2/2): provider & model surfaces | ready (sequenced behind #13) | 6–8 | **Build after #13** |
+| [#14](https://github.com/pbayne/chatham/issues/14) | Cleanup: retire legacy + unsurfaced settings keys | ready, but scope overstated | ~1 | **Build with/after #15, after scope correction** |
 
 Non-settings PRDs (#16–#21) were located but not triaged here.
 

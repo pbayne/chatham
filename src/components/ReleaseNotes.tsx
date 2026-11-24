@@ -234,7 +234,7 @@ export function ReleaseNotes() {
                   </span>
                   <span className="release-issue-content">
                     <span className="release-issue-title">{issue.title}</span>
-                    <span className="release-issue-meta"><span>humla {issue.reference}</span><span className={`release-issue-status ${issue.status.toLowerCase()}`}>{issue.status}</span></span>
+                    <span className="release-issue-meta"><span>chatham {issue.reference}</span><span className={`release-issue-status ${issue.status.toLowerCase()}`}>{issue.status}</span></span>
                   </span>
                   <ArrowUpRight size={14} className="release-issue-arrow" aria-hidden="true" />
                 </a>

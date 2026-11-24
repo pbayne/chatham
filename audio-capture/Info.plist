@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleIdentifier</key>
-	<string>no.humla.app.audio-capture</string>
+	<string>no.chatham.app.audio-capture</string>
 	<key>CFBundleName</key>
 	<string>audio-capture</string>
 	<key>CFBundlePackageType</key>

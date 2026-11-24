@@ -22,7 +22,7 @@ function signedIn(role: "owner" | "member", billing = true) {
   return {
     configured: true,
     logged_in: true,
-    base_url: "https://sync.humla.team",
+    base_url: "https://sync.chatham.team",
     user: { id: "u1", email: "m@example.no", name: "Michael", verified: true },
     current_workspace: ws,
     workspaces: [ws],
@@ -86,10 +86,10 @@ describe("Account section", () => {
 
     // CTA points the app at the hosted server (sign-in/up renders next).
     expect(configures).toHaveLength(1);
-    // The hosted cloud host is unchanged (sync.humla.team is the external Humla
+    // The hosted cloud host is unchanged (sync.chatham.team is the external Chatham
     // Cloud service; this fork is local-first and doesn't rebrand that URL).
     expect(String((configures[0] as { baseUrl?: string })?.baseUrl)).toMatch(
-      /sync\.humla\.team/i,
+      /sync\.chatham\.team/i,
     );
   });
 

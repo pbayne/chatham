@@ -38,7 +38,7 @@ by explicit design.
   `lib.rs`. Its concurrency contract (lib.rs:24): *"the shared
   `rusqlite::Connection` is behind a `parking_lot::Mutex`. We NEVER hold that
   guard across an `.await`."*
-- `humla_lib` is Chatham's OWN lib name (`src-tauri/Cargo.toml:16`), not an
+- `chatham_lib` is Chatham's OWN lib name (`src-tauri/Cargo.toml:16`), not an
   external crate. The rusqlite "0.32 pin to match the public core" is about
   merge-compatibility with the UPSTREAM fork, not a dependency we can't change.
 

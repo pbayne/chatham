@@ -2,7 +2,7 @@
 """Report notes whose transcript holds text no session timeline accounts for (#169).
 
 Strictly read-only: opens the SQLite DB with `mode=ro` and never writes to
-either the DB or the recordings tree. Safe to run while Humla is open.
+either the DB or the recordings tree. Safe to run while Chatham is open.
 
 The check mirrors the backend's `rebuild_note_transcript`: group each session's
 `timeline.jsonl` into transcript lines (consecutive same-label entries join with
@@ -25,7 +25,7 @@ Usage:
     python3 scripts/audit-orphaned-transcript.py --verbose  # list every note
     python3 scripts/audit-orphaned-transcript.py --quiet    # counts only, no text
     python3 scripts/audit-orphaned-transcript.py --json     # machine-readable
-    python3 scripts/audit-orphaned-transcript.py --data-dir /path/to/no.humla.app
+    python3 scripts/audit-orphaned-transcript.py --data-dir /path/to/no.chatham.app
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-DEFAULT_DATA_DIR = Path.home() / "Library/Application Support/no.humla.app"
+DEFAULT_DATA_DIR = Path.home() / "Library/Application Support/no.chatham.app"
 LEGACY_SESSION_ID = "legacy"
 # Any of these in the recordings dir root means a pre-sessions note whose assets
 # sit flat, which resolves to one synthesized legacy session.

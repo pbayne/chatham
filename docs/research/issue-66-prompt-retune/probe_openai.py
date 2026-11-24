@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""humla-cloud#20 probes A and B against a GPT-5-class model, without a deploy.
+"""chatham-cloud#20 probes A and B against a GPT-5-class model, without a deploy.
 
 `probe.py` tests the *local* prompt on Ollama. But cloud#20's rationale is
 explicitly about GPT-5-class behaviour — "on a GPT-5-class model it forbids the
@@ -23,7 +23,7 @@ import importlib.util, json, os, re, subprocess, sys, time, urllib.error, urllib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
-CLOUD = os.environ.get("CLOUD_REPO", os.path.abspath(os.path.join(REPO, "..", "humla-cloud")))
+CLOUD = os.environ.get("CLOUD_REPO", os.path.abspath(os.path.join(REPO, "..", "chatham-cloud")))
 
 API = "https://api.openai.com/v1/chat/completions"
 KEY = os.environ.get("OPENAI_API_KEY")

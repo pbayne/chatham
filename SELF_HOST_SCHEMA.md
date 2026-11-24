@@ -412,7 +412,7 @@ Owner-only remove. Resp 200: `ChatKeyMeta` (unconfigured) (`chat.rs:1767-1774`).
 ### 2FA status route — name ambiguity (verify on your server)
 Two call sites reference a 2FA status route under different prefixes:
 - `cloud_auth.rs` error handling expects `/api/chatham/2fa/*` (`cloud_auth.rs:231`).
-- the sync crate GETs **`/api/humla/2fa/status`** (`lib.rs:1435`).
+- the sync crate GETs **`/api/chatham/2fa/status`** (`lib.rs:1435`).
 
 `GET <prefix>/2fa/status` returns
 `{ "available": bool, "enabled": bool, "recovery_codes_left": number,

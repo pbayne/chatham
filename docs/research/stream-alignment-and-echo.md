@@ -2,7 +2,7 @@
 
 Research, 2026-09-23. Question: when a call plays through the laptop's speakers,
 the remote voices reach the mic as an echo — how far apart do the two streams
-sit, why, and what should Humla change: align the streams in capture (a), align
+sit, why, and what should Chatham change: align the streams in capture (a), align
 only in `build_playback_wav` and the timeline (b), or nothing (c)? And is an
 echo-suppressed mic worth it for the diarize input?
 
@@ -98,7 +98,7 @@ awaits `startCapture()`. The first SCK buffer can only arrive after both.
 
 Echo lag in index space: **lag = start offset Δ + path L**, where L is output
 latency + the speaker-to-mic acoustic path + input latency. Only Δ is
-Humla's; L is physics and is still there after any alignment fix.
+Chatham's; L is physics and is still there after any alignment fix.
 
 Consequences beyond the echo:
 
@@ -236,7 +236,7 @@ DSP dependencies, whose `delay` and `aec` modules the app's echo pass also runs
 
 ```sh
 cargo run --release -p echo-probe -- selftest     # known-answer takes; run once per build
-cargo run --release -p echo-probe -- session ~/Library/Application\ Support/no.humla.app/recordings/<note>/<session> --out ~/echo-probe/<name>
+cargo run --release -p echo-probe -- session ~/Library/Application\ Support/no.chatham.app/recordings/<note>/<session> --out ~/echo-probe/<name>
 cargo run --release -p echo-probe -- autocorr <…>/playback.wav      # mix-only takes
 cargo run --release -p echo-probe -- delay mic.wav sys.wav --timing capture-<session>.json --csv track.csv
 cargo run --release -p echo-probe -- cancel mic.wav sys.wav --out mic-aec.wav --linear-out mic-aec-linear.wav
@@ -262,7 +262,7 @@ cargo run --release -p echo-probe -- synth /tmp/fake --lag 157 --polarity -1 --g
   so the opening seconds are cancelled by a converged filter. It writes the
   suppressed output and the linear one, because the suppressor trades some of
   the user's voice in double talk.
-- **Guard:** it refuses to write audio anywhere under `no.humla.app/`, because
+- **Guard:** it refuses to write audio anywhere under `no.chatham.app/`, because
   a WAV there would sit outside `keep_audio` and "Delete stored audio".
 
 Synthetic known-answer results (tests and `selftest`; linear, time-invariant

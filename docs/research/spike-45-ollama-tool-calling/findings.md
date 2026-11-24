@@ -1,6 +1,6 @@
 # Spike #45 — local Ollama tool-calling reliability
 
-Empirical probe for the flagged go/no-go risk in PRD [humla#42](https://github.com/michaelwilhelmsen/humla/issues/42) (story 12, "fully local, just as good as cloud"): does a **local** model driven through Ollama's native `/api/chat` reliably execute the retrieval tool-calling loop the agentic chat feature (#47) depends on?
+Empirical probe for the flagged go/no-go risk in PRD [chatham#42](https://github.com/pbayne/chatham/issues/42) (story 12, "fully local, just as good as cloud"): does a **local** model driven through Ollama's native `/api/chat` reliably execute the retrieval tool-calling loop the agentic chat feature (#47) depends on?
 
 - **Date:** 2026-07-22
 - **Method:** `probe.py` (in this dir) drives `/api/chat` with the three planned retrieval tools (`search_notes` / `get_note` / `list_notes`, with `folder_id`+`client_id` filters) over a fixed 7-note corpus, running the real tool-calling loop (execute tools → feed results back → continue), step-capped at 6 with tools dropped on the final step. 8 queries: single-lookup, multi-step synthesis, and a deliberately empty/nonexistent-topic query.

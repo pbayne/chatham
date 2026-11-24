@@ -1,5 +1,5 @@
 // mic-monitor — emits one JSON line per mic start/stop, naming the app that
-// opened the microphone. Humla's ambient meeting detection (mic_detect.rs)
+// opened the microphone. Chatham's ambient meeting detection (mic_detect.rs)
 // consumes these to offer recording a call that was never on the calendar.
 //
 // Output (stdout, line-unbuffered), matching the Rust MicEvent contract:
@@ -12,7 +12,7 @@
 //
 // If the parent (the Tauri app) dies, the next stdout write gets SIGPIPE and we
 // exit; the parent owns the respawn. Ported from the pattern in stenoai's
-// mic_monitor.swift, adapted to Humla's sidecar conventions.
+// mic_monitor.swift, adapted to Chatham's sidecar conventions.
 
 import Foundation
 import CoreAudio

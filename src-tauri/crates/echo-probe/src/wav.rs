@@ -1,4 +1,4 @@
-//! Just enough WAV to read what Humla writes (16 kHz mono PCM16 from the
+//! Just enough WAV to read what Chatham writes (16 kHz mono PCM16 from the
 //! sidecar and the playback mix) and what anyone else might hand this tool
 //! (other rates, float, several channels), and to write PCM16 back.
 //!

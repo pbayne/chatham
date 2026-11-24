@@ -15,7 +15,7 @@ function status(over: Partial<CloudStatus> = {}): CloudStatus {
     ...DISCONNECTED,
     configured: true,
     logged_in: true,
-    base_url: "https://sync.humla.team",
+    base_url: "https://sync.chatham.team",
     user: { id: "u1", email: "m@example.no", name: "Michael", verified: true },
     billing_enabled: true,
     seat_price_cents: 500,

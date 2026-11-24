@@ -13,7 +13,7 @@ fails fast with an auth error.
 
 ## 1. Create a project + enable the three APIs
 
-1. Go to <https://console.cloud.google.com/> and create a project (e.g. `humla`).
+1. Go to <https://console.cloud.google.com/> and create a project (e.g. `chatham`).
 2. Enable each of these (APIs & Services → Library → search → Enable):
    - **Google Calendar API** — Autopilot reads meetings
    - **Google Docs API** — "Send to Google Docs"
@@ -39,7 +39,7 @@ fails fast with an auth error.
 ## 3. Create the OAuth client ID
 
 1. APIs & Services → **Credentials** → Create credentials → **OAuth client ID**.
-2. Application type: **Desktop app**. Name it (e.g. `humla-desktop`).
+2. Application type: **Desktop app**. Name it (e.g. `chatham-desktop`).
 3. Create. Copy the **Client ID** (looks like
    `1234567890-abcdef.apps.googleusercontent.com`).
 
@@ -75,10 +75,10 @@ echo 'export GOOGLE_OAUTH_CLIENT_ID="PASTE.apps.googleusercontent.com"' >> .env.
 
 ## 5. First-run flow (what the user sees)
 
-1. Open Humla → **Settings → Autopilot → Connect Google**.
+1. Open Chatham → **Settings → Autopilot → Connect Google**.
 2. The default browser opens Google's consent screen; sign in and approve the
    calendar / Docs / Gmail access. One consent covers all three features.
-3. The browser redirects to the local loopback, Humla captures the code, stores
+3. The browser redirects to the local loopback, Chatham captures the code, stores
    the refresh token in the Keychain, and the panel flips to "Connected".
 4. From then on:
    - **Autopilot** (Off/Ask/Auto) watches the calendar and records meetings.

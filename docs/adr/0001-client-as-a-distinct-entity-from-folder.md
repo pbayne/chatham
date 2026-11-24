@@ -1,6 +1,6 @@
 # Client is a distinct entity from Folder, not reused
 
-While scoping the AI-chat rollup feature (which entity should a per-account sales-opportunity summary key on?), we needed a real-world "who is this meeting with" concept. Humla already has Folder — a general-purpose, user-defined organizational bucket — and reusing it was the obvious, zero-new-schema path. We introduced a separate **Client** entity instead, because Folder is deliberately meaning-free (a user might file notes by project, by time period, or by meeting type, not necessarily by client), and the product explicitly wants Folder and Client to be independently filterable dimensions in search/chat (e.g. "sales opportunities from my client meetings within this folder"), not one collapsing into the other.
+While scoping the AI-chat rollup feature (which entity should a per-account sales-opportunity summary key on?), we needed a real-world "who is this meeting with" concept. Chatham already has Folder — a general-purpose, user-defined organizational bucket — and reusing it was the obvious, zero-new-schema path. We introduced a separate **Client** entity instead, because Folder is deliberately meaning-free (a user might file notes by project, by time period, or by meeting type, not necessarily by client), and the product explicitly wants Folder and Client to be independently filterable dimensions in search/chat (e.g. "sales opportunities from my client meetings within this folder"), not one collapsing into the other.
 
 ## Considered Options
 

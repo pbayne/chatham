@@ -18,8 +18,8 @@ export function validateReleaseNotes(releases, version) {
   if (!Array.isArray(release.issues) || release.issues.some((issue) =>
     !filled(issue.title) || !/^#\d+$/.test(issue.reference) ||
     !["Open", "Closed"].includes(issue.status) ||
-    issue.url !== `https://github.com/michaelwilhelmsen/humla/issues/${issue.reference.slice(1)}`
-  )) throw new Error("Related issues must be complete references to michaelwilhelmsen/humla issues.");
+    issue.url !== `https://github.com/pbayne/chatham/issues/${issue.reference.slice(1)}`
+  )) throw new Error("Related issues must be complete references to pbayne/chatham issues.");
 }
 
 async function main() {

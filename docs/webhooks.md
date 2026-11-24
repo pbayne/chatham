@@ -1,6 +1,6 @@
 # Send a note to a webhook
 
-Humla can POST a note to a URL you choose, so your own tools (a knowledge
+Chatham can POST a note to a URL you choose, so your own tools (a knowledge
 base, an agent, an n8n or Zapier flow) can receive the meeting. A note is sent
 only when you send it. Nothing goes out in the background.
 
@@ -12,7 +12,7 @@ example `Authorization` with a value of `Bearer <token>`), and click **Save
 webhook**.
 
 - The URL and headers are kept in the macOS Keychain on this Mac. They are not
-  synced and not stored in Humla's database.
+  synced and not stored in Chatham's database.
 - A saved header's value is never shown again. Leave its field empty to keep
   it, or type a new one to replace it. Renaming a header needs its value
   re-entered.
@@ -44,7 +44,7 @@ screen.
 - There is no event for a deleted note. A note in the Trash can't be sent.
 
 The request is `POST` with `Content-Type: application/json` and
-`User-Agent: Humla/<version>`, plus your headers.
+`User-Agent: Chatham/<version>`, plus your headers.
 
 ## Payload (schema version 1)
 
@@ -86,7 +86,7 @@ new `schema_version`.
 |---|---|
 | `sent_at`, `created_at`, `updated_at` | RFC 3339 timestamps in UTC, with milliseconds. |
 | `id` | The note's stable id. Upsert on it. |
-| `language` | ISO 639-1 code of the note's language: the one set on the note, else Humla's default, with *Auto* resolved to what was detected. `null` when it is *Auto* and nothing was detected. |
+| `language` | ISO 639-1 code of the note's language: the one set on the note, else Chatham's default, with *Auto* resolved to what was detected. `null` when it is *Auto* and nothing was detected. |
 | `folder`, `client` | `{ id, name }` of the folder or client the note is filed under, or `null`. The id survives a rename. |
 | `notes_html` | What you typed in the note, as the editor's HTML. Older notes may hold plain text. |
 | `notes_text` | The same as plain text. |
@@ -96,7 +96,7 @@ new `schema_version`.
 | `recording` | When the note was recorded (below), or `null` for a note that never was. |
 
 Audio is never sent, and neither is any path to an audio file, your headers,
-or Humla's own settings.
+or Chatham's own settings.
 
 ### Recording timing
 
@@ -109,7 +109,7 @@ its last transcribed speech, or at the end of its audio when it has no
 transcript yet.
 
 A value that isn't known is `null`, never guessed from when the note was
-created. That covers takes from before Humla recorded their timing. If any
+created. That covers takes from before Chatham recorded their timing. If any
 take's start or duration is unknown, the matching total is `null` too, while
 the takes that are known keep their values. For imported audio, a take's start
 is when it was imported, not when the original meeting happened.
@@ -125,7 +125,7 @@ The error says what the receiver answered:
 
 - **401 or 403**: check the headers in Settings.
 - **413**: the note is larger than the receiver accepts. The message gives the
-  payload's size. Raise the receiver's request body limit. Humla never
+  payload's size. Raise the receiver's request body limit. Chatham never
   truncates a note to fit.
 - **3xx**: redirects aren't followed. Put the final URL in Settings.
 - **Anything else**: check the receiver's logs.

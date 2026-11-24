@@ -13,7 +13,7 @@ Stated framing from the video:
 - **`gpt-transcribe`** — takes a completed file, returns the full transcript. Pitched for call archives, podcasts and larger batch jobs, *"where you can wait for a complete file and optimize for accuracy and throughput."*
 - **`gpt-live-transcribe`** — holds a live open connection and returns text as the audio arrives. Pitched for captions, dictation and voice interfaces, *"where latency meaningfully impacts the experience."*
 
-This is an explicit **accuracy-vs-latency positioning by OpenAI**, and it is the single most decision-relevant thing in the video. See the note on Humla below.
+This is an explicit **accuracy-vs-latency positioning by OpenAI**, and it is the single most decision-relevant thing in the video. See the note on Chatham below.
 
 ## Capability claims
 
@@ -39,9 +39,9 @@ A meeting recording of about half an hour is processed by `gpt-transcribe` in "a
 - **No latency figures.** No millisecond numbers for `gpt-live-transcribe` anywhere.
 - **No WER or benchmark numbers.** This confirms that the ~40.37% → ~19.27% Common Voice figures circulating in secondary reporting are **not** from this launch and are misattributed to an earlier model generation. Do not cite them for these models.
 
-## Relevance to Humla
+## Relevance to Chatham
 
-- The **automatic language-following** behaviour bears directly on [#125](https://github.com/michaelwilhelmsen/humla/issues/125): `openai_compat::transcribe` currently always sends a language, which may suppress exactly this behaviour on mixed Norwegian/English meetings.
+- The **automatic language-following** behaviour bears directly on [#125](https://github.com/pbayne/chatham/issues/125): `openai_compat::transcribe` currently always sends a language, which may suppress exactly this behaviour on mixed Norwegian/English meetings.
 - The claimed gains on **names, numbers and very short answers** target our weakest transcript output.
 - Better **noise rejection** may reduce the load carried by `is_likely_hallucination`, the `silence_rms_threshold` gate and the repetition-collapse guards — measure before loosening any of them.
-- The **accuracy-vs-latency positioning weakens the case for [#126](https://github.com/michaelwilhelmsen/humla/issues/126)**. Humla's transcript is an archival record that also feeds the summary; it is not a caption track. Moving to the model OpenAI positions as the latency-optimised (rather than accuracy-optimised) option, at 3.8× the cost and without word timestamps, needs stronger justification than faster on-screen text.
+- The **accuracy-vs-latency positioning weakens the case for [#126](https://github.com/pbayne/chatham/issues/126)**. Chatham's transcript is an archival record that also feeds the summary; it is not a caption track. Moving to the model OpenAI positions as the latency-optimised (rather than accuracy-optimised) option, at 3.8× the cost and without word timestamps, needs stronger justification than faster on-screen text.

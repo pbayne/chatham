@@ -184,7 +184,7 @@ REST + filter grammar — NOT exotic features.
   scope Chatham doesn't need. Too immature for a flagship backend.
 
 ### Remaining non-fork-specific work (same on ANY self-host, incl. stock PB)
-- Port the custom hooks: `/api/humla/2fa/status` (6 call sites) is YOUR Go/JS
+- Port the custom hooks: `/api/chatham/2fa/status` (6 call sites) is YOUR Go/JS
   hook, not a PB endpoint — must run on whatever you host. Likewise find-user /
   invite / chat brokering.
 - **Pre-existing inconsistency to fix regardless of backend:** the app layer hits

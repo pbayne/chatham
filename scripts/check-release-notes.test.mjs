@@ -19,8 +19,8 @@ test("rejects incomplete posts and impossible dates", () => {
     assert.throws(() => validateReleaseNotes([{ ...entry, ...patch }], "1.2.3"));
   }
 });
-test("accepts Humla issues and rejects cloud issues", () => {
-  const issue = { title: "A feature", reference: "#191", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/191" };
+test("accepts Chatham issues and rejects cloud issues", () => {
+  const issue = { title: "A feature", reference: "#191", status: "Closed", url: "https://github.com/pbayne/chatham/issues/191" };
   assert.doesNotThrow(() => validateReleaseNotes([{ ...entry, issues: [issue] }], "1.2.3"));
-  assert.throws(() => validateReleaseNotes([{ ...entry, issues: [{ ...issue, url: issue.url.replace("humla/", "humla-cloud/") }] }], "1.2.3"), /Related issues/);
+  assert.throws(() => validateReleaseNotes([{ ...entry, issues: [{ ...issue, url: issue.url.replace("chatham/", "chatham-cloud/") }] }], "1.2.3"), /Related issues/);
 });

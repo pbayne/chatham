@@ -13,7 +13,7 @@
 //! Everything it prints on stdout is protocol. Diagnostics go to stderr, because a
 //! stray line on stdout is a framing error that kills the session.
 
-use humla_lib::mcp;
+use chatham_lib::mcp;
 use rmcp::transport::io::stdio;
 use rmcp::ServiceExt;
 
@@ -34,7 +34,7 @@ async fn main() {
         );
         std::process::exit(1);
     }
-    let conn = match humla_lib::mcp::open_db(&path) {
+    let conn = match chatham_lib::mcp::open_db(&path) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("chatham-mcp: could not open {}: {e}", path.display());

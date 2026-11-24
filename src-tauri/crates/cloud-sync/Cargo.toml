@@ -3,11 +3,11 @@ name = "cloud-sync"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"
-description = "PocketBase-backed sync engine for Humla. Framework-agnostic."
+description = "PocketBase-backed sync engine for Chatham. Framework-agnostic."
 license = "MIT"
 
 [dependencies]
-# rusqlite MUST match the public humla core (0.32) so the
+# rusqlite MUST match the public chatham core (0.32) so the
 # Arc<Mutex<rusqlite::Connection>> handed across the seam unifies to the same
 # concrete type. Do not bump independently of the core.
 rusqlite = { version = "0.32", features = ["bundled"] }

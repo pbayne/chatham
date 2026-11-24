@@ -187,7 +187,7 @@ describe("the transcript panel's re-transcribe control", () => {
         cloud_status: () => ({
           configured: true,
           logged_in: true,
-          base_url: "https://sync.humla.team",
+          base_url: "https://sync.chatham.team",
           user: { id: "u1", email: "m@example.no", name: "Michael", verified: true },
           current_workspace: ws,
           workspaces: [ws],
@@ -329,7 +329,7 @@ describe("the transcript panel's Transcribe action", () => {
         cloud_status: () => ({
           configured: true,
           logged_in: true,
-          base_url: "https://sync.humla.team",
+          base_url: "https://sync.chatham.team",
           user: { id: "u1", email: "m@example.no", name: "Michael", verified: true },
           current_workspace: ws,
           workspaces: [ws],

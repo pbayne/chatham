@@ -1,4 +1,4 @@
-# Humla onboarding — decision record
+# Chatham onboarding — decision record
 
 Product spec for the first-run onboarding experience. Every decision below was made deliberately
 (grilling session, 2026-07-04); rationale is recorded so future changes argue against the reasoning,
@@ -37,7 +37,7 @@ discover missing setup, and a failed first recording is unrecoverable — onboar
 - **Trigger**: wizard renders when the `onboarding_completed` setting is unset **and** the DB looks
   fresh (zero notes, no configured provider beyond the migration default).
 - **Grandfathering**: a startup migration writes `onboarding_completed=true` for existing installs —
-  any notes exist, or any API key / downloaded model is configured. Nobody already using Humla ever
+  any notes exist, or any API key / downloaded model is configured. Nobody already using Chatham ever
   sees the wizard.
 - **Skippability**: every step has "Skip for now"; the wizard has an exit. Skipping is never silent —
   the nag chip (below) persists until the recording pipeline is functional.
@@ -74,7 +74,7 @@ Single CTA: "Get started."
 **First real step deliberately** — if screen recording forces a relaunch, better on step 2 than
 step 6. One screen, three rows (Microphone / System audio / Notifications), each with a status
 pill and action button. Notifications is optional, like system audio: it lets the menu bar and
-`humla://` links (#91) report what they did, and asking never blocks Continue; reuse the guts of `src/components/Permissions.tsx` (which already re-polls on window
+`chatham://` links (#91) report what they did, and asking never blocks Continue; reuse the guts of `src/components/Permissions.tsx` (which already re-polls on window
 focus — the user returns from System Settings and the pill has flipped).
 
 - **Microphone — required.** `permissions_request("microphone")` fires the native prompt.
@@ -83,9 +83,9 @@ focus — the user returns from System Settings and the pill has flipped).
   in-person meetings"* (mic-only is a fully supported mode: the diarizer runs on the mic stream).
   Consequence stated: remote call audio won't be captured; can be enabled later in Settings.
 - **Trust copy** (screen recording is alarming for a notes app):
-  > macOS bundles system-audio capture under "Screen Recording." Humla uses it to hear the other
+  > macOS bundles system-audio capture under "Screen Recording." Chatham uses it to hear the other
   > side of your calls — it never captures your screen.
-- **Restart owned by the wizard**: persist `onboarding_step` *before* showing a "Restart Humla"
+- **Restart owned by the wizard**: persist `onboarding_step` *before* showing a "Restart Chatham"
   button (Tauri process relaunch API). Resume lands on step 3. The user must never discover the
   restart requirement on their own.
 
@@ -139,10 +139,10 @@ Fork with asymmetric depth:
   ("Local: private, needs Ollama + ~6 GB RAM · OpenAI: better summaries, needs API key"). Don't
   steer a privacy-minded user with a weak Mac into the heaviest setup.
 
-### 6. Humla Cloud
+### 6. Chatham Cloud
 
 **Cloud = teams only. Every cloud feature sits behind the workspace subscription.** Pitch line:
-*"Humla is free on your Mac — Cloud is for teams: $7/mo after a 14-day trial."*
+*"Chatham is free on your Mac — Cloud is for teams: $7/mo after a 14-day trial."*
 
 Fork screen; the **free path is the preselected default** (this is what keeps the step from
 smelling like a paywall):
@@ -178,7 +178,7 @@ Checklist of rows, each with a status pill, each **clickable to fix**:
 - **Transcription** — provider + model; if the download is still running, a live progress bar in
   the row (user may finish the wizard; the nag chip covers the gap)
 - **AI Summary** — provider, or "Not set up — add this later"
-- **Humla Cloud** — workspace name, or "Local only"
+- **Chatham Cloud** — workspace name, or "Local only"
 - **Language** — e.g. "Norsk"
 
 This screen is the wizard's receipt: it evaluates the **same condition function as the nag chip**
@@ -218,7 +218,7 @@ In the recording bar, for **every** recording — this is what made dropping the
 
 - **English-only wizard**, matching the app. Step 3 sets *meeting* language — never couple it to UI
   language (Norwegian-meetings + English-UI users exist; half-localized UI is worse than none). If
-  Humla ever localizes, it's a whole-app effort keyed off `navigator.language`, separate project.
+  Chatham ever localizes, it's a whole-app effort keyed off `navigator.language`, separate project.
 
 ## Explicitly deferred / out of scope
 
@@ -236,7 +236,7 @@ In the recording bar, for **every** recording — this is what made dropping the
 | Diarize download | `src-tauri/src/commands/models.rs` (`diarize_download`, `diarize_download_progress` with listing/downloading/compiling phases); UI pattern in `DiarizeModelManager.tsx` |
 | API keys | `src-tauri/src/commands/api_keys.rs` (`provider_key_get/set/test`); `src/pages/settings/components/ApiKeyField.tsx` |
 | Transcribe config | `src-tauri/src/commands/transcription_config.rs` (`get/set_transcribe_config`); broken fallback default lives in `src-tauri/src/stt/config.rs` |
-| Cloud | `src/pages/settings/tabs/Account.tsx`, `Organization.tsx`; `src/lib/cloud.ts` (`HUMLA_CLOUD_URL`); `cloud_status/signup/login/configure`, `cloud_create_workspace`, `billingCheckout`, `billingPortal` |
+| Cloud | `src/pages/settings/tabs/Account.tsx`, `Organization.tsx`; `src/lib/cloud.ts` (`CHATHAM_CLOUD_URL`); `cloud_status/signup/login/configure`, `cloud_create_workspace`, `billingCheckout`, `billingPortal` |
 | Routing guard | `src/App.tsx` (routes; wizard renders instead of `<Layout />`) |
 | Heartbeats for the meter | audio-capture sidecar `heartbeat` stdout events (frame counts + peaks), parsed in the Rust reader thread |
 | Settings keys to add | `onboarding_completed`, `onboarding_step` |

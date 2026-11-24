@@ -25,7 +25,7 @@ function signIntoWorkspace(role: CloudRole = "owner") {
       ...DISCONNECTED,
       configured: true,
       logged_in: true,
-      base_url: "https://sync.humla.team",
+      base_url: "https://sync.chatham.team",
       current_workspace: ws,
       workspaces: [ws],
     },

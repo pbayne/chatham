@@ -1,7 +1,7 @@
 //! How far a signal lags a reference, window by window: GCC-PHAT over the
 //! whole take, reduced to a level, a drift and the steps between levels.
 //!
-//! For Humla the signal is the mic and the reference is the system stream, so
+//! For Chatham the signal is the mic and the reference is the system stream, so
 //! the lag is where the echo of the speakers lands in the mic *by WAV index*:
 //! the capture's own start offset plus the output and acoustic path. A lag
 //! that holds steady is a fixed offset; one that slopes is two clocks drifting;

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add Deepgram and Groq as Humla STT providers and ship the supporting infrastructure (multi-provider Keychain handling, typed `ProviderConfig` write path from Settings, Word-type unification). All adapters slot into the Phase 1 trait — recording pipeline doesn't change.
+**Goal:** Add Deepgram and Groq as Chatham STT providers and ship the supporting infrastructure (multi-provider Keychain handling, typed `ProviderConfig` write path from Settings, Word-type unification). All adapters slot into the Phase 1 trait — recording pipeline doesn't change.
 
 **Architecture:** Generalize Phase 1's single-OpenAI-key cache to a `HashMap<&'static str, Option<String>>` keyed by `provider_id`. Add Tauri commands `provider_key_*` for per-provider Keychain access. Add `set_provider_config` so Settings UI writes typed JSON; `read_provider_config` updated to prefer the new key over legacy. Two new adapter files (`stt/deepgram.rs`, `stt/groq.rs`); shared OpenAI-compat code factored into `stt/openai_compat.rs`.
 
@@ -81,7 +81,7 @@ use parking_lot::Mutex;
 
 use crate::stt::ProviderConfig;
 
-pub const KEYCHAIN_SERVICE: &str = "no.humla.app";
+pub const KEYCHAIN_SERVICE: &str = "no.chatham.app";
 
 /// Cache type to plug into AppState.
 pub type ApiKeyCache = Arc<Mutex<HashMap<&'static str, Option<String>>>>;
@@ -591,7 +591,7 @@ Expected: clean.
 pnpm tauri dev
 ```
 
-Record ~15s with vocabulary set to "Humla, Tauri" and verify the transcript still respects vocab + cross-chunk continuity. Output should be bit-identical to v0.21.0 because the OpenAI/Local prompt assembly produces the same string the old `build_initial_prompt` did.
+Record ~15s with vocabulary set to "Chatham, Tauri" and verify the transcript still respects vocab + cross-chunk continuity. Output should be bit-identical to v0.21.0 because the OpenAI/Local prompt assembly produces the same string the old `build_initial_prompt` did.
 
 - [ ] **Step 7: Commit**
 
@@ -1629,7 +1629,7 @@ Install the new DMG over the existing v0.21.0. Confirm:
 These don't block the plan but the implementer should think about each:
 
 1. **Per-note provider override UI.** Phase 1's `read_provider_config` already picks per-note language; per-note provider would be one more dropdown in the note's settings sheet. Worth doing in Phase 2, or defer to Phase 3?
-2. **Deepgram intensifier 1.5 is a measured guess.** Higher causes phonetic over-recognition (a quiet phoneme that *kind of* sounds like "Humla" gets transcribed as "Humla"). Lower is imperceptible. After shipping, watch reports for over-eager keyword matches; tune to 1.3 if too aggressive or 2.0 if vocabulary terms still get missed.
+2. **Deepgram intensifier 1.5 is a measured guess.** Higher causes phonetic over-recognition (a quiet phoneme that *kind of* sounds like "Chatham" gets transcribed as "Chatham"). Lower is imperceptible. After shipping, watch reports for over-eager keyword matches; tune to 1.3 if too aggressive or 2.0 if vocabulary terms still get missed.
 3. **Nova-3 has a separate `keyterm` slot** (up to 100 multi-word phrases, better than `keywords`). This plan uses `keywords` only because it works on every Deepgram model. If Phase 2 ships and most users land on Nova-3, a Phase 3 follow-up could detect `model == "nova-3"` and prefer `keyterm`.
 4. **Groq rate limits** — tighter than OpenAI's. If a user's recording produces >30 chunks/min (unusual but possible on long monologues with no pauses), Groq may 429. The transcribe layer doesn't currently retry; if this happens in practice, add `retry-with-backoff` logic to `openai_compat::transcribe`.
 5. **Settings UI legacy mirror in Step 8.3.** This double-write keeps the recording_start prerequisite check (line 1675 of commands.rs) working. Phase 3 should switch that check to read `transcribe_config` and drop the mirror.

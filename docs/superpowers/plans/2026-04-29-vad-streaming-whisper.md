@@ -311,7 +311,7 @@ In `src/pages/Settings.tsx:281-306`, delete the entire `{provider === "speechmat
 
 - [ ] **Step 8: Update vocabulary helper text**
 
-In `src/pages/Settings.tsx:319` (placeholder) drop `Speechmatics, ` from the placeholder string, leaving `"Tauri, Humla, ScreenCaptureKit, Granola"`.
+In `src/pages/Settings.tsx:319` (placeholder) drop `Speechmatics, ` from the placeholder string, leaving `"Tauri, Chatham, ScreenCaptureKit, Granola"`.
 
 In `src/pages/Settings.tsx:323-329` (helper paragraph) becomes:
 
@@ -483,15 +483,15 @@ Expected: success; `src-tauri/binaries/audio-capture-aarch64-apple-darwin` updat
 - [ ] **Step 4: Manual smoke-test the sidecar standalone**
 
 ```bash
-mkdir -p /tmp/humla-vad-test
-./src-tauri/binaries/audio-capture-aarch64-apple-darwin --out /tmp/humla-vad-test &
+mkdir -p /tmp/chatham-vad-test
+./src-tauri/binaries/audio-capture-aarch64-apple-darwin --out /tmp/chatham-vad-test &
 PID=$!
 # Speak into the mic for ~10 seconds with deliberate pauses, then:
 sleep 12 && kill -TERM $PID
-ls -la /tmp/humla-vad-test/
+ls -la /tmp/chatham-vad-test/
 ```
 
-Expected: multiple `chunk-NNNN.wav` files, each between ~1.5s and ~12s of audio (use `afinfo /tmp/humla-vad-test/chunk-0001.wav` to check duration). Boundaries should land on the pauses you made, not at fixed 20s.
+Expected: multiple `chunk-NNNN.wav` files, each between ~1.5s and ~12s of audio (use `afinfo /tmp/chatham-vad-test/chunk-0001.wav` to check duration). Boundaries should land on the pauses you made, not at fixed 20s.
 
 - [ ] **Step 5: Commit**
 
@@ -777,7 +777,7 @@ pnpm tauri dev
 
 In the running app:
 1. Settings → ensure Provider = "Local (Whisper turbo, on-device)" and the model is downloaded.
-2. Settings → Custom vocabulary → enter a few proper nouns including one tricky spelling (e.g. "Humla, Speechmatics, ScreenCaptureKit").
+2. Settings → Custom vocabulary → enter a few proper nouns including one tricky spelling (e.g. "Chatham, Speechmatics, ScreenCaptureKit").
 3. Open a fresh note. Hit Record. Speak in clear sentences with deliberate pauses, including one of the proper-noun terms early on. Speak for ~30s.
 4. Stop. Trigger summary.
 
@@ -795,7 +795,7 @@ Repeat the recording with Provider = "OpenAI", model = `whisper-1`. Verify the s
 Old Speechmatics keys remain in the `settings` table but nothing reads them. Confirm with:
 
 ```bash
-sqlite3 ~/Library/Application\ Support/no.humla.app/notes.sqlite \
+sqlite3 ~/Library/Application\ Support/no.chatham.app/notes.sqlite \
   "SELECT key FROM settings WHERE key LIKE '%speechmatics%';"
 ```
 

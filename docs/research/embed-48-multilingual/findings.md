@@ -4,10 +4,10 @@
 
 This is the *non-blocking multilingual sanity check* the #48 acceptance criteria
 ask for. It is deliberately a sanity check, not a benchmark: `embeddinggemma` is
-Humla's **sole** local embedder, with **no fallback model**. If a language looks
+Chatham's **sole** local embedder, with **no fallback model**. If a language looks
 weak, the lever is retrieval tuning (chunk boundaries, RRF `k`, query
 formatting) — **never a model swap**. So the goal here is only to confirm the
-embedder is "good enough" across the languages Humla users actually write in,
+embedder is "good enough" across the languages Chatham users actually write in,
 not to rank it against alternatives.
 
 ## Method

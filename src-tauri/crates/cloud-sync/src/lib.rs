@@ -1,9 +1,9 @@
-//! cloud-sync — PocketBase-backed sync engine for Humla.
+//! cloud-sync — PocketBase-backed sync engine for Chatham.
 //!
 //! Framework-agnostic on purpose: it knows the local SQLite schema and talks
-//! HTTP to PocketBase, but it does NOT depend on `humla_lib` or `tauri`. The
+//! HTTP to PocketBase, but it does NOT depend on `chatham_lib` or `tauri`. The
 //! app's `commands::cloud_worker` glue module is the thin composition root: it
-//! implements `humla_lib::sync::SyncObserver` by forwarding to the `enqueue_*`
+//! implements `chatham_lib::sync::SyncObserver` by forwarding to the `enqueue_*`
 //! methods here, owns the worker lifecycle (start/restart on login + workspace
 //! switch), and passes a `notify` closure that emits the Tauri refresh event.
 //!
@@ -93,7 +93,7 @@ impl std::error::Error for TwoFactorRequired {}
 
 #[derive(Clone)]
 pub struct Config {
-    /// PocketBase base URL, e.g. `https://sync.humla.app`.
+    /// PocketBase base URL, e.g. `https://sync.chatham.app`.
     pub base_url: String,
     /// The signed-in session the worker borrows its token from.
     pub session: Arc<dyn Session>,
@@ -1432,7 +1432,7 @@ impl Worker {
         let auth = self.ensure_auth().await?;
         let resp = self
             .http
-            .get(format!("{}/api/humla/2fa/status", self.config.base_url))
+            .get(format!("{}/api/chatham/2fa/status", self.config.base_url))
             .bearer_auth(&auth.token)
             .send()
             .await?;
@@ -1954,7 +1954,7 @@ fn parse_sse(block: &str) -> (Option<String>, String) {
 mod it {
     //! Integration tests that drive the REAL worker against a live PocketBase
     //! (push → pull → tombstone), for notes, folders, and prompts. Skip unless
-    //! HUMLA_TEST_* env vars are set — `scripts/integration.sh` boots
+    //! CHATHAM_TEST_* env vars are set — `scripts/integration.sh` boots
     //! PocketBase, seeds a user + workspace, exports them, and runs these.
     //! Plain `cargo test` skips them.
     use super::*;
@@ -1985,22 +1985,22 @@ mod it {
     }
 
     fn env_config() -> Option<Config> {
-        let base_url = std::env::var("HUMLA_TEST_PB_URL").ok()?;
+        let base_url = std::env::var("CHATHAM_TEST_PB_URL").ok()?;
         Some(Config {
             session: Arc::new(PasswordSession {
                 base_url: base_url.clone(),
-                email: std::env::var("HUMLA_TEST_EMAIL").ok()?,
-                password: std::env::var("HUMLA_TEST_PASSWORD").ok()?,
+                email: std::env::var("CHATHAM_TEST_EMAIL").ok()?,
+                password: std::env::var("CHATHAM_TEST_PASSWORD").ok()?,
             }),
             base_url,
-            workspace_id: std::env::var("HUMLA_TEST_WORKSPACE").ok()?,
+            workspace_id: std::env::var("CHATHAM_TEST_WORKSPACE").ok()?,
             poll_interval: Duration::from_secs(60),
             recordings_dir: std::env::temp_dir(),
         })
     }
 
     /// Throwaway in-memory DB with the columns the worker touches — mirrors
-    /// humla's notes/folders/summary_prompts schema + the worker's own tables.
+    /// chatham's notes/folders/summary_prompts schema + the worker's own tables.
     fn test_db() -> Db {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
@@ -2257,7 +2257,7 @@ mod it {
     #[tokio::test]
     async fn a_locked_workspace_settles_nothing() {
         let base = fake_server(|_, p| {
-            if p.starts_with("/api/humla/2fa/status") {
+            if p.starts_with("/api/chatham/2fa/status") {
                 (200, r#"{"enabled":false,"required_by":[{"id":"wsR"}]}"#.into())
             } else {
                 (200, r#"{"items":[]}"#.into())
@@ -2516,7 +2516,7 @@ mod it {
     /// Reads the just-recorded take's metadata out of a real sessions.json.
     #[test]
     fn read_session_meta_from_manifest() {
-        let root = std::env::temp_dir().join(format!("humla-sess-test-{}", now_ms()));
+        let root = std::env::temp_dir().join(format!("chatham-sess-test-{}", now_ms()));
         let note_dir = root.join("note-1");
         std::fs::create_dir_all(&note_dir).unwrap();
         std::fs::write(
@@ -2785,7 +2785,7 @@ mod it {
     #[tokio::test]
     async fn note_roundtrip() {
         let Some(config) = env_config() else {
-            eprintln!("note_roundtrip: skipped (set HUMLA_TEST_* — see scripts/integration.sh)");
+            eprintln!("note_roundtrip: skipped (set CHATHAM_TEST_* — see scripts/integration.sh)");
             return;
         };
         let db = test_db();
@@ -2930,7 +2930,7 @@ mod it {
     }
 
     /// note_sessions metadata push + tombstone against a live PocketBase (#16).
-    /// Skipped unless HUMLA_TEST_* are set. Requires the humla-cloud
+    /// Skipped unless CHATHAM_TEST_* are set. Requires the chatham-cloud
     /// `note_sessions` collection (migration 1718900900) on the test server.
     /// Reconstruction/download live in the app (cloud.rs + sessions.rs) and are
     /// covered by their own unit tests, so this exercises the crate's slice: a
@@ -2938,12 +2938,12 @@ mod it {
     #[tokio::test]
     async fn session_roundtrip() {
         let Some(mut config) = env_config() else {
-            eprintln!("session_roundtrip: skipped (set HUMLA_TEST_*)");
+            eprintln!("session_roundtrip: skipped (set CHATHAM_TEST_*)");
             return;
         };
         // Stand up a temp recordings dir with a one-take manifest for the push
         // to read (mirrors what the post-stop chain writes on disk).
-        let root = std::env::temp_dir().join(format!("humla-sess-it-{}", now_ms()));
+        let root = std::env::temp_dir().join(format!("chatham-sess-it-{}", now_ms()));
         let note_uuid = format!("note-{}", now_ms());
         let sess_uuid = format!("sess-{}", now_ms());
         let note_dir = root.join(&note_uuid);
@@ -3138,7 +3138,7 @@ mod it {
     #[tokio::test]
     async fn a_push_refused_by_a_workspace_that_requires_two_factor_is_kept() {
         let base = fake_server(|method, path| match (method, path) {
-            ("GET", p) if p.starts_with("/api/humla/2fa/status") => (
+            ("GET", p) if p.starts_with("/api/chatham/2fa/status") => (
                 200,
                 r#"{"available":true,"enabled":false,"recovery_codes_left":0,"required_by":[{"id":"wsA","name":"Acme"}]}"#.into(),
             ),
@@ -3163,7 +3163,7 @@ mod it {
     #[tokio::test]
     async fn a_deletion_in_a_workspace_that_requires_two_factor_is_kept() {
         let base = fake_server(|method, path| match (method, path) {
-            ("GET", p) if p.starts_with("/api/humla/2fa/status") => (
+            ("GET", p) if p.starts_with("/api/chatham/2fa/status") => (
                 200,
                 r#"{"available":true,"enabled":false,"recovery_codes_left":0,"required_by":[{"id":"wsA","name":"Acme"}]}"#.into(),
             ),
@@ -3187,7 +3187,7 @@ mod it {
     #[tokio::test]
     async fn a_server_without_two_factor_still_drops_an_unpushable_change() {
         let base = fake_server(|method, path| match (method, path) {
-            ("GET", p) if p.starts_with("/api/humla/2fa/status") => (200, "<!doctype html><title>Humla</title>".into()),
+            ("GET", p) if p.starts_with("/api/chatham/2fa/status") => (200, "<!doctype html><title>Chatham</title>".into()),
             ("GET", p) if p.starts_with("/api/collections/notes/records") => (200, r#"{"items":[]}"#.into()),
             _ => (400, r#"{"message":"Failed to create record."}"#.into()),
         })
@@ -3205,7 +3205,7 @@ mod it {
     #[tokio::test]
     async fn a_push_refused_for_any_other_reason_is_still_dropped() {
         let base = fake_server(|method, path| match (method, path) {
-            ("GET", p) if p.starts_with("/api/humla/2fa/status") => (
+            ("GET", p) if p.starts_with("/api/chatham/2fa/status") => (
                 200,
                 r#"{"available":true,"enabled":false,"recovery_codes_left":0,"required_by":[]}"#.into(),
             ),

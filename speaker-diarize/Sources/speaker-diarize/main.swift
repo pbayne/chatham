@@ -5,7 +5,7 @@ import FluidAudio
 import Foundation
 
 // Every command writes one JSON payload to stdout (download streams progress lines
-// before it) and exits 0, or exits 1 with a `humla-error:` line on stderr. A failed
+// before it) and exits 0, or exits 1 with a `chatham-error:` line on stderr. A failed
 // download also prints a `failed` line naming the step that failed.
 //
 //   speaker-diarize <wav-path> [--engine community1|nemotron3] [--num-speakers N] [--threshold T]
@@ -23,7 +23,7 @@ func writeStderr(_ msg: String) {
 /// Tagged so the Rust side can pick it out of FluidAudio's stderr logging, and
 /// kept to one line because that side reads stderr line by line.
 func writeError(_ message: String) {
-    writeStderr("humla-error: \(message.split(whereSeparator: \.isNewline).joined(separator: " "))")
+    writeStderr("chatham-error: \(message.split(whereSeparator: \.isNewline).joined(separator: " "))")
 }
 
 func writeError(_ error: Error) {
@@ -145,13 +145,13 @@ func nemotronFilesPresent() -> Bool {
 /// sidecar reports the app's bundle id, a bare binary its own name. FluidAudio
 /// writes its weights marker before any load, so that one can't say this.
 func nemotronWarmMarker() -> URL {
-    nemotronModelsDirectory().appendingPathComponent(".humla-warm-\(markerIdentity)")
+    nemotronModelsDirectory().appendingPathComponent(".chatham-warm-\(markerIdentity)")
 }
 
 /// Written when a warm-up of files already on disk fails: the stamp it failed
 /// under, then the error. The app doesn't retry on its own under that stamp.
 func nemotronWarmFailureMarker() -> URL {
-    nemotronModelsDirectory().appendingPathComponent(".humla-warm-failed-\(markerIdentity)")
+    nemotronModelsDirectory().appendingPathComponent(".chatham-warm-failed-\(markerIdentity)")
 }
 
 var markerIdentity: String {

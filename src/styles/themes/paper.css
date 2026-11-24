@@ -26,10 +26,10 @@
    serif display face for titles/headings with a clean sans for body. No
    chromatic brand accent: active states, focus, toggles all use the ink tone,
    so the interface reads as one calm paper+ink surface. Status hues (record
-   red, synced green, speaker blue) are kept because Humla's components rely on
+   red, synced green, speaker blue) are kept because Chatham's components rely on
    them to carry meaning, tuned to stenoai's muted palette.
 
-   Maps stenoai's raw palette onto Humla's token contract (themeContract.ts) so
+   Maps stenoai's raw palette onto Chatham's token contract (themeContract.ts) so
    every component inherits it with zero component edits — same mechanism as
    warm/graphite. Selectable from Settings; cannot affect the other themes.
    ========================================================================== */
@@ -118,7 +118,7 @@
   --color-icon: var(--color-text-muted);
 
   /* Accent = ink. stenoai uses the foreground tone for active/primary rather
-     than a brand colour; Humla's filled-accent surfaces (primary button,
+     than a brand colour; Chatham's filled-accent surfaces (primary button,
      active toggle) therefore become ink with paper text. */
   --color-accent: #1b1b19;            /* ink fill for primary action / active */
   --color-accent-2: #3d3d39;          /* ink-700 hover */

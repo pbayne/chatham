@@ -1,6 +1,6 @@
 # Inbox Triage — how to run it
 
-An AI inbox-triage mode built into Humla. It reads your unread Gmail, sorts it
+An AI inbox-triage mode built into Chatham. It reads your unread Gmail, sorts it
 into Action Needed / Follow-ups / FYI / Noise, extracts to-dos, and drafts
 replies you approve before sending. Runs on a local model by default (free,
 private). Branch: `feat/inbox-triage`.
@@ -20,8 +20,8 @@ Then: click **Inbox** in the left sidebar → **Triage now**.
   - `Local (free)` — your Ollama model (default; set via Settings, e.g. phi3).
     Free + private, modest quality on small models.
   - `OpenAI` / `Anthropic` — sharper results, uses your API key, costs tokens.
-- **Auth** — how Humla reaches Gmail:
-  - `OAuth` — Humla's own Google OAuth. Needs a real client ID compiled in
+- **Auth** — how Chatham reaches Gmail:
+  - `OAuth` — Chatham's own Google OAuth. Needs a real client ID compiled in
     (`GOOGLE_OAUTH_CLIENT_ID`) AND an account allowed to authorize third-party
     apps. **Does NOT work on a @databricks.com account** (admin policy blocks
     third-party OAuth — go/accessblock).

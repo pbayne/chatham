@@ -1,10 +1,10 @@
 # STT provider adapter — design doc
 
-Status: proposal · Author: research synthesis from `fastrepl/anarlog` · Target: Humla 0.21+
+Status: proposal · Author: research synthesis from `fastrepl/anarlog` · Target: Chatham 0.21+
 
 ## Problem
 
-Humla currently supports two transcription paths and they don't share any abstraction:
+Chatham currently supports two transcription paths and they don't share any abstraction:
 
 - `openai::transcribe_file(api_key, model, language, prompt, audio_path)` — multipart POST, returns `(String, Vec<TranscribeWord>)`.
 - `local_whisper::transcribe_file_with_words(shared, model_path, use_gpu, language, prompt, preset, audio_path)` — in-process whisper-rs, returns `(String, Vec<Word>)`.
@@ -33,16 +33,16 @@ Replace the string-match dispatch with a typed adapter trait, modeled on `fastre
 
 Non-goals for this phase:
 
-- WebSocket streaming. Humla transcribes chunks (1–15s WAV files); batch-shaped is the right surface. Anarlog's `RealtimeSttAdapter` exists but isn't needed yet.
-- Multi-channel native stereo to providers. Humla already keeps mic/sys parallel as separate WAV streams; we transcribe each chunk mono.
-- Diarization providers (Pyannote, Speechmatics). Humla's offline FluidAudio path is shipped and owns diarization; STT adapters return text + words only.
+- WebSocket streaming. Chatham transcribes chunks (1–15s WAV files); batch-shaped is the right surface. Anarlog's `RealtimeSttAdapter` exists but isn't needed yet.
+- Multi-channel native stereo to providers. Chatham already keeps mic/sys parallel as separate WAV streams; we transcribe each chunk mono.
+- Diarization providers (Pyannote, Speechmatics). Chatham's offline FluidAudio path is shipped and owns diarization; STT adapters return text + words only.
 
 ## Reference: anarlog's shape
 
 Three traits in `crates/owhisper-client/src/adapter/mod.rs`:
 
 - `RealtimeSttAdapter` — websocket streaming. Skip.
-- `BatchSttAdapter` — one-shot file POST. **This is what Humla needs.**
+- `BatchSttAdapter` — one-shot file POST. **This is what Chatham needs.**
 - `CallbackSttAdapter` — submit + poll for async transcription. Skip for now.
 
 The portable parts:
@@ -67,9 +67,9 @@ pub enum ModelConfig {
 }
 ```
 
-The `Auth` enum is the cleanest single piece — it covers every cloud STT we'd want without any per-provider auth code. The tagged-union `ModelConfig` is what replaces Humla's flat settings strings.
+The `Auth` enum is the cleanest single piece — it covers every cloud STT we'd want without any per-provider auth code. The tagged-union `ModelConfig` is what replaces Chatham's flat settings strings.
 
-## Proposed shape for Humla
+## Proposed shape for Chatham
 
 ### Trait
 
@@ -204,9 +204,9 @@ pub struct GroqConfig {
 }
 ```
 
-Stored under settings key `transcribe_config` as JSON. Migration: on first read, if `transcribe_config` is missing, build it from the legacy `transcribe_provider` + `transcribe_model` + `whisper_preset` keys. This is the same pattern Humla already uses for the legacy keychain migration in `read_openai_api_key`.
+Stored under settings key `transcribe_config` as JSON. Migration: on first read, if `transcribe_config` is missing, build it from the legacy `transcribe_provider` + `transcribe_model` + `whisper_preset` keys. This is the same pattern Chatham already uses for the legacy keychain migration in `read_openai_api_key`.
 
-API keys stay in Keychain, one entry per provider (`service = "no.humla.app"`, `account = "openai_api_key" | "deepgram_api_key" | …`).
+API keys stay in Keychain, one entry per provider (`service = "no.chatham.app"`, `account = "openai_api_key" | "deepgram_api_key" | …`).
 
 ### Adapter implementations
 
@@ -332,8 +332,8 @@ Diff size estimate: ~150 LOC added.
 Anarlog's biggest architectural win is `crates/local-stt-server/src/axum_server.rs:14-70` — they run whisper.cpp inside an in-process axum server bound to `127.0.0.1:0` and route to it via the same OpenAI-compat code path as cloud providers. `LocalWhisperAdapter` would then disappear; local becomes "OpenAI-compat against an internal endpoint."
 
 Pros:
-- One code path. Adapter registry shrinks. Reduces Humla's special-cased local path.
-- Future: a power user can point any external tool at this localhost endpoint to use Humla's loaded Whisper model — incidental API surface for free.
+- One code path. Adapter registry shrinks. Reduces Chatham's special-cased local path.
+- Future: a power user can point any external tool at this localhost endpoint to use Chatham's loaded Whisper model — incidental API surface for free.
 
 Cons:
 - Network hop, JSON serialization overhead per chunk. For local Whisper at ~5× realtime this is negligible (sub-1ms vs 200–500ms of inference).
@@ -347,15 +347,15 @@ Cons:
 
 - **Adapter trait + `async-trait` tax**: `async-trait` boxes futures. ~1µs overhead per call vs hundreds of ms per chunk transcription — irrelevant. Confirmed.
 - **`TranscribeCtx` lifetime parameter**: caller must keep references alive across the await. In `transcribe_chunk` they're all locals owned by the function — fine. If we ever spawn the transcribe future to a detached task, this becomes a problem; revisit if/when that happens.
-- **Per-note provider override**: should a user be able to pick "this note uses Deepgram" while their global default is local Whisper? Probably yes — Humla already has per-note language. But that's a settings-UI decision, not a trait decision. The trait supports it trivially: `read_provider_config` takes a `note_id` and falls back to global.
-- **Vocabulary support varies**: Deepgram has `keywords`, Whisper/OpenAI has `prompt`. Right now Humla packs vocabulary into `initial_prompt`. Deepgram won't honour that — needs to accept the vocab list and stuff it into Deepgram's `keywords` query param. Solution: rename `initial_prompt` to `bias_terms: Option<&str>` (provider-neutral) and let each adapter wire it to its own slot. Defer the rename to Phase 2 when Deepgram lands.
+- **Per-note provider override**: should a user be able to pick "this note uses Deepgram" while their global default is local Whisper? Probably yes — Chatham already has per-note language. But that's a settings-UI decision, not a trait decision. The trait supports it trivially: `read_provider_config` takes a `note_id` and falls back to global.
+- **Vocabulary support varies**: Deepgram has `keywords`, Whisper/OpenAI has `prompt`. Right now Chatham packs vocabulary into `initial_prompt`. Deepgram won't honour that — needs to accept the vocab list and stuff it into Deepgram's `keywords` query param. Solution: rename `initial_prompt` to `bias_terms: Option<&str>` (provider-neutral) and let each adapter wire it to its own slot. Defer the rename to Phase 2 when Deepgram lands.
 - **Trail context per source**: orthogonal — the trait sees a single `initial_prompt` string. The per-source trail logic in `transcribe_chunk` stays exactly as-is, builds the string, passes it in.
 - **Hallucination + repetition filters in `transcribe_chunk`**: stay where they are. The trait returns raw provider output; downstream filtering is provider-agnostic. (Long-term we may want a per-adapter `is_likely_hallucination` since each provider hallucinates differently — Deepgram doesn't produce "Subtitles by Amara" tails. Defer.)
 
 ## What I'd hold off on
 
-- Realtime websocket adapters (anarlog's `RealtimeSttAdapter`). Humla's chunk-then-batch flow is intentional — it pairs with VAD-bounded chunking and the per-source trail prompt. Switching to streaming would unwind those.
-- Provider-side diarization. Humla's offline FluidAudio path is a moat; routing diarization through Deepgram's speaker-id (cloud) would weaken the privacy story.
+- Realtime websocket adapters (anarlog's `RealtimeSttAdapter`). Chatham's chunk-then-batch flow is intentional — it pairs with VAD-bounded chunking and the per-source trail prompt. Switching to streaming would unwind those.
+- Provider-side diarization. Chatham's offline FluidAudio path is a moat; routing diarization through Deepgram's speaker-id (cloud) would weaken the privacy story.
 - A full plugin system. We're in single-binary territory; trait + match registry is enough.
 
 ## Concrete first PR scope

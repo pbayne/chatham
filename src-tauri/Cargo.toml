@@ -6,19 +6,19 @@ authors = ["Michael Wilhelmsen"]
 edition = "2021"
 rust-version = "1.94"
 license = "MIT"
-# The app is THE binary. Required since `humla-mcp` (#172) became a second
+# The app is THE binary. Required since `chatham-mcp` (#172) became a second
 # `[[bin]]`: `tauri dev` shells out to a bare `cargo run`, which refuses to pick
 # between two binaries and fails the whole dev command with "could not determine
 # which binary to run".
 default-run = "chatham"
 
 [lib]
-name = "humla_lib"
+name = "chatham_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 # cloud-sync joins this package's workspace as a sibling member so the live sync
 # engine builds from source in-tree (it was extracted from the private
-# humla-cloud repo when the client was consolidated into the public app). Its
+# chatham-cloud repo when the client was consolidated into the public app). Its
 # rusqlite is pinned to 0.32 to match the core — the Arc<Mutex<Connection>>
 # handed across the sync seam must unify to the same concrete type.
 #
@@ -101,7 +101,7 @@ github-copilot-sdk = { version = "=1.0.27", default-features = false, features =
 # The Copilot CLI download: an npm tarball, checked against a pinned sha512.
 tar = "0.4"
 flate2 = "1"
-# `humla://` links. Same minor as `@tauri-apps/plugin-deep-link` in package.json.
+# `chatham://` links. Same minor as `@tauri-apps/plugin-deep-link` in package.json.
 tauri-plugin-deep-link = "~2.4"
 
 [dev-dependencies]

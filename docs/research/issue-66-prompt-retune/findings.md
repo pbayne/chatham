@@ -1,4 +1,4 @@
-# #66 / humla-cloud#20 — does the prompt retune change behaviour?
+# #66 / chatham-cloud#20 — does the prompt retune change behaviour?
 
 **Date:** 2026-07-26 · **Model:** `gemma4:12b-mlx` via Ollama · **Reps:** 3 · `temperature=0`
 **Harness:** `probe.py` (this directory). Corpus and tool schema imported from the spike #45 probe, unmodified.
@@ -22,7 +22,7 @@ Aggregated over 3 reps. Both prompts run in the same process, same order, per re
 
 **2. No factual regression.** Probe C passed 3/3 under both. The extra ~40 words did not degrade straightforward grounded recall, which was the main risk given the prompt's own warning that small thinking models re-litigate long constraint lists.
 
-**3. Labeled inference is NOT reliably produced on a 12B local model — 1/3.** When it landed, it landed well: explicit `Dokumentert status:` versus `Inferred risk:` / `Inferred opportunity:` / `Inferred strategy:` sections, across three ranked clients, in 3 steps rather than hitting the cap. That is exactly what humla-cloud#20's probe B asks for. But two of three reps produced an unlabelled recommendation instead. **cloud#20's probe B is not satisfied for the local provider.**
+**3. Labeled inference is NOT reliably produced on a 12B local model — 1/3.** When it landed, it landed well: explicit `Dokumentert status:` versus `Inferred risk:` / `Inferred opportunity:` / `Inferred strategy:` sections, across three ranked clients, in 3 steps rather than hitting the cap. That is exactly what chatham-cloud#20's probe B asks for. But two of three reps produced an unlabelled recommendation instead. **cloud#20's probe B is not satisfied for the local provider.**
 
 <details>
 <summary>The one rep where it worked (rep 1, new prompt, abridged)</summary>

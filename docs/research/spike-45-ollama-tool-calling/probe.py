@@ -80,7 +80,7 @@ TOOLS = [
         "parameters": {"type": "object", "properties": _filters({}), "required": []}}},
 ]
 
-SYSTEM = ("You are Humla's chat assistant. Answer questions grounded in the user's meeting notes. "
+SYSTEM = ("You are Chatham's chat assistant. Answer questions grounded in the user's meeting notes. "
           "Use the tools to search and read notes before answering — do not answer from memory. "
           "Cite the note ids you used. If the notes don't contain the answer, say so plainly rather than guessing.")
 

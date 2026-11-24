@@ -1850,7 +1850,7 @@ All three must be clean. Expected total cargo tests: 121 (115 from v0.23 + 6 new
 - [ ] **Step 2: Inspect current DB to verify migration plan**
 
 ```bash
-sqlite3 ~/Library/Application\ Support/no.humla.app/notes.sqlite \
+sqlite3 ~/Library/Application\ Support/no.chatham.app/notes.sqlite \
   "SELECT value FROM settings WHERE key = 'transcribe_config';"
 ```
 

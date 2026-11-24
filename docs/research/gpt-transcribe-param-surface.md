@@ -1,12 +1,12 @@
 # `gpt-transcribe` parameter surface — live probe results
 
-Resolves [T1](https://github.com/michaelwilhelmsen/humla/issues/128) on [the gpt-transcribe map](https://github.com/michaelwilhelmsen/humla/issues/127).
+Resolves [T1](https://github.com/pbayne/chatham/issues/128) on [the gpt-transcribe map](https://github.com/pbayne/chatham/issues/127).
 
 Probed against `POST https://api.openai.com/v1/audio/transcriptions` on 2026-07-31. Every row below is an observed HTTP status from a real request, not a doc reading. Raw transcripts: `gpt-transcribe-probe-raw.txt`. Schema-doc findings: `gpt-transcribe-schema.md`.
 
 > **Redacted.** The probes ran against a real personal meeting recording, so the transcript text quoted throughout this file and in the raw log has been paraphrased — nouns swapped, sentence shape and every transcription *error* preserved verbatim. The `De`/`Vi` pronoun divergence, the mid-utterance `…`, and the `viktige`/`viktig` wobble are all exactly as the models returned them. Only the subject matter is synthetic.
 
-**Audio**: an 8 s mono 16 kHz Int16 chunk cut from a real Humla recording (`2aabed0c-…/mic.wav`, offset 58 s) — same format the sidecar emits. Norwegian speech. `whisper-1` on the identical file returns:
+**Audio**: an 8 s mono 16 kHz Int16 chunk cut from a real Chatham recording (`2aabed0c-…/mic.wav`, offset 58 s) — same format the sidecar emits. Norwegian speech. `whisper-1` on the identical file returns:
 
 > De har gjort to ting som er viktige. De fjernet gebyret, altså prosjektet var på vei mot stopp, og da gjorde de det.
 
@@ -45,7 +45,7 @@ So a 200 proves only that a request *succeeded* — never that a parameter was r
 
 Multi-value requires a **repeated field**. Neither a JSON array nor a comma-joined string works.
 
-### `languages` accepts only 63 of Humla's 101 language options
+### `languages` accepts only 63 of Chatham's 101 language options
 
 `languages` is validated against an allowlist — an out-of-list code is a hard **400**, i.e. a failed transcription, not a degraded one. Swept all 100 non-`auto` codes in `src/lib/languages.ts`:
 
@@ -53,17 +53,17 @@ Multi-value requires a **repeated field**. Neither a JSON array nor a comma-join
 
 **Rejected (37):** `sq am as ba eu br my fo ht ha haw jw km lo la ln lb mg mt mn nn oc ps pa sa sn sd si so su tg tt bo tk uz yi yo`
 
-Humla's list is Whisper's; `gpt-transcribe`'s is narrower. Note **`nn` (Nynorsk) is rejected** — a live concern for a Norwegian-first app.
+Chatham's list is Whisper's; `gpt-transcribe`'s is narrower. Note **`nn` (Nynorsk) is rejected** — a live concern for a Norwegian-first app.
 
 ## Behavioural findings the ticket didn't ask for but that bear on the map
 
 1. **Norwegian is misdetected as Danish without a hint.** With no `languages`, detection returned `da` on **5/5** identical calls. The un-hinted transcript also opens `"Vi har gjort"` where `whisper-1` (correctly) has `"De har gjort"`.
 
-2. **Any hint fixes that opening — even the wrong hint.** `languages=no` and `languages=en` both produced the correct `"De har gjort"`. This is direct evidence *against* the launch video's implication that omitting the hint is best, at least on monolingual Norwegian audio. It is one 8 s sample; it is not a quality verdict. That is [T2](https://github.com/michaelwilhelmsen/humla/issues/129)'s job.
+2. **Any hint fixes that opening — even the wrong hint.** `languages=no` and `languages=en` both produced the correct `"De har gjort"`. This is direct evidence *against* the launch video's implication that omitting the hint is best, at least on monolingual Norwegian audio. It is one 8 s sample; it is not a quality verdict. That is [T2](https://github.com/pbayne/chatham/issues/129)'s job.
 
 3. **The response echoes rather than detects.** The response body carries a `languages` array, but it returns *the hint you supplied* when you supply one (`languages=en` → `[{"code":"en"}]` on Norwegian audio) and detection only when you don't. It is not a trustworthy language detector.
 
-4. **It emits a literal `…` (U+2026) when audio cuts mid-utterance.** Byte-verified. `whisper-1` instead completes the sentence. Humla's chunks are VAD-bounded but still cut mid-utterance at `maxSeconds`, so a large fraction of chunks would land an ellipsis in the transcript — which interacts with `strip_attribution_tail`, the repetition-collapse guards and `prior_context`. Newly surfaced; not covered by any existing ticket.
+4. **It emits a literal `…` (U+2026) when audio cuts mid-utterance.** Byte-verified. `whisper-1` instead completes the sentence. Chatham's chunks are VAD-bounded but still cut mid-utterance at `maxSeconds`, so a large fraction of chunks would land an ellipsis in the transcript — which interacts with `strip_attribution_tail`, the repetition-collapse guards and `prior_context`. Newly surfaced; not covered by any existing ticket.
 
 ## Pricing
 

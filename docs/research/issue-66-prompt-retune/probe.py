@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Issue #66 / humla-cloud#20 — does the prompt retune actually change behaviour?
+"""Issue #66 / chatham-cloud#20 — does the prompt retune actually change behaviour?
 
 The retune replaced a flat "don't retry an empty search" ban with bounded
 exploration, and licensed labeled inference. Both claims are about *model
 behaviour*, so unit tests on the prompt string can't confirm them — this runs the
 real OLD and NEW prompt strings head-to-head against a local Ollama model.
 
-Three probes, mirroring humla-cloud#20's acceptance criteria:
+Three probes, mirroring chatham-cloud#20's acceptance criteria:
 
   A (recall)      A Norwegian query ("mersalg") misses the English corpus on the
                   first search; an English rephrase ("upsell") hits n4. Does the

@@ -367,11 +367,11 @@ const NEMOTRON_MODELS_DIR: &str = "nemotron-3-diarization";
 
 /// The sidecar names its warm marker for the process that warmed it, so every
 /// identity's marker goes: the failure is this Mac's, not one build's.
-const WARM_MARKER_PREFIX: &str = ".humla-warm-";
+const WARM_MARKER_PREFIX: &str = ".chatham-warm-";
 
 /// The sidecar's record of a failed warm-up. It stays, so after a restart the
 /// launch re-warm leaves the model for Settings rather than retrying it.
-const WARM_FAILED_MARKER_PREFIX: &str = ".humla-warm-failed-";
+const WARM_FAILED_MARKER_PREFIX: &str = ".chatham-warm-failed-";
 
 fn withdraw_warm_markers(dir: &Path) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
@@ -934,7 +934,7 @@ pub async fn delete(app: &AppHandle, engine: Engine) -> Result<()> {
 // The sidecar's `transcribe`/`asr-status`/`asr-download` subcommands wrap
 // FluidAudio's Parakeet path. Unlike diarization, ASR is a batch call: a whole
 // chunk WAV in, one JSON object out. These helpers mirror the diarize spawn
-// pattern (`sidecar_path`, `humla-error:` stderr contract, streamed download
+// pattern (`sidecar_path`, `chatham-error:` stderr contract, streamed download
 // progress) so the STT adapter and the `asr_status`/`asr_download` commands
 // can reuse them.
 
@@ -1081,7 +1081,7 @@ pub struct ParakeetTranscript {
 /// Transcribe one WAV via the sidecar's `transcribe` subcommand. `language` is
 /// an ISO 639-1 code or "auto"; "auto" (and any code the sidecar's `Language`
 /// enum doesn't know) is passed through as no `--language`, letting Parakeet
-/// use its default. Errors surface the sidecar's `humla-error:` line.
+/// use its default. Errors surface the sidecar's `chatham-error:` line.
 pub async fn transcribe_file(
     app: &AppHandle,
     audio_path: &Path,
@@ -1145,12 +1145,12 @@ fn parse_transcribe_payload(stdout: &str) -> serde_json::Result<TranscribePayloa
     serde_json::from_str::<TranscribePayload>(stdout.trim())
 }
 
-/// The ASR path tags its single error line `humla-error:` (see the sidecar's
+/// The ASR path tags its single error line `chatham-error:` (see the sidecar's
 /// `writeError`), where the diarize path uses `chatham-error:`. Otherwise
 /// identical to [`sidecar_error`]: the tagged line wins; an untagged crash
 /// falls back to its last line + how the process exited.
 fn asr_sidecar_error(stderr: &str, exit: impl std::fmt::Display) -> String {
-    const TAG: &str = "humla-error:";
+    const TAG: &str = "chatham-error:";
     let tagged = stderr
         .lines()
         .filter_map(|l| l.strip_prefix(TAG))
@@ -1640,18 +1640,18 @@ mod tests {
     fn withdrawing_readiness_removes_every_warm_marker_and_nothing_else() {
         let root = tempfile::tempdir().unwrap();
         let dir = root.path();
-        for marker in [".humla-warm-no.humla.app", ".humla-warm-speaker-diarize-aarch64-apple-darwin"] {
+        for marker in [".chatham-warm-no.chatham.app", ".chatham-warm-speaker-diarize-aarch64-apple-darwin"] {
             std::fs::write(dir.join(marker), "v2 monolithic/v2\n").unwrap();
         }
-        std::fs::write(dir.join(".humla-warm-failed-no.humla.app"), "v2 monolithic/v2\nno ANE\n").unwrap();
+        std::fs::write(dir.join(".chatham-warm-failed-no.chatham.app"), "v2 monolithic/v2\nno ANE\n").unwrap();
         std::fs::write(dir.join(".weights-version"), "2\n").unwrap();
         std::fs::create_dir_all(dir.join("monolithic/v2")).unwrap();
 
         withdraw_warm_markers(dir);
 
-        assert!(!dir.join(".humla-warm-no.humla.app").exists());
-        assert!(!dir.join(".humla-warm-speaker-diarize-aarch64-apple-darwin").exists());
-        assert!(dir.join(".humla-warm-failed-no.humla.app").exists());
+        assert!(!dir.join(".chatham-warm-no.chatham.app").exists());
+        assert!(!dir.join(".chatham-warm-speaker-diarize-aarch64-apple-darwin").exists());
+        assert!(dir.join(".chatham-warm-failed-no.chatham.app").exists());
         assert!(dir.join(".weights-version").exists());
         assert!(dir.join("monolithic/v2").exists());
     }

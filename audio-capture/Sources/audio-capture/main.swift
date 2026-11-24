@@ -120,7 +120,7 @@ func holdSystemAwake() {
     let rc = IOPMAssertionCreateWithName(
         kIOPMAssertionTypePreventUserIdleSystemSleep as CFString,
         IOPMAssertionLevel(kIOPMAssertionLevelOn),
-        "Humla is recording a meeting" as CFString,
+        "Chatham is recording a meeting" as CFString,
         &id
     )
     if rc == kIOReturnSuccess {
@@ -477,7 +477,7 @@ let sysTiming = StreamTiming()
 // default-input change (the fault `reconfigureMicAfterDeviceChange` below
 // exists to repair), naming the system default would name a device that is
 // already correct, and the warning would read as "your working mic is broken"
-// while Humla quietly recorded a dead one.
+// while Chatham quietly recorded a dead one.
 //
 // PRIVACY: device names are user-authored and routinely contain a real person's
 // name ("Michael's AirPods Pro"). This value rides the heartbeat to a transient

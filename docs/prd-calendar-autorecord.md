@@ -3,32 +3,32 @@
 **Status:** Draft
 **Author:** Patrick (with Claude)
 **Date:** 2026-11-13
-**Closes the gap from:** `docs/competitor-steno-teardown.md` §2 and §5 item 10 — *"Auto start/stop meeting detection… the highest-value feature Steno has that Humla lacks, and the one users notice daily."*
+**Closes the gap from:** `docs/competitor-steno-teardown.md` §2 and §5 item 10 — *"Auto start/stop meeting detection… the highest-value feature Steno has that Chatham lacks, and the one users notice daily."*
 
 ---
 
 ## 0. The one-paragraph version
 
-Humla reads the user's macOS calendar on-device (EventKit), notices when a meeting
+Chatham reads the user's macOS calendar on-device (EventKit), notices when a meeting
 with an audio component is about to start, and offers to record it — one click, or
 fully automatic. When the meeting ends it stops on its own, so a finished,
 summarized note is waiting without the user ever reaching for the app. No bot joins
-the call; Humla keeps doing what it already does — capture the Mac's own mic + system
+the call; Chatham keeps doing what it already does — capture the Mac's own mic + system
 audio — it just *starts and stops itself on the calendar's schedule*.
 
-This is explicitly **not** a dial-in meeting bot (Recall.ai / Otter model). Humla is a
+This is explicitly **not** a dial-in meeting bot (Recall.ai / Otter model). Chatham is a
 local system-audio recorder. "Auto-join" here means "auto-start the local recording
 when your calendar says a meeting is happening," optionally opening the meeting link.
-That distinction is the whole design and it keeps Humla's local-first, bot-free,
+That distinction is the whole design and it keeps Chatham's local-first, bot-free,
 BYOK values intact.
 
 ---
 
 ## 1. Why this, why now
 
-- Your own teardown ranks it the single most valuable feature Steno has and Humla
+- Your own teardown ranks it the single most valuable feature Steno has and Chatham
   lacks, and the one that most often swings a side-by-side trial.
-- It compounds Humla's existing strengths rather than chasing Steno's chat polish:
+- It compounds Chatham's existing strengths rather than chasing Steno's chat polish:
   the thing that gets recorded is still diarized, cited, multilingual — the three
   defensible wins from the teardown's closing note.
 - The plumbing it needs already exists: `recording_start(note_id)` /
@@ -38,7 +38,7 @@ BYOK values intact.
 
 ## 2. Non-goals
 
-- **No dial-in bot.** Humla never appears as a participant in Zoom/Meet/Teams. If no
+- **No dial-in bot.** Chatham never appears as a participant in Zoom/Meet/Teams. If no
   audio plays on the Mac, nothing useful is captured — that's acceptable and must be
   communicated, not hidden.
 - **No cloud calendar APIs.** We read the local Calendar.app store via EventKit,
@@ -76,7 +76,7 @@ A per-calendar allowlist lets the user pick *which* calendars Autopilot watches
   overruns), fire `recording_stop`. Manual stop always wins. If the user is mid-meeting
   past the scheduled end, a "still going — keep recording?" nudge defers the auto-stop
   once.
-- **Overlap / conflicts:** Humla records one meeting at a time (hard backend
+- **Overlap / conflicts:** Chatham records one meeting at a time (hard backend
   invariant, see `recording_start`'s stop-in-progress guard). If two events overlap,
   Autopilot records the first that started and notifies that the second was skipped.
 - **Silence guard:** if `Auto` starts a recording and the mic + system streams stay
@@ -86,9 +86,9 @@ A per-calendar allowlist lets the user pick *which* calendars Autopilot watches
 
 ### 3.4 First-run & permissions
 - Calendar is a new TCC permission. Request it lazily — only when the user first
-  switches Autopilot off Off — with a plain-language explainer: *"Humla reads your
+  switches Autopilot off Off — with a plain-language explainer: *"Chatham reads your
   calendar on this Mac to know when meetings start. It never uploads your calendar."*
-- Pair with the existing autostart plugin: Autopilot is only useful if Humla is
+- Pair with the existing autostart plugin: Autopilot is only useful if Chatham is
   running, so switching to Ask/Auto offers to enable launch-at-login (`--hidden`,
   which the LaunchAgent already supports).
 
@@ -176,7 +176,7 @@ Calendar and do **not** mirror it into macOS Internet Accounts — `~/Library/Ca
 is absent and Calendar.app has no accounts. An EventKit sidecar would read an empty
 store. Rather than require every user to add a Google account in System Settings
 (a manual step that fights the "as easy as possible" goal, and may be MDM-blocked on
-corp machines), Humla talks to Google Calendar directly.
+corp machines), Chatham talks to Google Calendar directly.
 
 This **overrides the §2 non-goal** "no cloud calendar APIs / no OAuth." The reason is
 not just availability — it's the metadata. The Google Calendar API returns richer,
@@ -193,7 +193,7 @@ attached to each recording's note.
 - `hangoutLink`, `htmlLink` (deep-link back to the event), `status`, `visibility`
 - `attachments[]` (Drive agenda docs), `colorId`
 
-### How it maps into Humla
+### How it maps into Chatham
 - **Note title** ← event `summary`.
 - **Attendee names** ← `attendees[].displayName` → fed into the Whisper
   `initial_prompt` vocab trail, so names transcribe correctly (the M5 quality win,
@@ -268,7 +268,7 @@ has to exist once.
   access, password change) by dropping to a clean "reconnect Google" state, never a
   silent failure.
 - **Privacy optics now real, not just perceived** — calendar data does leave Google
-  to the app over HTTPS (though it stays on her Mac after). The honest copy is "Humla
+  to the app over HTTPS (though it stays on her Mac after). The honest copy is "Chatham
   reads your Google Calendar to know when meetings start and to tag recordings with who
   was there; it stays on this Mac," not "never leaves Google."
 

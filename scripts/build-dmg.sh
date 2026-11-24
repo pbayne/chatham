@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a distributable Humla.dmg for sharing with teammates.
+# Build a distributable Chatham.dmg for sharing with teammates.
 # Output lands in src-tauri/target/release/bundle/dmg/.
 #
 # When .env.notarise is present, the build is signed with the Developer ID

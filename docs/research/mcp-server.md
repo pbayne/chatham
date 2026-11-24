@@ -1,6 +1,6 @@
-# Exposing Humla to Claude Code over MCP
+# Exposing Chatham to Claude Code over MCP
 
-Research, 2026-08-13. Question: what's the best way for Humla to speak MCP so
+Research, 2026-08-13. Question: what's the best way for Chatham to speak MCP so
 Claude Code, Codex, and any other MCP client can read notes, search transcripts,
 and possibly write back?
 
@@ -13,11 +13,11 @@ updated 2026-08-07, ~20M downloads).
 Ship it in two steps, and pick the tool contract *once* so step 2 doesn't break
 step 1.
 
-1. **`humla-mcp`, a second `[[bin]]` in the existing crate, stdio transport,
+1. **`chatham-mcp`, a second `[[bin]]` in the existing crate, stdio transport,
    read-only, opening `notes.sqlite` directly.** Reuses `db.rs` and the shape of
    `chat/tools.rs` verbatim. Works whether or not the app is running, needs no
    port, no token, no auth code — the file permissions on
-   `~/Library/Application Support/no.humla.app/` *are* the authorization. A
+   `~/Library/Application Support/no.chatham.app/` *are* the authorization. A
    day's work, mostly wiring.
 2. **When writes or actions are wanted, keep the same binary and make it a
    proxy**: the app listens on a **Unix domain socket** in its app-data dir; the
@@ -49,7 +49,7 @@ Two properties of that file carry straight over and should be preserved:
 - **Tool errors are content, never panics.** MCP clients recover from an error
   result; they don't recover from a dead server.
 - **Retrieved note content is framed as reference data, never as instructions.**
-  This matters *more* over MCP than in Humla's own chat: a transcript contains
+  This matters *more* over MCP than in Chatham's own chat: a transcript contains
   other people's speech, and an agent with Bash and Edit in the same session is
   a far juicier prompt-injection target than a summarizer. Keep the framing, and
   keep the reminder that a note's text is data.
@@ -60,7 +60,7 @@ Mostly no. An earlier draft of this doc treated the missing semantic leg as
 option A's headline cost; that was wrong, and worth writing down because it
 changes how much the Keychain problem matters (barely).
 
-**Why Humla's own chat needs vectors and an MCP client doesn't.** `chat/mod.rs`
+**Why Chatham's own chat needs vectors and an MCP client doesn't.** `chat/mod.rs`
 retrieves under a step ceiling — `MAX_STEPS_NOTE = 6`, `MAX_STEPS_BROAD = 12` —
 so the first query or two has to land, and a small local model is not a
 reformulating machine. Claude Code has none of those constraints: it can query
@@ -76,7 +76,7 @@ the phase-1 binary a day's work.
 
 **The one genuine hole is cross-language, and it is a general one.** FTS5 is
 lexical, so a query in one language against a transcript in another returns
-*zero* hits — not worse ranking, nothing. Humla transcribes ~99 languages and a
+*zero* hits — not worse ranking, nothing. Chatham transcribes ~99 languages and a
 given user's library may be monolingual in any of them, or mixed; #48's probe
 covered four languages plus a cross-lingual case for exactly this reason. So the
 severity of this gap is a property of the individual library, not of any
@@ -114,10 +114,10 @@ an error case.
 ### A. Standalone stdio binary reading SQLite directly
 
 ```
-claude mcp add --scope user humla -- /Applications/Humla.app/Contents/MacOS/humla-mcp
+claude mcp add --scope user chatham -- /Applications/Chatham.app/Contents/MacOS/chatham-mcp
 ```
 
-**For.** Works with the app closed (the common case — Humla is not a
+**For.** Works with the app closed (the common case — Chatham is not a
 menu-bar-resident daemon). No listening socket at all, so no auth to design and
 nothing for another local process or a webpage to reach. Trivially shipped: an
 extra `[[bin]]` in `src-tauri/Cargo.toml` reusing `db.rs`, or a copy under
@@ -153,7 +153,7 @@ read-only:**
 
 `rmcp`'s `StreamableHttpService` (tower/axum) bound to `127.0.0.1:<port>`,
 bearer token in a header, added with
-`claude mcp add --transport http humla http://127.0.0.1:PORT/mcp -H "Authorization: Bearer …"`.
+`claude mcp add --transport http chatham http://127.0.0.1:PORT/mcp -H "Authorization: Bearer …"`.
 
 **For.** Everything option A can't do: writes go through the real command layer
 so the sync observer fires and the UI updates live; the Keychain is already
@@ -173,7 +173,7 @@ writing a 60-line pump.
 
 The app serves MCP over `AsyncRwTransport::new_server` on a `UnixStream`
 accepted from, say,
-`~/Library/Application Support/no.humla.app/mcp.sock`. `humla-mcp` connects to
+`~/Library/Application Support/no.chatham.app/mcp.sock`. `chatham-mcp` connects to
 that socket and copies bytes in both directions between it and stdio.
 
 **Why this is the right end state.** It has every advantage of B — command
@@ -182,7 +182,7 @@ filesystem permissions authorize the socket (mode 0600 in a per-user directory),
 there is no port, and browsers cannot reach it. The client config stays the
 plain stdio one-liner from option A, with no token in any file. And the shim can
 degrade: socket absent → open SQLite read-only and serve the option-A tool set,
-optionally after `open -a Humla` to wake the app.
+optionally after `open -a Chatham` to wake the app.
 
 Cost is one extra hop and two places that speak MCP. Both are small; the tool
 implementations live in the app in this design, and the shim has no schema
@@ -192,7 +192,7 @@ knowledge at all.
 
 Names and args should match `chat/tools.rs` where they overlap — same words for
 the same concepts, so the mirroring rule that already binds `tools.rs` to
-`humla-cloud/chat-service/src/tools.ts` extends to a third file rather than
+`chatham-cloud/chat-service/src/tools.ts` extends to a third file rather than
 forking a fourth vocabulary.
 
 **Read (phase 1, all three architectures):**
@@ -222,8 +222,8 @@ not become an exception above it. Deletion has a Trash in the UI and no undo
 over a wire protocol.
 
 **Resources — implement them, but never depend on them.** Claude Code supports
-MCP resources as `@` mentions (`@humla:humla://note/<id>`), fuzzy-searchable in
-the autocomplete and attached automatically, so `humla://note/<id>` is a nicer
+MCP resources as `@` mentions (`@chatham:chatham://note/<id>`), fuzzy-searchable in
+the autocomplete and attached automatically, so `chatham://note/<id>` is a nicer
 fit than a tool for "put this meeting in context" and costs little once
 `get_note` exists. Codex, though, documents **tools and server instructions
 only** — no resources, prompts, sampling or elicitation. So resources are a
@@ -239,7 +239,7 @@ Declaring the capability and listing notes dodges that failure mode and buys the
 **Server instructions matter more than they used to.** Claude Code defers MCP
 tool schemas by default and loads only names plus the server `instructions`
 field at session start, then searches for tools on demand. So `ServerInfo`'s
-`instructions` is what decides whether Humla's tools get found at all — write it
+`instructions` is what decides whether Chatham's tools get found at all — write it
 as "when to reach for this", not as a tool list, and keep it under 2 KB
 (descriptions and instructions are both truncated there).
 
@@ -255,11 +255,11 @@ unchanged. Codex config lives in `~/.codex/config.toml` (or a project-scoped
 desktop app:
 
 ```toml
-[mcp_servers.humla]
-command = "/Applications/Humla.app/Contents/MacOS/humla-mcp"
+[mcp_servers.chatham]
+command = "/Applications/Chatham.app/Contents/MacOS/chatham-mcp"
 ```
 
-or `codex mcp add humla -- /Applications/Humla.app/Contents/MacOS/humla-mcp`.
+or `codex mcp add chatham -- /Applications/Chatham.app/Contents/MacOS/chatham-mcp`.
 The remote/teams path is `url` + `bearer_token_env_var` (or `auth = "oauth"`),
 which is a **better** shape than Claude Code's inline `--header` — the PAT comes
 from the environment instead of being written into a config file. Worth
@@ -274,7 +274,7 @@ What Codex actually constrains:
 2. **`startup_timeout_sec` defaults to 10 seconds.** Initialization has to be
    cheap: open SQLite, answer `initialize`, done. Nothing eager — no backfill, no
    embedding warm-up, and emphatically **no waking the app**. That's a real
-   constraint on option C's fallback: `open -a Humla` on a cold start takes
+   constraint on option C's fallback: `open -a Chatham` on a cold start takes
    longer than the budget, so the shim must connect-or-degrade immediately and
    never block the handshake on a launch.
 3. **Server instructions matter to both**, for different reasons — Claude Code
@@ -283,7 +283,7 @@ What Codex actually constrains:
    under Claude Code's 2 KB truncation.
 4. **Tool names are the user-facing knob in Codex** — `enabled_tools`,
    `disabled_tools`, and per-tool `approval_mode` are all keyed on the bare name.
-   That's another argument against a `humla_` prefix, and an argument for naming
+   That's another argument against a `chatham_` prefix, and an argument for naming
    write tools distinctly enough that a user can pin the server read-only from
    their own config.
 
@@ -297,7 +297,7 @@ in Settings, covers both without picking a side.
 
 A workspace changes two things: the notes are server-authoritative, and
 retrieval for workspace chat **already runs server-side** (`/api/chat`, with
-`humla-cloud/chat-service/src/tools.ts` doing what `chat/tools.rs` does
+`chatham-cloud/chat-service/src/tools.ts` doing what `chat/tools.rs` does
 locally). So there are two viable teams paths, and they are not exclusive.
 
 ### Path 1 — the local stdio server, made workspace-aware
@@ -334,15 +334,15 @@ Three caveats, all inherent to reading a replica:
    might reasonably want to search across workspaces; that's a server-side
    answer, not a local one.
 
-### Path 2 — a remote MCP endpoint on humla-cloud
+### Path 2 — a remote MCP endpoint on chatham-cloud
 
-`claude mcp add --transport http humla https://sync.humla.team/mcp`, backed by
+`claude mcp add --transport http chatham https://sync.chatham.team/mcp`, backed by
 the retrieval that already exists in chat-service.
 
 **What it buys.** Complete and immediately fresh coverage (every teammate's note
 the moment it lands, with the server's own embeddings, so semantic search comes
 back), no dependency on a Mac being awake, and cross-workspace reach if wanted.
-It's also the only path that works for a teammate who doesn't run Humla locally.
+It's also the only path that works for a teammate who doesn't run Chatham locally.
 
 **Auth is the design work.** PocketBase auth tokens are short-lived JWTs — the
 desktop copes with a process-lifetime `SESSION` cache and one-shot 401 re-auth,
@@ -353,14 +353,14 @@ cheapest first:
   token that carries the *creating user's* identity so existing PocketBase rules
   and the owner/admin/member/viewer roles keep applying, an expiry, and mint /
   revoke in the teams UI. Pasted once as
-  `--header "Authorization: Bearer humla_pat_…"`. No refresh problem, revocable,
+  `--header "Authorization: Bearer chatham_pat_…"`. No refresh problem, revocable,
   auditable.
 - **Full OAuth 2.1**: Claude Code discovers RFC 9728 protected-resource metadata
   at `/.well-known/oauth-protected-resource`, falling back to RFC 8414. Best UX
   (browser sign-in, no pasted secret) and the most work.
 - **`headersHelper`**: a command Claude Code runs at connect time to print a
   fresh header, which could shell out to the local install's stored credentials.
-  Clever, but it couples the remote path to a local Humla — which defeats the
+  Clever, but it couples the remote path to a local Chatham — which defeats the
   main reason to have the remote path.
 
 Never a workspace-wide service token. The whole permission model is
@@ -418,7 +418,7 @@ the *packaging* — and they have different answers.
 
 ### Implementation: standard plumbing, custom tools
 
-Use the official SDK (`rmcp` for Rust) and write Humla's own tools on it. Don't
+Use the official SDK (`rmcp` for Rust) and write Chatham's own tools on it. Don't
 hand-roll JSON-RPC, and don't bundle a generic database server:
 
 - **The official reference SQLite server is archived** — it lives in
@@ -439,8 +439,8 @@ hand-roll JSON-RPC, and don't bundle a generic database server:
 The tool vocabulary is already converged, which is a quiet validation of
 `chat/tools.rs`: Obsidian's ecosystem settles on `search_notes`, `get_note` /
 `read_note`, `list_notes`, and the Granola servers below are the same shape.
-Humla's three tools already carry those names — keep them, and don't add a
-`humla_` prefix, since Claude Code namespaces them as `mcp__humla__search_notes`
+Chatham's three tools already carry those names — keep them, and don't add a
+`chatham_` prefix, since Claude Code namespaces them as `mcp__chatham__search_notes`
 already.
 
 ### Packaging: three formats, and only one fits Claude Code
@@ -451,13 +451,13 @@ already.
   "standard"-looking option.
 - **Claude Code plugins** — a versioned bundle of `.mcp.json` plus skills and
   slash commands, distributed via a marketplace. This is Claude Code's actual
-  distribution mechanism, and the interesting one: a `humla` plugin could ship
+  distribution mechanism, and the interesting one: a `chatham` plugin could ship
   the server config *and* skills ("brief me on last week's meetings"). Note
   plugin-bundled tools get the longer callable name
-  `mcp__plugin_humla_<server>__<tool>`, which matters for permission rules.
+  `mcp__plugin_chatham_<server>__<tool>`, which matters for permission rules.
 - **The official registry** (`registry.modelcontextprotocol.io`) — a `server.json`
-  under a reverse-DNS namespace with proven domain ownership. Humla controls
-  `humla.team` and already uses `no.humla.app` as its bundle id, so the namespace
+  under a reverse-DNS namespace with proven domain ownership. Chatham controls
+  `chatham.team` and already uses `no.chatham.app` as its bundle id, so the namespace
   is available. Discovery, not installation; worth doing once the server exists.
 
 And the option that needs no format at all: a documented `claude mcp add`
@@ -478,7 +478,7 @@ and more. Three things follow:
 1. **Demand is proven, and it's shaped exactly like option A** — several of these
    read the app's own local cache, which is what a first-party stdio binary over
    `notes.sqlite` does with none of the reverse-engineering.
-2. **If Humla doesn't ship one, someone will write one against `notes.sqlite`** —
+2. **If Chatham doesn't ship one, someone will write one against `notes.sqlite`** —
    and then the schema is a de facto public API maintained by strangers, breaking
    on every migration. Shipping first-party inverts that: `search_notes` /
    `get_note` become the stable contract and the schema stays free to move. This
@@ -486,7 +486,7 @@ and more. Three things follow:
    feature case.
 3. **It's a live differentiator.** Steno — the closest competitor — has no
    first-party MCP either; the integration that exists in that direction is a
-   *Granola*-MCP-to-Steno skill. First-party MCP fits Humla's open, local-first
+   *Granola*-MCP-to-Steno skill. First-party MCP fits Chatham's open, local-first
    posture better than either of them, and nobody has claimed it yet.
 
 ### One honest point against my own recommendation
@@ -498,7 +498,7 @@ not exotic, and the port is clearly tolerable to serious clients.
 
 It doesn't change the conclusion, and the reason is the payload rather than the
 plumbing: Figma's endpoint exposes the current selection in a design file, while
-Humla's would expose years of confidential meeting transcripts to anything that
+Chatham's would expose years of confidential meeting transcripts to anything that
 can reach a loopback port. The asymmetry in what a stray reader gets is why a
 Unix socket is worth the extra 60-line shim here even though Figma got away
 without one.

@@ -1,8 +1,8 @@
-# Humla — project notes
+# Chatham — project notes
 
 ## What this app is
 
-**Humla** is a personal macOS meeting-notes app inspired by Granola. You take freeform notes during a meeting; in parallel, the app records mic + system audio, transcribes the call, and produces a structured AI summary that fuses your notes with the transcript. Built for personal/small-team use, not SaaS — your data, your API keys, local SQLite, no backend.
+**Chatham** is a personal macOS meeting-notes app inspired by Granola. You take freeform notes during a meeting; in parallel, the app records mic + system audio, transcribes the call, and produces a structured AI summary that fuses your notes with the transcript. Built for personal/small-team use, not SaaS — your data, your API keys, local SQLite, no backend.
 
 The name is Norwegian for "bumblebee" (think: small, hum, personal).
 
@@ -52,7 +52,7 @@ The name is Norwegian for "bumblebee" (think: small, hum, personal).
 
 ### Data flow during a recording
 
-1. **`recording_start`** spawns the `audio-capture` sidecar via `setsid` (sandbox-detached so TCC prompts go to *Humla* itself, not Terminal). The diarize sidecar is *not* spawned here — it only runs once, after stop.
+1. **`recording_start`** spawns the `audio-capture` sidecar via `setsid` (sandbox-detached so TCC prompts go to *Chatham* itself, not Terminal). The diarize sidecar is *not* spawned here — it only runs once, after stop.
 2. **Sidecar capture** — `AVAudioEngine` (mic) and `ScreenCaptureKit` (system audio) feed two **independent** writer pairs. Each source has its own `ChunkWriter` that emits VAD-bounded WAV chunks (1.0–15 s; rotates on 500 ms silence once min length reached, hard cap on max) and its own `FullRecordingWriter` that captures the full stream to `mic-full.wav` / `sys-full.wav`. Sidecar emits `{event:"chunk", source:"mic"|"sys", path, start_ms}` events on stdout, plus per-source `{event:"full_recording", source, path, duration_ms}` on shutdown. There is no mixer — the two streams never merge in the sidecar, so per-chunk audio is single-source and Whisper sees clean signal regardless of overlap between the user and the remote side.
 3. **Rust reader thread** parses each `chunk` event, appends a `ChunkRecord{source, path, start_ms}` to `RecordingSession.chunk_log`, and spawns `transcribe_chunk(source, …)` on a tokio task tracked in `RecordingSession.inflight`. Concurrent chunks serialise on `transcribe_gate` so each one's `initial_prompt` sees a fresh trail snapshot.
 4. **`transcribe_chunk`**:
@@ -95,7 +95,7 @@ The name is Norwegian for "bumblebee" (think: small, hum, personal).
 ### Backend (`src-tauri/src/`)
 
 - **Rust** + **Tauri 2** runtime (rust-version 1.85 because `fluidaudio-rs` was briefly a candidate dep with that MSRV; the bump survived even though we ended up using a Swift sidecar instead).
-- **rusqlite** (`bundled` feature) — single SQLite DB at `~/Library/Application Support/no.humla.app/`. Idempotent ALTER TABLE migrations; index creation runs *after* migrations.
+- **rusqlite** (`bundled` feature) — single SQLite DB at `~/Library/Application Support/no.chatham.app/`. Idempotent ALTER TABLE migrations; index creation runs *after* migrations.
 - **reqwest** with `rustls-tls` + `stream` — all HTTPS (OpenAI, Hugging Face for model download).
 - **tokio** — async runtime. `spawn_blocking` wraps local Whisper inference. Use `tauri::async_runtime::spawn` (NOT `tokio::spawn`) anywhere that runs from Tauri's `setup` closure — the setup callback runs on the main thread before tokio's runtime is attached, and a bare `tokio::spawn` panics with "no current Tokio runtime", which propagates through the AppKit FFI as `panic_cannot_unwind` and `abort()`s the app on launch (seen in v0.6.1).
 - **whisper-rs 0.13** with `metal` feature — bundles whisper.cpp via cmake, runs `large-v3-turbo-q5_0` (~547 MB) on Apple Silicon GPUs.
@@ -146,17 +146,17 @@ Two Swift Package binaries that run alongside the Tauri main process. Both are b
 
 ## macOS specifics
 
-- **Bundle id** `no.humla.app` — TCC keys on this. Pre-rename `com.notes-app.local` permissions don't transfer.
+- **Bundle id** `no.chatham.app` — TCC keys on this. Pre-rename `com.notes-app.local` permissions don't transfer.
 - **Entitlements** (`src-tauri/entitlements.plist`) — mic input, network client, screen capture usage description, no app-sandbox.
 - **TCC pain point** — every rebuild that re-signs the sidecar invalidates the trusted-binary entry. Fix: the stamp-based cache in `build-sidecar.sh`, or graduate to notarised builds (see "Deferred: notarised distribution" below).
 - **Tauri webview limitation** — `window.prompt` / `confirm` / `alert` are blocked by the Tauri webview to avoid main-thread deadlock. We use inline input UIs everywhere (folder creation in Sidebar + Note's FolderPicker).
 
 ## Local data layout
 
-- **DB** — `~/Library/Application Support/no.humla.app/notes.sqlite` (SQLite, WAL mode). Schema: `notes` (with `language`, `summary_preset`, `folder_id` columns), `folders`, `settings`.
-- **Settings** — `settings` table inside the same DB. Keys: `language`, `transcribe_provider`, `transcribe_model`, `whisper_preset`, `custom_vocabulary`, `summary_model`, `summary_prompt`, `theme`. The OpenAI API key lives in the macOS Keychain (service `no.humla.app`, account `openai_api_key`) — `read_openai_api_key` migrates pre-Keychain SQLite rows forward on first call and blanks the legacy `__openai_api_key__` setting.
-- **Local Whisper model** — `~/Library/Application Support/no.humla.app/models/ggml-large-v3-turbo-q5_0.bin` (~547 MB, downloaded on demand from HuggingFace).
-- **FluidAudio diarization models** — `~/Library/Application Support/FluidAudio/Models/speaker-diarization/` (offline community-1 set: `Segmentation.mlmodelc`, `FBank.mlmodelc`, `Embedding.mlmodelc`, `PldaRho.mlmodelc`, `plda-parameters.json`; ~30 MB total, downloaded on demand from HuggingFace + compiled for Apple Neural Engine on first use). FluidAudio writes to its own Application Support root, not the Humla bundle's, because the path is hardcoded inside the Swift package.
+- **DB** — `~/Library/Application Support/no.chatham.app/notes.sqlite` (SQLite, WAL mode). Schema: `notes` (with `language`, `summary_preset`, `folder_id` columns), `folders`, `settings`.
+- **Settings** — `settings` table inside the same DB. Keys: `language`, `transcribe_provider`, `transcribe_model`, `whisper_preset`, `custom_vocabulary`, `summary_model`, `summary_prompt`, `theme`. The OpenAI API key lives in the macOS Keychain (service `no.chatham.app`, account `openai_api_key`) — `read_openai_api_key` migrates pre-Keychain SQLite rows forward on first call and blanks the legacy `__openai_api_key__` setting.
+- **Local Whisper model** — `~/Library/Application Support/no.chatham.app/models/ggml-large-v3-turbo-q5_0.bin` (~547 MB, downloaded on demand from HuggingFace).
+- **FluidAudio diarization models** — `~/Library/Application Support/FluidAudio/Models/speaker-diarization/` (offline community-1 set: `Segmentation.mlmodelc`, `FBank.mlmodelc`, `Embedding.mlmodelc`, `PldaRho.mlmodelc`, `plda-parameters.json`; ~30 MB total, downloaded on demand from HuggingFace + compiled for Apple Neural Engine on first use). FluidAudio writes to its own Application Support root, not the Chatham bundle's, because the path is hardcoded inside the Swift package.
 - **Audio temp** — `tempfile::TempDir` per recording session; cleaned 30 s after stop. Contains per-source per-chunk WAVs (`mic-chunk-NNNN.wav`, `sys-chunk-NNNN.wav`) and per-source full-recording WAVs (`mic-full.wav`, `sys-full.wav`). Either full WAV may be absent if its source produced no frames.
 
 ## Build & distribution
@@ -197,7 +197,7 @@ If `.env.notarise` is absent, the build is still Developer ID signed but not not
 ### Verifying a release
 
 ```
-spctl --assess -vv /Applications/Humla.app
+spctl --assess -vv /Applications/Chatham.app
 # expect: accepted, source=Notarized Developer ID
 ```
 
@@ -217,7 +217,7 @@ Common failure causes: nested binary missing hardened runtime, missing entitleme
 
 Run `pnpm release` to ship a new version. The script builds a notarised + stapled DMG, signs an updater manifest, creates a GitHub release, and uploads all assets so existing installs see the update.
 
-**Required for every release:** update `src/content/releases.ts` with an entry matching the new version, a release date, user-facing title, summary, detailed paragraphs, and highlights. Include verified related issues from `michaelwilhelmsen/humla` only, with titles and status. Add or update the optional feature illustration when the change is visible, and check the home list and popup in light and dark mode. Keep previous entries; Home shows the latest three. `pnpm release` blocks publishing when the current version has no complete changelog entry.
+**Required for every release:** update `src/content/releases.ts` with an entry matching the new version, a release date, user-facing title, summary, detailed paragraphs, and highlights. Include verified related issues from `pbayne/chatham` only, with titles and status. Add or update the optional feature illustration when the change is visible, and check the home list and popup in light and dark mode. Keep previous entries; Home shows the latest three. `pnpm release` blocks publishing when the current version has no complete changelog entry.
 
 **Before each release, bump the version number in three places** (they must match exactly, or auto-update will misbehave):
 
@@ -239,7 +239,7 @@ The script:
 3. Generates `latest.json` with version, signature, and the GitHub download URL.
 4. Tags the commit `v<version>`, pushes the tag, creates a GitHub release, uploads `.dmg` + `.sig` + `latest.json` as assets.
 
-All existing Humla installs poll the updater endpoint at startup and prompt to install when a new version lands.
+All existing Chatham installs poll the updater endpoint at startup and prompt to install when a new version lands.
 
 ### Updater signing key
 
@@ -252,7 +252,7 @@ Tauri's auto-updater uses a separate rsign/minisign keypair from the Apple Devel
 ### Verifying a release
 
 ```
-spctl --assess -vv /Applications/Humla.app
+spctl --assess -vv /Applications/Chatham.app
 # expect: accepted, source=Notarized Developer ID
 ```
 

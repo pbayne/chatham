@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleIdentifier</key>
-	<string>no.humla.app.mic-monitor</string>
+	<string>no.chatham.app.mic-monitor</string>
 	<key>CFBundleName</key>
 	<string>mic-monitor</string>
 	<key>CFBundlePackageType</key>
