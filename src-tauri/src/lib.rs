@@ -36,6 +36,7 @@ mod obsidian;
 mod captures;
 mod silence;
 mod voiceprints;
+mod intelligence;
 mod triage;
 // Public so the `chatham-mcp` binary (#172) can drive it. Everything below it —
 // `db`, `html_text` — stays private to the crate.
