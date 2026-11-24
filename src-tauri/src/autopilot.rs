@@ -535,6 +535,33 @@ pub async fn start_ambient_recording(app: &AppHandle, app_name: &str) -> anyhow:
 }
 
 
+/// Stop a recording that mic-detection started, when the meeting app releases
+/// the mic (the call ended). Gated to `mic:`-prefixed active events so it can
+/// NEVER stop a recording the user started by hand or one the calendar owns —
+/// those are not ours to end on a mic release. No-op when nothing mic-started
+/// is active. Mirrors `maybe_stop_for_event` (the calendar stop) otherwise.
+pub async fn stop_ambient_recording(app: &AppHandle) -> anyhow::Result<()> {
+    let is_ours = {
+        let state = app.state::<crate::AppState>();
+        let guard = state.autopilot.active_event.lock();
+        guard
+            .as_ref()
+            .map(|a| a.event_id.starts_with("mic:"))
+            .unwrap_or(false)
+    };
+    if !is_ours {
+        return Ok(());
+    }
+    let state = app.state::<crate::AppState>();
+    crate::commands::recording_stop(app.clone(), state)
+        .await
+        .map_err(|e| anyhow::anyhow!("recording_stop: {e}"))?;
+    *app.state::<crate::AppState>().autopilot.active_event.lock() = None;
+    notify(app, "Recording saved", "The meeting ended \u{2014} summarizing.");
+    Ok(())
+}
+
+
 /// Auto mode stop: if the active recording belongs to this ended event, stop it.
 async fn maybe_stop_for_event(app: &AppHandle, ev: &CalendarEvent) -> anyhow::Result<()> {
     let is_ours = {

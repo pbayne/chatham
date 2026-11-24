@@ -155,6 +155,45 @@ impl Debouncer {
     }
 }
 
+/// Guards the mic-RELEASE auto-stop against false positives. A meeting app
+/// releasing the mic is not reliably "call ended" — muting, a device switch, a
+/// notification ping, or a WebRTC renegotiation can release then re-acquire the
+/// mic within seconds. So a release ARMS a pending stop tagged with the current
+/// "start generation"; the stop only fires if, when its grace window elapses,
+/// no meeting-app START has bumped the generation since. A reopened mic bumps
+/// the generation and abandons the pending stop. This coalesces the
+/// release+reacquire flap that mute does, and only a genuine end (mic stays
+/// released past the window) actually stops.
+#[derive(Debug, Default)]
+pub struct StopGrace {
+    /// Bumped on every meeting-app start; a pending stop captures this value.
+    generation: u64,
+}
+
+impl StopGrace {
+    pub fn new() -> Self {
+        Self { generation: 0 }
+    }
+
+    /// A meeting app opened the mic — invalidate any pending stop.
+    pub fn note_start(&mut self) {
+        self.generation = self.generation.wrapping_add(1);
+    }
+
+    /// A meeting app released the mic — arm a stop and return the generation
+    /// token to re-check after the grace window.
+    pub fn arm(&self) -> u64 {
+        self.generation
+    }
+
+    /// At fire time: should the armed stop (holding `token`) proceed? Only if no
+    /// start has bumped the generation since it was armed.
+    pub fn should_fire(&self, token: u64) -> bool {
+        self.generation == token
+    }
+}
+
+
 // ─── Runtime: sidecar watcher ────────────────────────────────────────────────
 // Everything below drives the native mic-monitor sidecar and ties a detected
 // meeting to the autopilot record path. It is NOT unit-tested here (needs the
@@ -165,6 +204,11 @@ impl Debouncer {
 const SETTING_MIC_DETECT: &str = "mic_detect_enabled";
 /// Cooldown so one call's mute/unmute churn can't re-prompt. 5 minutes.
 const MIC_DETECT_COOLDOWN_SECS: i64 = 300;
+/// Grace window after a meeting app releases the mic before the recording is
+/// auto-stopped. Absorbs mute/device-switch/notification flaps that release and
+/// re-acquire the mic within a few seconds; only a mic that STAYS released past
+/// this window ends the recording.
+const STOP_GRACE: std::time::Duration = std::time::Duration::from_secs(12);
 
 /// Whether mic-based detection is switched on (persisted). Off by default —
 /// like stenoai, this is opt-in.
@@ -296,6 +340,7 @@ async fn run_watch_loop(app: AppHandle, allow_device_level: bool) {
     };
 
     let mut debounce = Debouncer::new(MIC_DETECT_COOLDOWN_SECS);
+    let grace = std::sync::Arc::new(parking_lot::Mutex::new(StopGrace::new()));
     let mut reader = BufReader::new(stdout).lines();
     while let Ok(Some(line)) = reader.next_line().await {
         // Honor the live setting each event — the user may toggle it off.
@@ -310,13 +355,33 @@ async fn run_watch_loop(app: AppHandle, allow_device_level: bool) {
         let Some(event) = parse_line(&line) else {
             continue;
         };
-        if !event.is_start() || !is_meeting_app(&event, allow_device_level) {
+        if !is_meeting_app(&event, allow_device_level) {
             continue;
         }
-        if !debounce.allow(now_secs()) {
-            continue;
+        if event.is_start() {
+            // A (re)opened mic invalidates any pending auto-stop, then may
+            // trigger an offer/start of its own (subject to the debounce).
+            grace.lock().note_start();
+            if debounce.allow(now_secs()) {
+                trigger_for_event(&app, &event).await;
+            }
+        } else if event.is_stop() {
+            // The call's mic was released. Arm a grace-delayed stop: fire only
+            // if no meeting-app start reopens the mic within the window (mute
+            // flaps, device switches, notification pings release+reacquire).
+            let token = grace.lock().arm();
+            let app_for_stop = app.clone();
+            let grace_for_stop = grace.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(STOP_GRACE).await;
+                if !grace_for_stop.lock().should_fire(token) {
+                    return; // mic reopened within the window — not a real end
+                }
+                if let Err(e) = crate::autopilot::stop_ambient_recording(&app_for_stop).await {
+                    eprintln!("mic-detect: auto-stop failed: {e:#}");
+                }
+            });
         }
-        trigger_for_event(&app, &event).await;
     }
 
     let _ = child.kill().await;
@@ -456,5 +521,43 @@ mod tests {
         assert!(d.allow(1000));
         d.reset();
         assert!(d.allow(1001)); // reset clears the cooldown
+    }
+
+    #[test]
+    fn stop_grace_fires_when_mic_stays_released() {
+        let g = StopGrace::new();
+        let token = g.arm(); // mic released → arm a stop
+        // no start in the window → the armed stop should fire
+        assert!(g.should_fire(token));
+    }
+
+    #[test]
+    fn stop_grace_cancelled_by_a_reopen() {
+        let mut g = StopGrace::new();
+        let token = g.arm(); // mic released → arm
+        g.note_start(); // mic reopened within the window (mute flap)
+        assert!(!g.should_fire(token), "a reopen must abandon the pending stop");
+    }
+
+    #[test]
+    fn stop_grace_latest_release_wins_after_a_flap() {
+        let mut g = StopGrace::new();
+        let stale = g.arm(); // first release
+        g.note_start(); // reopened — stale token now invalid
+        let fresh = g.arm(); // released again
+        assert!(!g.should_fire(stale), "the pre-flap stop stays cancelled");
+        assert!(g.should_fire(fresh), "the post-flap release can still end it");
+    }
+
+    #[test]
+    fn stop_grace_independent_tokens_across_many_starts() {
+        let mut g = StopGrace::new();
+        for _ in 0..5 {
+            g.note_start();
+        }
+        let token = g.arm();
+        assert!(g.should_fire(token));
+        g.note_start();
+        assert!(!g.should_fire(token));
     }
 }
