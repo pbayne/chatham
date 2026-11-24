@@ -11,6 +11,25 @@ export type Release = {
 
 export const releases: Release[] = [
   {
+    version: "0.77.0",
+    date: "2026-11-23",
+    title: "Detected names now suggest the client too",
+    summary: "When someone says who they are and where they're from, Chatham offers their name and a client tag you can accept in one click.",
+    visual: "speakers",
+    paragraphs: [
+      "The \"Detected names\" strip above a transcript already reads self-introductions to suggest a real name for each speaker — \"Hi, I'm Sarah\" turns Speaker 2 into Sarah, and accepting it teaches Chatham that voice so it recognizes her next time. This release widens what counts as an introduction: \"Sarah here\" and \"you're speaking with Sarah\" are now picked up too, so more people get named without you typing.",
+      "It also listens for where someone is from. When a speaker introduces themselves with a company — \"this is Sarah from Acme\", \"Mark with Globex Corp\" — Chatham offers a \"Tag client: Acme\" chip. One click tags the note with that client (reusing an existing client by name, or creating it), so the call lands in the right place and you can filter your notes by who they were with.",
+      "Everything stays a suggestion you confirm: a wrong guess is one dismissed chip, nothing is renamed or tagged until you click, and the client tag only appears when the note doesn't already have one.",
+    ],
+    highlights: [
+      "More introductions recognized: \"Sarah here\", \"you're speaking with Sarah\".",
+      "Names someone's company from their intro and offers it as a client tag.",
+      "One click tags the note and reuses or creates the client — filter by it later.",
+      "Accepting a name still teaches Chatham that voice for next time.",
+    ],
+    issues: [],
+  },
+  {
     version: "0.76.0",
     date: "2026-11-23",
     title: "Show times as 12-hour or 24-hour",
@@ -44,17 +63,17 @@ export const releases: Release[] = [
       "Multichannel microphones record from their first input.",
     ],
     issues: [
-      { title: "Share a note with chosen people in a workspace", reference: "#232", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/232" },
-      { title: "Silent microphone capture from Vocaster Two USB (14-channel input) on macOS", reference: "#231", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/231" },
+      { title: "Share a note with chosen people in a workspace", reference: "#232", status: "Closed", url: "https://github.com/pbayne/chatham/issues/232" },
+      { title: "Silent microphone capture from Vocaster Two USB (14-channel input) on macOS", reference: "#231", status: "Closed", url: "https://github.com/pbayne/chatham/issues/231" },
     ],
   },
   {
     version: "0.74.0",
     date: "2026-11-01",
     title: "Start a team workspace from a link",
-    summary: "Links on humla.team and in our emails now open Chatham right where you create a team workspace.",
+    summary: "Links on chatham.team and in our emails now open Chatham right where you create a team workspace.",
     paragraphs: [
-      "When you click a link to start a team workspace, for example from humla.team or one of our emails, Chatham now opens and goes straight to creating the workspace. That works whether Chatham is already running or not. If you're still setting Chatham up, it waits until you're done.",
+      "When you click a link to start a team workspace, for example from chatham.team or one of our emails, Chatham now opens and goes straight to creating the workspace. That works whether Chatham is already running or not. If you're still setting Chatham up, it waits until you're done.",
     ],
     highlights: [
       "Links can open Chatham straight to Create team workspace.",
@@ -79,7 +98,7 @@ export const releases: Release[] = [
       "The API key is optional and stays in your Keychain.",
     ],
     issues: [
-      { title: "Custom OpenAI-compatible provider: user-supplied base URL + API key", reference: "#173", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/173" },
+      { title: "Custom OpenAI-compatible provider: user-supplied base URL + API key", reference: "#173", status: "Closed", url: "https://github.com/pbayne/chatham/issues/173" },
     ],
   },
   {
@@ -112,7 +131,7 @@ export const releases: Release[] = [
       "Choose from the models your Copilot plan includes.",
     ],
     issues: [
-      { title: "GitHub Copilot", reference: "#227", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/227" },
+      { title: "GitHub Copilot", reference: "#227", status: "Closed", url: "https://github.com/pbayne/chatham/issues/227" },
     ],
   },
   {
@@ -131,7 +150,7 @@ export const releases: Release[] = [
       "Every recording on the note is joined into one file, in order.",
     ],
     issues: [
-      { title: "Button for save audio records from note", reference: "#224", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/224" },
+      { title: "Button for save audio records from note", reference: "#224", status: "Closed", url: "https://github.com/pbayne/chatham/issues/224" },
     ],
   },
   {
@@ -150,7 +169,7 @@ export const releases: Release[] = [
       "Notes can’t be dated in the future.",
     ],
     issues: [
-      { title: "Feature request: edit old notes", reference: "#222", status: "Open", url: "https://github.com/michaelwilhelmsen/humla/issues/222" },
+      { title: "Feature request: edit old notes", reference: "#222", status: "Open", url: "https://github.com/pbayne/chatham/issues/222" },
     ],
   },
   {
@@ -160,7 +179,7 @@ export const releases: Release[] = [
     summary: "The latest Claude Code connected to Chatham but couldn’t see any of its tools. This fixes it.",
     paragraphs: [
       "If you search your notes from Claude Code, recent versions of Claude Code showed Chatham as connected but found none of its tools, and reconnecting gave an error about missing fields. Claude Code now opens a connection a newer way, and Chatham’s server didn’t handle it. 0.69.2 handles both the new way and the old one, so Claude Code, Codex and other clients can search and read your notes again.",
-      "Once you’ve updated, run /mcp in Claude Code and reconnect humla.",
+      "Once you’ve updated, run /mcp in Claude Code and reconnect chatham.",
     ],
     highlights: [
       "Chatham’s tools show up in Claude Code again.",
@@ -200,7 +219,7 @@ export const releases: Release[] = [
       "Chatham stays signed in between restarts.",
     ],
     issues: [
-      { title: "Two-factor authentication in the app: sign-in code, setup, workspace requirement", reference: "#221", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/221" },
+      { title: "Two-factor authentication in the app: sign-in code, setup, workspace requirement", reference: "#221", status: "Closed", url: "https://github.com/pbayne/chatham/issues/221" },
     ],
   },
   {
@@ -233,7 +252,7 @@ export const releases: Release[] = [
       "Lists, tables and headings stay readable in both formats.",
     ],
     issues: [
-      { title: "Export utility: transcript + summary to files (Markdown, txt)", reference: "#18", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/18" },
+      { title: "Export utility: transcript + summary to files (Markdown, txt)", reference: "#18", status: "Closed", url: "https://github.com/pbayne/chatham/issues/18" },
     ],
   },
   {
@@ -272,8 +291,8 @@ export const releases: Release[] = [
       "Audio is never sent to the webhook.",
     ],
     issues: [
-      { title: "Generate note titles from the note's first paragraphs", reference: "#90", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/90" },
-      { title: "Add opt-in note delivery via webhooks", reference: "#213", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/213" },
+      { title: "Generate note titles from the note's first paragraphs", reference: "#90", status: "Closed", url: "https://github.com/pbayne/chatham/issues/90" },
+      { title: "Add opt-in note delivery via webhooks", reference: "#213", status: "Closed", url: "https://github.com/pbayne/chatham/issues/213" },
     ],
   },
   {
@@ -292,7 +311,7 @@ export const releases: Release[] = [
       "Finder, Spotlight or the menu bar’s Open bring the window back.",
     ],
     issues: [
-      { title: "Feature Request: Start Chatham Minimized / Hidden on macOS", reference: "#207", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/207" },
+      { title: "Feature Request: Start Chatham Minimized / Hidden on macOS", reference: "#207", status: "Closed", url: "https://github.com/pbayne/chatham/issues/207" },
     ],
   },
   {
@@ -311,8 +330,8 @@ export const releases: Release[] = [
       "MCP date filters follow your local midnight.",
     ],
     issues: [
-      { title: "I am unable to chat with my notes. Error - model returned an empty response", reference: "#210", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/210" },
-      { title: "Feature Request: Expose the meeting start time (local time + timezone) via MCP", reference: "#208", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/208" },
+      { title: "I am unable to chat with my notes. Error - model returned an empty response", reference: "#210", status: "Closed", url: "https://github.com/pbayne/chatham/issues/210" },
+      { title: "Feature Request: Expose the meeting start time (local time + timezone) via MCP", reference: "#208", status: "Closed", url: "https://github.com/pbayne/chatham/issues/208" },
     ],
   },
   {
@@ -334,7 +353,7 @@ export const releases: Release[] = [
       "After a macOS update, Nemotron 3 gets ready again at launch, not after a meeting.",
     ],
     issues: [
-      { title: "Nemotron 3 upgrade fails with a CoreML output-backing error, reported as a download failure", reference: "#203", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/203" },
+      { title: "Nemotron 3 upgrade fails with a CoreML output-backing error, reported as a download failure", reference: "#203", status: "Closed", url: "https://github.com/pbayne/chatham/issues/203" },
     ],
   },
   {
@@ -355,9 +374,9 @@ export const releases: Release[] = [
       "The retired Sortformer engine and its models are cleaned up.",
     ],
     issues: [
-      { title: "Make Nemotron 3 the default diarization engine (replaces Sortformer)", reference: "#193", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/193" },
-      { title: "Stop speaker echo from becoming extra voices on the mic", reference: "#196", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/196" },
-      { title: "Speed up the echo pass and cut its memory on long takes", reference: "#200", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/200" },
+      { title: "Make Nemotron 3 the default diarization engine (replaces Sortformer)", reference: "#193", status: "Closed", url: "https://github.com/pbayne/chatham/issues/193" },
+      { title: "Stop speaker echo from becoming extra voices on the mic", reference: "#196", status: "Closed", url: "https://github.com/pbayne/chatham/issues/196" },
+      { title: "Speed up the echo pass and cut its memory on long takes", reference: "#200", status: "Closed", url: "https://github.com/pbayne/chatham/issues/200" },
     ],
   },
   {
@@ -375,7 +394,7 @@ export const releases: Release[] = [
       "See and clear active filters above the message box.",
     ],
     issues: [
-      { title: "Chat: pin a conversation to one Client", reference: "#115", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/115" },
+      { title: "Chat: pin a conversation to one Client", reference: "#115", status: "Closed", url: "https://github.com/pbayne/chatham/issues/115" },
     ],
   },
   {
@@ -393,7 +412,7 @@ export const releases: Release[] = [
       "OpenAI and Anthropic model lists come straight from your account.",
     ],
     issues: [
-      { title: "Anthropic API as a summary (and chat) provider", reference: "#183", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/183" },
+      { title: "Anthropic API as a summary (and chat) provider", reference: "#183", status: "Closed", url: "https://github.com/pbayne/chatham/issues/183" },
     ],
   },
   {
@@ -433,7 +452,7 @@ export const releases: Release[] = [
   {
     version: "0.60.0",
     issues: [
-      { title: "A note can be private inside a workspace", reference: "#191", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/191" },
+      { title: "A note can be private inside a workspace", reference: "#191", status: "Closed", url: "https://github.com/pbayne/chatham/issues/191" },
     ],
     date: "2026-09-14",
     title: "A little space for private notes",
@@ -452,7 +471,7 @@ export const releases: Release[] = [
   {
     version: "0.59.0",
     issues: [
-      { title: "Note cards show no live activity (recording / transcribing / summarizing)", reference: "#190", status: "Closed", url: "https://github.com/michaelwilhelmsen/humla/issues/190" },
+      { title: "Note cards show no live activity (recording / transcribing / summarizing)", reference: "#190", status: "Closed", url: "https://github.com/pbayne/chatham/issues/190" },
     ],
     date: "2026-09-11",
     title: "Know what’s happening at a glance",

@@ -22,6 +22,11 @@ export type SpeakerNameGuess = {
   label: string; // the diarized label, e.g. "Speaker 1"
   name: string; // the harvested real name, e.g. "Hege"
   confidence: "high" | "medium"; // self-intro = high, vocative = medium
+  // Organization the speaker named themselves as being from, when the intro
+  // carried one ("this is Sarah from Acme" → "Acme"). Only ever set on a
+  // self-intro (a speaker states their OWN affiliation); the UI offers it as a
+  // client tag. Absent when no affiliation was stated.
+  company?: string;
 };
 
 // A capitalized given name, optionally two words or an honorific:
@@ -69,7 +74,33 @@ const SELF_INTRO = [
   new RegExp(`[Tt]his is\\s+${NAME}`),
   new RegExp(`[Mm]y name'?s?\\s+(?:is\\s+)?${NAME}`),
   new RegExp(`[Ii]t'?s\\s+${NAME}\\s+(?:here|speaking)\\b`),
+  // "you're speaking with Sarah" / "you are speaking with Sarah"
+  new RegExp(`[Yy]ou'?(?:re| are)\\s+speaking\\s+with\\s+${NAME}`),
+  // Turn-opening "Sarah here" — only at the very start of the turn so a
+  // mid-sentence "... over here" or "the report here" can't trip it. The
+  // trailing boundary keeps it from swallowing "Here's the plan".
+  new RegExp(`^${NAME}\\s+here\\b`),
 ];
+
+// Company/affiliation a self-intro may carry: "... from Acme", "... with Acme
+// Corp", "... at Globex". Captured SEPARATELY from the name and only accepted
+// alongside a matched self-intro, so it states the talker's OWN affiliation.
+// The org body is Title Case words; it stops at any sentence punctuation (the
+// body excludes "." so "Globex Corp. Let's" captures just "Globex Corp"), and
+// an "&" or "-" joins multi-word names (AT&T, Johnson-Lee).
+const ORG_WORD = "[A-Z][A-Za-z&'-]{0,30}";
+const ORG = `(${ORG_WORD}(?:[\\s&-]${ORG_WORD}){0,3})`;
+// "from"/"with"/"at" are affiliation triggers. "with" collides with the
+// self-intro pattern "speaking with <Name>", so harvestCompany takes the
+// already-captured NAME and rejects an org equal to it — that disambiguates
+// "speaking with Sarah" (org==name → dropped) from "Mark with Globex" (org≠name
+// → kept).
+const AFFILIATION = new RegExp(`(?:[Ff]rom|[Ww]ith|[Aa]t)\\s+${ORG}`);
+// Words that look like an org by capitalization but are sentence filler.
+const ORG_STOPWORDS = new Set([
+  "I", "The", "A", "An", "We", "You", "They", "It", "My", "Our", "Here",
+  "Today", "This", "That", "And", "But", "So", "Well", "Thanks",
+]);
 
 // Vocative patterns: naming someone else at a turn boundary.
 const VOCATIVE = [
@@ -82,6 +113,23 @@ const VOCATIVE = [
 function cleanName(raw: string): string {
   // Trim trailing punctuation a capture might include and collapse spaces.
   return raw.replace(/[.,!?;:]+$/, "").replace(/\s+/g, " ").trim();
+}
+
+// Extract the org from a self-intro turn's text, when it states one ("from
+// Acme", "with Globex Corp", "at Initech"). `name` is the already-captured
+// speaker name: an org equal to it is dropped, which disambiguates "speaking
+// with Sarah" (no org) from "Mark with Globex" (org "Globex"). Returns
+// undefined when there's no affiliation or the capture is filler.
+function harvestCompany(text: string, name: string): string | undefined {
+  const m = text.match(AFFILIATION);
+  if (!m || !m[1]) return undefined;
+  const org = cleanName(m[1]);
+  const firstWord = org.split(" ")[0];
+  if (ORG_STOPWORDS.has(firstWord)) return undefined;
+  // The "with" trigger can capture the self-intro's own name ("speaking with
+  // Sarah"); a company that IS the speaker's name is not an affiliation.
+  if (org.toLowerCase() === name.toLowerCase()) return undefined;
+  return org;
 }
 
 /**
@@ -103,7 +151,10 @@ export function harvestSpeakerNames(transcript: string): SpeakerNameGuess[] {
       if (m && m[1]) {
         const name = cleanName(m[1]);
         if (!isStopword(name) && !claimedNames.has(name.toLowerCase())) {
-          byLabel.set(label, { label, name, confidence: "high" });
+          const company = harvestCompany(text, name);
+          const guess: SpeakerNameGuess = { label, name, confidence: "high" };
+          if (company) guess.company = company;
+          byLabel.set(label, guess);
           claimedNames.add(name.toLowerCase());
           break;
         }

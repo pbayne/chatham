@@ -46,6 +46,7 @@ import { useOwnerName, useCloudStore } from "../lib/cloud";
 import { billingCta, planIsLive } from "../lib/billing";
 import { extractSpeakerLabels, renameSpeakerInTranscript, isNamedPerson } from "../lib/speakers";
 import { harvestSpeakerNames } from "../lib/speakerNames";
+import { resolveClientId } from "../lib/clientMatch";
 import { NEMOTRON_MAX_SPEAKERS } from "../lib/diarizeEngine";
 import { SPEAKER_COUNT_OPTIONS, speakerCountLabel } from "../lib/speakerCount";
 import { htmlToText } from "../lib/noteList";
@@ -1722,6 +1723,23 @@ export function Note() {
                       <DetectedSpeakerNames
                         noteId={draft.id}
                         transcript={draft.transcript}
+                        hasClient={!!draft.client_id}
+                        onTagClient={async (company) => {
+                          if (readOnlyRef.current) return;
+                          try {
+                            const clientId = await resolveClientId(
+                              company,
+                              ipc.listClients,
+                              ipc.createClient,
+                            );
+                            const next = { ...draft, client_id: clientId };
+                            setDraft(next);
+                            await ipc.setNoteClient(draft.id, clientId);
+                            upsert(next);
+                          } catch (err) {
+                            console.error("tag client from detected name failed", err);
+                          }
+                        }}
                         onAccept={(oldLabel, newLabel) => {
                           if (readOnlyRef.current) return;
                           patch("transcript", renameSpeakerInTranscript(draft.transcript, oldLabel, newLabel));
@@ -2936,13 +2954,18 @@ function NoteCaptures({ noteId, recording }: { noteId: string; recording: boolea
 function DetectedSpeakerNames({
   noteId,
   transcript,
+  hasClient,
   onAccept,
+  onTagClient,
 }: {
   noteId: string;
   transcript: string;
+  hasClient: boolean;
   onAccept: (oldLabel: string, newLabel: string) => void;
+  onTagClient: (company: string) => void;
 }) {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [companyDismissed, setCompanyDismissed] = useState<Set<string>>(new Set());
   const [voiceMatches, setVoiceMatches] = useState<
     { label: string; name: string; strength: "auto" | "suggest" }[]
   >([]);
@@ -2996,10 +3019,10 @@ function DetectedSpeakerNames({
   const guesses = useMemo(() => {
     const byLabel = new Map<
       string,
-      { label: string; name: string; confidence: "high" | "medium"; voice?: boolean }
+      { label: string; name: string; confidence: "high" | "medium"; voice?: boolean; company?: string }
     >();
     for (const g of harvested) {
-      byLabel.set(g.label, { label: g.label, name: g.name, confidence: g.confidence });
+      byLabel.set(g.label, { label: g.label, name: g.name, confidence: g.confidence, company: g.company });
     }
     for (const m of voiceMatches) {
       byLabel.set(m.label, {
@@ -3013,7 +3036,26 @@ function DetectedSpeakerNames({
   }, [harvested, voiceMatches]);
 
   const visible = guesses.filter((g) => !dismissed.has(g.label));
-  if (visible.length === 0) return null;
+  // Companies worth offering as a client tag: only when the note has no client
+  // yet, and deduped (two people "from Acme" → one chip). A transcript guess
+  // carries the company; a voiceprint match doesn't, so this comes from the
+  // self-intro harvest. Dismissable independently of the name chip.
+  const companySuggestions = useMemo(() => {
+    if (hasClient) return [];
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const g of guesses) {
+      const c = g.company?.trim();
+      if (!c) continue;
+      const key = c.toLowerCase();
+      if (seen.has(key) || companyDismissed.has(key)) continue;
+      seen.add(key);
+      out.push(c);
+    }
+    return out;
+  }, [guesses, hasClient, companyDismissed]);
+
+  if (visible.length === 0 && companySuggestions.length === 0) return null;
 
   return (
     <div className="shrink-0 mb-2 rounded-[var(--radius-panel)] border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-3 py-2">
@@ -3054,6 +3096,37 @@ function DetectedSpeakerNames({
           </span>
         ))}
       </div>
+      {companySuggestions.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 mt-2 pt-2 border-t border-[var(--color-line)]">
+          <span className="text-xs text-[var(--color-text-muted)]">Tag client:</span>
+          {companySuggestions.map((company) => (
+            <span
+              key={company}
+              className="inline-flex items-center rounded-full border border-[var(--color-line-visible)] text-xs overflow-hidden"
+            >
+              <button
+                type="button"
+                onClick={() => onTagClient(company)}
+                className="inline-flex items-center px-2.5 py-1 hover:bg-[var(--color-surface-hover)] transition-colors"
+                title={`Tag this note with client ${company}`}
+              >
+                <Building2 size={10} strokeWidth={1.9} className="mr-1 text-[var(--color-interactive)]" />
+                <span className="font-medium">{company}</span>
+              </button>
+              <button
+                type="button"
+                aria-label={`Dismiss client ${company}`}
+                onClick={() =>
+                  setCompanyDismissed((d) => new Set(d).add(company.toLowerCase()))
+                }
+                className="px-1.5 py-1 text-[var(--color-text-faint)] hover:text-[var(--color-text)] border-l border-[var(--color-line)]"
+              >
+                <X size={11} strokeWidth={2} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

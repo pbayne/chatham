@@ -77,4 +77,60 @@ describe("harvestSpeakerNames", () => {
     const g = harvestSpeakerNames(t);
     expect(g).toContainEqual({ label: "Speaker 2", name: "Michael", confidence: "medium" });
   });
+
+  it("harvests 'X here' only at the start of a turn", () => {
+    expect(harvestSpeakerNames("Speaker 1: Sarah here, thanks for joining.")).toContainEqual({
+      label: "Speaker 1",
+      name: "Sarah",
+      confidence: "high",
+    });
+    // Mid-sentence "here" must NOT be read as a name.
+    expect(harvestSpeakerNames("Speaker 1: The report is right here.")).toEqual([]);
+  });
+
+  it("harvests 'you're speaking with X'", () => {
+    expect(harvestSpeakerNames("Speaker 1: Hello, you're speaking with Sarah.")).toContainEqual({
+      label: "Speaker 1",
+      name: "Sarah",
+      confidence: "high",
+    });
+  });
+
+  it("extracts the company from 'this is X from Acme'", () => {
+    const g = harvestSpeakerNames("Speaker 1: Hi, this is Sarah from Acme.");
+    expect(g).toContainEqual({
+      label: "Speaker 1",
+      name: "Sarah",
+      confidence: "high",
+      company: "Acme",
+    });
+  });
+
+  it("captures a multi-word company and stops at the sentence", () => {
+    const g = harvestSpeakerNames("Speaker 1: I'm Mark with Globex Corp. Let's begin.");
+    const m = g.find((x) => x.label === "Speaker 1");
+    expect(m?.name).toBe("Mark");
+    expect(m?.company).toBe("Globex Corp");
+  });
+
+  it("does not mistake the name for the company in 'speaking with X'", () => {
+    // "with Sarah" must not be harvested as the company — there's no real org.
+    const g = harvestSpeakerNames("Speaker 1: You're speaking with Sarah.");
+    const m = g.find((x) => x.label === "Speaker 1");
+    expect(m?.name).toBe("Sarah");
+    expect(m?.company).toBeUndefined();
+  });
+
+  it("omits company when the intro states none", () => {
+    const g = harvestSpeakerNames("Speaker 1: Hi, I'm Hege.");
+    const m = g.find((x) => x.label === "Speaker 1");
+    expect(m?.company).toBeUndefined();
+  });
+
+  it("rejects filler after 'from' as a company", () => {
+    const g = harvestSpeakerNames("Speaker 1: This is Dana from The team downstairs.");
+    const m = g.find((x) => x.label === "Speaker 1");
+    expect(m?.name).toBe("Dana");
+    expect(m?.company).toBeUndefined();
+  });
 });
