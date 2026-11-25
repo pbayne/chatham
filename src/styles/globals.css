@@ -1052,3 +1052,46 @@ input::placeholder, textarea::placeholder {
 kbd {
   font-family: inherit;
 }
+
+/* ------------------------------------------------------------------ */
+/* Feeds (Labs): article body + key hints                              */
+/* ------------------------------------------------------------------ */
+
+/* Feed articles reuse .prose-note's type ladder so a post reads like a note.
+   Their HTML is sanitized in Rust and arrives without images; links open in
+   the system browser (Feeds.tsx), so style them as links, not editor marks. */
+.feeds-article a {
+  color: var(--color-interactive);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  cursor: pointer;
+}
+.feeds-article ul { list-style: disc; padding-left: 1.4em; }
+.feeds-article ol { list-style: decimal; padding-left: 1.4em; }
+.feeds-article blockquote {
+  border-left: 2px solid var(--color-line-visible);
+  padding-left: 0.9em;
+  color: var(--color-text-muted);
+}
+.feeds-article pre {
+  overflow-x: auto;
+  padding: 0.7em 0.9em;
+  border-radius: var(--radius);
+  background: var(--color-surface-2);
+  font-size: 0.9em;
+}
+.feeds-article :where(table) { display: block; overflow-x: auto; }
+
+.nd-kbd {
+  display: inline-block;
+  min-width: 1.4em;
+  padding: 0 0.35em;
+  border: 1px solid var(--color-line-visible);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font: 500 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-align: center;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+}

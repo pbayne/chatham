@@ -53,6 +53,7 @@ import { TranscriptionStep } from "./pages/onboarding/steps/Transcription";
 import { STEP_ORDER, type StepContext, type StepId } from "./pages/onboarding/types";
 import type { DiarizeEngine, ProviderConfig, RecordingStatus, Step, TimelineEntry } from "./lib/ipc";
 import { DEMO_CLIENTS, DEMO_FOLDERS, demoNotes, demoOpenItems, demoTriageCards } from "./test/noteLibrary";
+import { demoFeeds, demoFeedItems } from "./test/feeds";
 import { DEMO_RECOVERY_CODES, DEMO_TWO_FACTOR_SETUP } from "./test/twoFactorFixtures";
 // Mirrors src/main.tsx — every theme's typeface, so a scenario reviewed under
 // `?palette=<id>` renders in that design's face rather than falling back.
@@ -1344,6 +1345,18 @@ function intelligenceCases(): Record<string, Scenario> {
     inbox_status: () => ({ connected: false, provider: "local", auth_mode: "oauth", triaged_count: 0 }),
     inbox_list: () => [],
   };
+  // Labs → Feeds switched on, so its sidebar entry and page render.
+  const labsOn: Record<string, Handler> = {
+    settings_get: (a) => ((a as { key?: string } | undefined)?.key === "labs_feeds" ? "true" : null),
+  };
+  const feedsIpc: Record<string, Handler> = {
+    feeds_list: () => demoFeeds,
+    feed_items_list: (a) => {
+      const { feedId, unreadOnly } = (a ?? {}) as { feedId?: string | null; unreadOnly?: boolean };
+      return demoFeedItems.filter((i) => (!feedId || i.feed_id === feedId) && (!unreadOnly || !i.read));
+    },
+    feed_item_set_read: () => null,
+  };
   const at = (route: string, ipc: Record<string, Handler> = library): Scenario => ({
     route,
     render: () => null,
@@ -1359,10 +1372,9 @@ function intelligenceCases(): Record<string, Scenario> {
     "inbox": at("/inbox"),
     "inbox-empty": at("/inbox", empty),
     // Labs → Feeds switched on, so its sidebar entry and page render.
-    "feeds-empty": at("/feeds", {
-      ...library,
-      settings_get: (a) => ((a as { key?: string } | undefined)?.key === "labs_feeds" ? "true" : null),
-    }),
+    "feeds-empty": at("/feeds", { ...library, ...labsOn, feeds_list: () => [], feed_items_list: () => [] }),
+    feeds: at("/feeds", { ...library, ...labsOn, ...feedsIpc }),
+    "feeds-reading": at("/feeds", { ...library, ...labsOn, ...feedsIpc }),
   };
 }
 
