@@ -221,7 +221,28 @@ Existing installs will offer to auto-update from the menu (Chatham → Check for
   "$DMG" \
   "$TARBALL" \
   "$SIG_FILE" \
-  "$LATEST_JSON"
+  "$LATEST_JSON" || echo "⚠️  gh release create reported an error — verifying assets…"
+
+# 8. Verify. A transient GitHub 5xx mid-upload leaves the release a DRAFT with
+# assets missing (v0.78.0 lost its .sig this way), and a draft is invisible to
+# the updater's releases/latest URL. Re-upload anything missing, then publish.
+for attempt in 1 2 3 4; do
+  have="$(gh release view "$TAG" --repo "$RELEASE_REPO" --json assets -q '[.assets[].name]|join("\n")' 2>/dev/null || true)"
+  missing=()
+  for f in "$DMG" "$TARBALL" "$SIG_FILE" "$LATEST_JSON"; do
+    grep -qxF "$(basename "$f")" <<<"$have" || missing+=("$f")
+  done
+  [ ${#missing[@]} -eq 0 ] && break
+  echo "   re-uploading (attempt $attempt): ${missing[*]##*/}"
+  gh release upload "$TAG" --repo "$RELEASE_REPO" --clobber "${missing[@]}" || sleep $((attempt * 10))
+done
+if [ ${#missing[@]} -ne 0 ]; then
+  echo "error: assets still missing after retries: ${missing[*]##*/}" >&2
+  exit 1
+fi
+if [ "$(gh release view "$TAG" --repo "$RELEASE_REPO" --json isDraft -q .isDraft)" = "true" ]; then
+  gh release edit "$TAG" --repo "$RELEASE_REPO" --draft=false --latest >/dev/null
+fi
 
 echo
 echo "✅ Released $TAG"
