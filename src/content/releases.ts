@@ -11,6 +11,26 @@ export type Release = {
 
 export const releases: Release[] = [
   {
+    version: "0.79.0",
+    date: "2026-11-25",
+    title: "Feeds, in Labs: blogs and podcasts, transcribed",
+    summary: "A new Labs switch adds Feeds — follow blogs and podcasts, and turn any episode into a searchable, summarised note.",
+    visual: "audio",
+    paragraphs: [
+      "Settings → General now has a Labs section, for features that ship switched off while they settle. The first is Feeds: turn it on and a Feeds entry appears in the sidebar. Paste a feed's address — or just a website, and Chatham finds the feed it advertises — or bring your subscriptions over with an OPML file.",
+      "Feeds reads like the rest of Chatham: your sources on the left, their newest items in the middle, the article on the right in the same type as your notes. j and k move through the list, m marks read or unread, o opens the original in your browser. Articles never load remote images, so tracking pixels stay dark.",
+      "A podcast episode has one more button: Transcribe episode. Chatham downloads it and runs it through the same pipeline as an imported recording, so it lands as an ordinary note in a Podcasts folder — titled and dated after the episode, with speakers, a summary, and everything search and chat can do with a meeting.",
+    ],
+    highlights: [
+      "Labs in Settings → General; Feeds is off until you switch it on.",
+      "Follow any RSS, Atom or JSON feed — or a site that advertises one.",
+      "Three-column reader with keyboard navigation; no remote images.",
+      "Transcribe a podcast episode into a note in a Podcasts folder.",
+      "OPML import and export.",
+    ],
+    issues: [],
+  },
+  {
     version: "0.78.0",
     date: "2026-11-25",
     title: "People, follow-ups and customers, sharpened",
