@@ -11,6 +11,23 @@ export type Release = {
 
 export const releases: Release[] = [
   {
+    version: "0.80.0",
+    date: "2026-11-25",
+    title: "Import Ogg, Opus, FLAC and WebM audio",
+    summary: "Import audio and Feeds now take Ogg, Opus, FLAC and WebM files — including podcasts that publish in them.",
+    visual: "audio",
+    paragraphs: [
+      "Import audio used to list only the formats Apple's own player handles. It now also takes Ogg (Vorbis or Opus), Opus and FLAC files, which macOS turns out to read fine, and WebM, MKV and MKA, which it doesn't. Chatham converts those itself before transcribing: WebM's Opus audio is repackaged without being re-encoded, so nothing is lost and even a long file takes seconds.",
+      "The same applies to Feeds. Podcasts that publish in Ogg, Opus, FLAC or WebM can now be transcribed into notes like any MP3 episode. The note still takes its title and date from the original file.",
+    ],
+    highlights: [
+      "Import Ogg, Opus and FLAC audio.",
+      "WebM, MKV and MKA are converted on import, losslessly for Opus.",
+      "Feeds can transcribe podcasts in any of these formats.",
+    ],
+    issues: [],
+  },
+  {
     version: "0.79.0",
     date: "2026-11-25",
     title: "Feeds, in Labs: blogs and podcasts, transcribed",
