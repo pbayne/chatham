@@ -150,7 +150,7 @@ export function AutopilotTab() {
               type="button"
               onClick={disconnect}
               disabled={busy}
-              className="text-sm px-3 py-1.5 rounded-[var(--radius-control)] border border-[var(--color-line-visible)] hover:bg-[var(--color-surface-hover)] disabled:opacity-50"
+              className="text-sm px-3 py-1.5 rounded-[var(--control-radius)] border border-[var(--color-line-visible)] hover:bg-[var(--color-pill-hover)] disabled:opacity-50"
             >
               Disconnect
             </button>
@@ -159,7 +159,7 @@ export function AutopilotTab() {
               type="button"
               onClick={connect}
               disabled={busy}
-              className="text-sm px-3 py-1.5 rounded-[var(--radius-control)] bg-[var(--color-interactive)] text-white hover:opacity-90 disabled:opacity-50"
+              className="text-sm px-3 py-1.5 rounded-[var(--control-radius)] bg-[var(--color-interactive)] text-white hover:opacity-90 disabled:opacity-50"
             >
               {busy ? "Connecting…" : "Connect Google"}
             </button>

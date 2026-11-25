@@ -59,9 +59,9 @@ export function People() {
                 <button
                   type="button"
                   onClick={() => navigate(`/person/${encodeURIComponent(p.name)}`)}
-                  className="w-full flex items-center gap-3 rounded-[var(--radius-panel)] border border-[var(--color-line)] p-3 text-left hover:bg-[var(--color-surface-hover)] transition-colors"
+                  className="w-full flex items-center gap-3 rounded-[var(--radius)] border border-[var(--color-line)] p-3 text-left hover:bg-[var(--color-pill-hover)] transition-colors"
                 >
-                  <span className="shrink-0 w-8 h-8 rounded-full bg-[var(--color-surface-sunken)] flex items-center justify-center text-[var(--color-text-muted)]">
+                  <span className="shrink-0 w-8 h-8 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-[var(--color-text-muted)]">
                     <User size={16} strokeWidth={1.7} />
                   </span>
                   <span className="min-w-0 flex-1">
@@ -106,7 +106,7 @@ export function Person() {
           <button
             type="button"
             onClick={() => navigate("/people")}
-            className="shrink-0 w-9 h-9 rounded-full bg-[var(--color-surface-sunken)] flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-interactive)] transition-colors"
+            className="shrink-0 w-9 h-9 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-interactive)] transition-colors"
             title="All people"
           >
             <User size={18} strokeWidth={1.7} />

@@ -1701,7 +1701,7 @@ function PromptPicker({
       tabIndex={-1}
       onKeyDown={onKeyDown}
       onBlur={onDismiss}
-      className="absolute inset-x-2.5 bottom-full z-20 mb-1.5 overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line-visible)] bg-[var(--color-surface-raised)] p-1 shadow-[var(--shadow-md)] outline-none"
+      className="absolute inset-x-2.5 bottom-full z-20 mb-1.5 overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line-visible)] bg-[var(--color-surface-raised)] p-1 shadow-lg outline-none"
     >
       <div className="px-2 pb-1 pt-0.5 text-[11px] font-medium text-[var(--color-text-muted)]">
         Prompts

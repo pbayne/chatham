@@ -42,7 +42,9 @@ export function Inbox() {
     try {
       const [s, c] = await Promise.all([ipc.inboxStatus(), ipc.inboxList()]);
       setStatus(s);
-      setCards(c);
+      // A backend that has never triaged answers null, not [] — the board must
+      // read that as empty rather than crash on `.length`.
+      setCards(Array.isArray(c) ? c : []);
     } catch (e) {
       setError(String(e));
     }
@@ -137,7 +139,7 @@ export function Inbox() {
         <div className="max-w-[1400px] mx-auto w-full px-8 py-6">
           {!connected && <NotConnected />}
           {error && (
-            <div className="mb-4 rounded-[var(--radius)] border border-[var(--color-danger,#c0392b)] bg-[var(--color-surface)] px-4 py-3 text-sm text-[var(--color-text)]">
+            <div className="mb-4 rounded-[var(--radius)] border border-[var(--color-danger)] bg-[var(--color-surface)] px-4 py-3 text-sm text-[var(--color-text)]">
               {error}
             </div>
           )}
@@ -317,7 +319,7 @@ function Card({ card, onChange }: { card: TriageCard; onChange: () => void }) {
             </div>
           </div>
           {card.draft_id && (
-            <CheckCircle2 size={15} className="shrink-0 text-[var(--color-success,#1e8e3e)]" />
+            <CheckCircle2 size={15} className="shrink-0 text-[var(--color-success)]" />
           )}
         </div>
         {card.reason && (
@@ -340,7 +342,7 @@ function Card({ card, onChange }: { card: TriageCard; onChange: () => void }) {
                     type="checkbox"
                     checked={item.done}
                     onChange={() => toggle(i)}
-                    className="mt-[3px] shrink-0 accent-[var(--color-interactive,#2563eb)]"
+                    className="mt-[3px] shrink-0 accent-[var(--color-interactive)]"
                   />
                   <input
                     value={item.text}
@@ -357,7 +359,7 @@ function Card({ card, onChange }: { card: TriageCard; onChange: () => void }) {
                   <button
                     onClick={() => remove(i)}
                     title="Delete"
-                    className="shrink-0 opacity-0 group-hover:opacity-100 text-[var(--color-text-disabled)] hover:text-[var(--color-danger,#c0392b)] transition-opacity"
+                    className="shrink-0 opacity-0 group-hover:opacity-100 text-[var(--color-text-disabled)] hover:text-[var(--color-danger)] transition-opacity"
                   >
                     <Trash2 size={12} />
                   </button>
@@ -416,7 +418,7 @@ function Card({ card, onChange }: { card: TriageCard; onChange: () => void }) {
                 placeholder="Write a reply…"
                 className="w-full text-[12px] bg-[var(--color-canvas)] border border-[var(--color-line-visible)] rounded px-2 py-1.5 resize-y"
               />
-              {err && <div className="text-[11px] text-[var(--color-danger,#c0392b)] mt-1">{err}</div>}
+              {err && <div className="text-[11px] text-[var(--color-danger)] mt-1">{err}</div>}
               <div className="flex items-center gap-2 mt-2">
                 {staged && staged !== "done" ? (
                   <a

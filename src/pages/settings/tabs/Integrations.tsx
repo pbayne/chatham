@@ -187,7 +187,7 @@ export function ObsidianSection() {
             type="button"
             onClick={() => void pickVault()}
             disabled={busy}
-            className="text-sm px-3 py-1.5 rounded-[var(--radius-control)] border border-[var(--color-line-visible)] hover:bg-[var(--color-surface-hover)] disabled:opacity-50"
+            className="text-sm px-3 py-1.5 rounded-[var(--control-radius)] border border-[var(--color-line-visible)] hover:bg-[var(--color-pill-hover)] disabled:opacity-50"
           >
             {vault ? "Change…" : "Choose folder…"}
           </button>

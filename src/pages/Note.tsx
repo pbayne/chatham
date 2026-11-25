@@ -2787,8 +2787,8 @@ function ReportTabs({
             className={
               "group inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors " +
               (active
-                ? "border-[var(--color-interactive)] text-[var(--color-interactive)] bg-[var(--color-surface-hover)]"
-                : "border-[var(--color-line-visible)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]")
+                ? "border-[var(--color-interactive)] text-[var(--color-interactive)] bg-[var(--color-pill-hover)]"
+                : "border-[var(--color-line-visible)] text-[var(--color-text-muted)] hover:bg-[var(--color-pill-hover)]")
             }
           >
             <button
@@ -2847,7 +2847,7 @@ function SuggestTemplateButton({
           .finally(() => setBusy(false));
       }}
       title="Suggest a template from the transcript"
-      className="inline-flex items-center gap-1 rounded-full border border-[var(--color-line-visible)] px-2.5 py-1 text-xs text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] disabled:opacity-50"
+      className="inline-flex items-center gap-1 rounded-full border border-[var(--color-line-visible)] px-2.5 py-1 text-xs text-[var(--color-text-muted)] hover:bg-[var(--color-pill-hover)] disabled:opacity-50"
     >
       <Sparkles size={12} strokeWidth={1.8} />
       {busy ? "Thinking…" : "Suggest"}
@@ -2936,7 +2936,7 @@ function NoteCaptures({ noteId, recording }: { noteId: string; recording: boolea
                   e.stopPropagation();
                   remove(a.id);
                 }}
-                className="absolute -right-1.5 -top-1.5 hidden h-5 w-5 items-center justify-center rounded-full bg-[var(--color-danger,#c0392b)] text-white text-[11px] group-hover:flex"
+                className="absolute -right-1.5 -top-1.5 hidden h-5 w-5 items-center justify-center rounded-full bg-[var(--color-danger)] text-white text-[11px] group-hover:flex"
                 title="Delete capture"
               >
                 ×
@@ -2950,7 +2950,7 @@ function NoteCaptures({ noteId, recording }: { noteId: string; recording: boolea
               <div className="line-clamp-3 whitespace-pre-wrap break-words">{a.text}</div>
               <button
                 onClick={() => remove(a.id)}
-                className="absolute -right-1.5 -top-1.5 hidden h-5 w-5 items-center justify-center rounded-full bg-[var(--color-danger,#c0392b)] text-white text-[11px] group-hover:flex"
+                className="absolute -right-1.5 -top-1.5 hidden h-5 w-5 items-center justify-center rounded-full bg-[var(--color-danger)] text-white text-[11px] group-hover:flex"
                 title="Delete capture"
               >
                 ×
@@ -3094,7 +3094,7 @@ function DetectedSpeakerNames({
   if (visible.length === 0 && companySuggestions.length === 0) return null;
 
   return (
-    <div className="shrink-0 mb-2 rounded-[var(--radius-panel)] border border-[var(--color-line)] bg-[var(--color-surface-sunken)] px-3 py-2">
+    <div className="shrink-0 mb-2 rounded-[var(--radius)] border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2">
       <div className="flex items-center gap-1.5 mb-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
         <Sparkles size={12} strokeWidth={1.8} />
         Detected names
@@ -3108,24 +3108,24 @@ function DetectedSpeakerNames({
             <button
               type="button"
               onClick={() => onAccept(g.label, g.name)}
-              className="px-2.5 py-1 hover:bg-[var(--color-surface-hover)] transition-colors"
+              className="px-2.5 py-1 hover:bg-[var(--color-pill-hover)] transition-colors"
               title={`Rename ${g.label} to ${g.name}${g.voice ? " (recognized by voice)" : ""}${g.confidence === "medium" ? " — less certain" : ""}`}
             >
               {g.voice && (
                 <Mic size={10} strokeWidth={1.9} className="mr-1 text-[var(--color-interactive)]" />
               )}
               <span className="text-[var(--color-text-muted)]">{g.label}</span>
-              <span className="mx-1.5 text-[var(--color-text-faint)]">→</span>
+              <span className="mx-1.5 text-[var(--color-text-disabled)]">→</span>
               <span className="font-medium">{g.name}</span>
               {g.confidence === "medium" && (
-                <span className="ml-1 text-[var(--color-text-faint)]">?</span>
+                <span className="ml-1 text-[var(--color-text-disabled)]">?</span>
               )}
             </button>
             <button
               type="button"
               aria-label={`Dismiss ${g.name}`}
               onClick={() => setDismissed((d) => new Set(d).add(g.label))}
-              className="px-1.5 py-1 text-[var(--color-text-faint)] hover:text-[var(--color-text)] border-l border-[var(--color-line)]"
+              className="px-1.5 py-1 text-[var(--color-text-disabled)] hover:text-[var(--color-text)] border-l border-[var(--color-line)]"
             >
               <X size={11} strokeWidth={2} />
             </button>
@@ -3143,7 +3143,7 @@ function DetectedSpeakerNames({
               <button
                 type="button"
                 onClick={() => onTagClient(company)}
-                className="inline-flex items-center px-2.5 py-1 hover:bg-[var(--color-surface-hover)] transition-colors"
+                className="inline-flex items-center px-2.5 py-1 hover:bg-[var(--color-pill-hover)] transition-colors"
                 title={`Tag this note with client ${company}`}
               >
                 <Building2 size={10} strokeWidth={1.9} className="mr-1 text-[var(--color-interactive)]" />
@@ -3155,7 +3155,7 @@ function DetectedSpeakerNames({
                 onClick={() =>
                   setCompanyDismissed((d) => new Set(d).add(company.toLowerCase()))
                 }
-                className="px-1.5 py-1 text-[var(--color-text-faint)] hover:text-[var(--color-text)] border-l border-[var(--color-line)]"
+                className="px-1.5 py-1 text-[var(--color-text-disabled)] hover:text-[var(--color-text)] border-l border-[var(--color-line)]"
               >
                 <X size={11} strokeWidth={2} />
               </button>
@@ -3260,7 +3260,7 @@ function NoteActionItems({ noteId, readOnly }: { noteId: string; readOnly: boole
                     readOnly={readOnly}
                     placeholder={readOnly ? "" : "owner"}
                     onBlur={(e) => !readOnly && saveOwner(it, e.target.value)}
-                    className="bg-transparent text-xs text-[var(--color-text-muted)] outline-none w-32 placeholder:text-[var(--color-text-faint)]"
+                    className="bg-transparent text-xs text-[var(--color-text-muted)] outline-none w-32 placeholder:text-[var(--color-text-disabled)]"
                   />
                   {readOnly ? (
                     it.due && (
@@ -3274,7 +3274,7 @@ function NoteActionItems({ noteId, readOnly }: { noteId: string; readOnly: boole
                       defaultValue={it.due}
                       onChange={(e) => saveDue(it, e.target.value)}
                       className="bg-transparent text-xs outline-none w-[8.5rem]"
-                      style={{ color: it.due ? dueColorVar(dueState(it.due)) : "var(--color-text-faint)" }}
+                      style={{ color: it.due ? dueColorVar(dueState(it.due)) : "var(--color-text-disabled)" }}
                     />
                   )}
                 </div>
@@ -3304,7 +3304,7 @@ function NoteActionItems({ noteId, readOnly }: { noteId: string; readOnly: boole
             }}
             onBlur={add}
             placeholder="Add an action item…"
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--color-text-faint)]"
+            className="flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--color-text-disabled)]"
           />
         </div>
       )}

@@ -213,7 +213,7 @@ function SilenceAutoStopSection() {
                   const n = Number(e.target.value);
                   if (Number.isFinite(n)) void setMinutes(n);
                 }}
-                className="w-16 text-sm px-2 py-1 rounded-[var(--radius-control)] border border-[var(--color-line-visible)] bg-transparent text-right"
+                className="w-16 text-sm px-2 py-1 rounded-[var(--control-radius)] border border-[var(--color-line-visible)] bg-transparent text-right"
               />
               <span className="text-sm text-[var(--color-text-muted)]">min</span>
             </div>

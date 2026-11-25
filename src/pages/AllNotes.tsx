@@ -152,7 +152,7 @@ export function AllNotes() {
                       onChange={(e) => setQuery(e.target.value)}
                       placeholder="Search notes…"
                       aria-label="Search notes"
-                      className="w-full text-[13.5px] pl-8 pr-8 py-1.5 rounded-[var(--radius-control)] border border-[var(--color-line-visible)] bg-transparent focus:outline-none focus:border-[var(--color-text-muted)]"
+                      className="w-full text-[13.5px] pl-8 pr-8 py-1.5 rounded-[var(--control-radius)] border border-[var(--color-line-visible)] bg-transparent focus:outline-none focus:border-[var(--color-text-muted)]"
                     />
                     {query && (
                       <button
@@ -170,7 +170,7 @@ export function AllNotes() {
                     value={sort}
                     onChange={(e) => setSort(e.target.value as SortKey)}
                     aria-label="Sort notes"
-                    className="text-[13px] px-2.5 py-1.5 rounded-[var(--radius-control)] border border-[var(--color-line-visible)] bg-transparent focus:outline-none focus:border-[var(--color-text-muted)] cursor-pointer"
+                    className="text-[13px] px-2.5 py-1.5 rounded-[var(--control-radius)] border border-[var(--color-line-visible)] bg-transparent focus:outline-none focus:border-[var(--color-text-muted)] cursor-pointer"
                   >
                     <option value="newest">Latest first</option>
                     <option value="oldest">Oldest first</option>
@@ -181,7 +181,7 @@ export function AllNotes() {
                   <div
                     role="group"
                     aria-label="View mode"
-                    className="flex items-center rounded-[var(--radius-control)] border border-[var(--color-line-visible)] overflow-hidden"
+                    className="flex items-center rounded-[var(--control-radius)] border border-[var(--color-line-visible)] overflow-hidden"
                   >
                     <button
                       type="button"

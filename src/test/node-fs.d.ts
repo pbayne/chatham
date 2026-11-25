@@ -1,6 +1,6 @@
-// An ambient stand-in for the two `node:fs` functions the theme-contract test
-// uses (src/styles/themes/themes.contract.test.ts, which reads the theme CSS as
-// text).
+// An ambient stand-in for the `node:fs` functions the theme tests use
+// (themes.contract.test.ts reads the theme CSS as text; tokens.usage.test.ts
+// also walks src/ to check every var(--token) a component reads is declared).
 //
 // Deliberately NOT @types/node. The app's tsconfig covers `src`, so installing
 // node types would put `process` and `Buffer` in scope for frontend code that
@@ -15,6 +15,7 @@
 declare module "node:fs" {
   export function readFileSync(path: string, encoding: "utf8"): string;
   export function readdirSync(path: string): string[];
+  export function statSync(path: string): { isDirectory(): boolean };
 }
 
 // Vitest defines this in test files. `import.meta.url` is NOT an alternative
