@@ -257,11 +257,14 @@ const MAX_EPISODE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const EPISODE_CACHE_TTL: Duration = Duration::from_secs(24 * 3600);
 pub(crate) const PODCASTS_FOLDER: &str = "Podcasts";
 
-/// File extension the import sidecar (AVFoundation) can decode for this
-/// episode, from its URL first and its declared MIME type second. None means
-/// a format we can't transcribe (Ogg/Opus, mostly).
+/// Extension to save this episode under, from its URL first and its declared
+/// MIME type second — the import path picks a decoder by extension. Ogg,
+/// Opus and FLAC import natively; WebM/MKV are converted on import
+/// (audio_convert.rs). None means not audio we know how to handle.
 pub(crate) fn episode_extension(url: &str, mime: &str) -> Option<&'static str> {
-    const OK: [&str; 9] = ["mp3", "m4a", "m4b", "mp4", "aac", "wav", "caf", "aiff", "aif"];
+    const OK: [&str; 15] = [
+        "mp3", "m4a", "m4b", "mp4", "aac", "wav", "caf", "aiff", "aif", "ogg", "oga", "opus", "flac", "webm", "mka",
+    ];
     let path_ext = reqwest::Url::parse(url)
         .ok()
         .and_then(|u| u.path().rsplit('.').next().map(|e| e.to_ascii_lowercase()))
@@ -269,9 +272,6 @@ pub(crate) fn episode_extension(url: &str, mime: &str) -> Option<&'static str> {
     if let Some(e) = path_ext.as_deref() {
         if let Some(ok) = OK.iter().find(|o| **o == e) {
             return Some(ok);
-        }
-        if matches!(e, "ogg" | "oga" | "opus" | "webm" | "flac") {
-            return None;
         }
     }
     let mime = mime.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
@@ -282,10 +282,14 @@ pub(crate) fn episode_extension(url: &str, mime: &str) -> Option<&'static str> {
         "audio/aac" | "audio/x-aac" | "audio/aacp" => Some("aac"),
         "audio/wav" | "audio/x-wav" | "audio/wave" => Some("wav"),
         "audio/aiff" | "audio/x-aiff" => Some("aiff"),
+        "audio/ogg" | "application/ogg" | "audio/vorbis" => Some("ogg"),
+        "audio/opus" => Some("opus"),
+        "audio/flac" | "audio/x-flac" => Some("flac"),
+        "audio/webm" | "video/webm" => Some("webm"),
         // Most podcast hosts send audio/mpeg; an unknown audio type with no
         // telling extension is still most likely MP3 behind a redirect URL.
         "" | "application/octet-stream" | "binary/octet-stream" => Some("mp3"),
-        m if m.starts_with("audio/") && !m.contains("ogg") && !m.contains("opus") && !m.contains("flac") => Some("mp3"),
+        m if m.starts_with("audio/") => Some("mp3"),
         _ => None,
     }
 }
@@ -400,9 +404,8 @@ pub async fn feed_item_transcribe(
     if item.enclosure_url.is_empty() {
         return Err("This item has no audio to transcribe".into());
     }
-    let ext = episode_extension(&item.enclosure_url, &item.enclosure_type).ok_or_else(|| {
-        "This episode's audio format (Ogg/Opus/FLAC) can't be transcribed yet".to_string()
-    })?;
+    let ext = episode_extension(&item.enclosure_url, &item.enclosure_type)
+        .ok_or_else(|| format!("This episode isn't audio Chatham can read ({})", item.enclosure_type))?;
 
     let dir = app.path().app_cache_dir().map_err(err)?.join("podcasts");
     std::fs::create_dir_all(&dir).map_err(err)?;
@@ -466,9 +469,12 @@ mod tests {
         assert_eq!(episode_extension("https://dts.podtrac.com/redirect/abc", "audio/x-m4a"), Some("m4a"));
         assert_eq!(episode_extension("https://h/e", "audio/mpeg"), Some("mp3"));
         assert_eq!(episode_extension("https://h/e", ""), Some("mp3"));
-        assert_eq!(episode_extension("https://h/e.ogg", "audio/mpeg"), None, "the file wins over a wrong MIME");
-        assert_eq!(episode_extension("https://h/e", "audio/ogg"), None);
-        assert_eq!(episode_extension("https://h/e", "audio/opus"), None);
+        assert_eq!(episode_extension("https://h/e.ogg", "audio/mpeg"), Some("ogg"), "the file wins over a wrong MIME");
+        assert_eq!(episode_extension("https://h/e", "audio/ogg"), Some("ogg"));
+        assert_eq!(episode_extension("https://h/e", "audio/opus"), Some("opus"));
+        assert_eq!(episode_extension("https://h/e", "audio/flac"), Some("flac"));
+        assert_eq!(episode_extension("https://h/e.webm", ""), Some("webm"));
+        assert_eq!(episode_extension("https://h/e", "audio/webm"), Some("webm"));
         assert_eq!(episode_extension("https://h/e", "text/html"), None);
     }
 

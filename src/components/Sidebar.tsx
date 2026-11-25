@@ -82,8 +82,12 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
         filters: [
           {
             name: "Audio",
-            // Whatever AVFoundation decodes — the sidecar handles the rest.
-            extensions: ["m4a", "mp3", "wav", "aac", "caf", "aiff", "aif", "m4b", "mp4"],
+            // What AVFoundation decodes, plus Matroska (WebM/MKV/MKA), which
+            // import converts first (src-tauri/src/audio_convert.rs).
+            extensions: [
+              "m4a", "mp3", "wav", "aac", "caf", "aiff", "aif", "m4b", "mp4",
+              "ogg", "oga", "opus", "flac", "webm", "mka", "mkv",
+            ],
           },
         ],
       });

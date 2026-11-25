@@ -3939,10 +3939,25 @@ pub async fn import_audio(
     language: String,
     expected_speakers: Option<i64>,
 ) -> Result<db::Note, String> {
-    let source_path = PathBuf::from(&path);
-    if !source_path.exists() {
+    let original_path = PathBuf::from(&path);
+    if !original_path.exists() {
         return Err(format!("File not found: {path}"));
     }
+    // AVFoundation can't open Matroska (WebM/MKV/MKA); remux/decode those to
+    // Ogg or WAV first (see audio_convert.rs). The note still takes its title
+    // and recording date from the file the user picked.
+    let converted_dir = std::env::temp_dir().join("chatham-import-convert");
+    let source_path = if crate::audio_convert::needs_conversion(&original_path) {
+        std::fs::create_dir_all(&converted_dir).map_err(err)?;
+        let src = original_path.clone();
+        let dir = converted_dir.clone();
+        tokio::task::spawn_blocking(move || crate::audio_convert::convert_for_import(&src, &dir))
+            .await
+            .map_err(err)?
+            .map_err(|e| e.to_string())?
+    } else {
+        original_path.clone()
+    };
 
     // Import and live recording share the one capture slot, claimed the same
     // way `recording_start` claims it.
@@ -3971,7 +3986,7 @@ pub async fn import_audio(
             .filter(|s| !s.trim().is_empty())
             .unwrap_or_else(|| "meeting".to_string());
         let mut note = db::create_note(&conn, &language, &default_preset, "").map_err(err)?;
-        let title = title_from_filename(&source_path);
+        let title = title_from_filename(&original_path);
         db::update_note(
             &conn,
             &note.id,
@@ -3984,7 +3999,7 @@ pub async fn import_audio(
             },
         )
         .map_err(err)?;
-        if let Some(recorded) = crate::import_date::recording_date(&source_path, db::now_ms()) {
+        if let Some(recorded) = crate::import_date::recording_date(&original_path, db::now_ms()) {
             db::set_note_created_at(&conn, &note.id, recorded).map_err(err)?;
             note.created_at = recorded;
         }

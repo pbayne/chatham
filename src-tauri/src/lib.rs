@@ -39,6 +39,7 @@ mod voiceprints;
 mod intelligence;
 mod triage;
 mod feeds;
+mod audio_convert;
 // Public so the `chatham-mcp` binary (#172) can drive it. Everything below it —
 // `db`, `html_text` — stays private to the crate.
 pub mod mcp;
