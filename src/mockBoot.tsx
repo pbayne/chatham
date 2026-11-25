@@ -52,7 +52,7 @@ import { SummaryStep } from "./pages/onboarding/steps/Summary";
 import { TranscriptionStep } from "./pages/onboarding/steps/Transcription";
 import { STEP_ORDER, type StepContext, type StepId } from "./pages/onboarding/types";
 import type { DiarizeEngine, ProviderConfig, RecordingStatus, Step, TimelineEntry } from "./lib/ipc";
-import { DEMO_CLIENTS, DEMO_FOLDERS, demoNotes } from "./test/noteLibrary";
+import { DEMO_CLIENTS, DEMO_FOLDERS, demoNotes, demoOpenItems, demoTriageCards } from "./test/noteLibrary";
 import { DEMO_RECOVERY_CODES, DEMO_TWO_FACTOR_SETUP } from "./test/twoFactorFixtures";
 // Mirrors src/main.tsx — every theme's typeface, so a scenario reviewed under
 // `?palette=<id>` renders in that design's face rather than falling back.
@@ -1324,6 +1324,43 @@ function chatPinsCase(pinned: boolean): Scenario {
   };
 }
 
+// The meeting-intelligence pages, populated and empty. Route scenarios, so they
+// run through the app's own boot path; the IPC is the populated library plus
+// the two backends these pages add (action items, inbox triage).
+function intelligenceCases(): Record<string, Scenario> {
+  const library = {
+    notes_list: () => demoNotes(),
+    folders_list: () => DEMO_FOLDERS,
+    clients_list: () => DEMO_CLIENTS,
+    notes_with_recordings: () => ["n1", "n2", "n3", "n4", "n5", "n11"],
+    action_items_open: () => demoOpenItems(),
+    action_items_list: () => [],
+    inbox_status: () => ({ connected: true, provider: "local", auth_mode: "oauth", triaged_count: 6 }),
+    inbox_list: () => demoTriageCards(),
+  };
+  const empty = {
+    ...library,
+    action_items_open: () => [],
+    inbox_status: () => ({ connected: false, provider: "local", auth_mode: "oauth", triaged_count: 0 }),
+    inbox_list: () => [],
+  };
+  const at = (route: string, ipc: Record<string, Handler> = library): Scenario => ({
+    route,
+    render: () => null,
+    ipc,
+  });
+  return {
+    "home-dashboard": at("/"),
+    "followups": at("/follow-ups"),
+    "followups-empty": at("/follow-ups", empty),
+    "customer": at("/client/c1"),
+    "people": at("/people"),
+    "person": at(`/person/${encodeURIComponent("Kari Nordvik")}`),
+    "inbox": at("/inbox"),
+    "inbox-empty": at("/inbox", empty),
+  };
+}
+
 const CASES: Record<string, Scenario> = {
   home: {
     route: "/",
@@ -1856,6 +1893,13 @@ const CASES: Record<string, Scenario> = {
       notes_with_recordings: () => ["n1", "n2", "n3", "n4"],
     },
   },
+
+  // --- The meeting-intelligence pages (Home dashboard, Follow-ups, Customer,
+  // People, Person, Inbox) against a populated library: open action items in
+  // every due state, named speakers, and a triaged inbox across all four
+  // columns. `-empty` variants are the first-run states. Without these the
+  // pages could only be judged empty, which hides most of their layout.
+  ...intelligenceCases(),
 
   // --- Two-factor authentication. Settings → Account, signed in to a
   // workspace you administer. `-off` also has a workspace waiting for it, so the

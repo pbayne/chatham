@@ -3,7 +3,8 @@
 // typed-only, untitled, a one-line voice memo, and a note filed nowhere.
 // Unit tests build their own minimal notes; this exists so a card can be judged
 // against realistic length and density.
-import type { Client, Folder, Note } from "../lib/ipc";
+import type { Client, Folder, Note, OpenActionItem, TriageCard } from "../lib/ipc";
+import { todayISO } from "../lib/due";
 import { makeNote } from "./fixtures";
 
 const HOUR = 3_600_000;
@@ -210,5 +211,83 @@ export function demoNotes(now = Date.now()): Note[] {
       created_at: now - 22 * DAY,
       body: "<p>Fire steg: mikrofon, språk, modell, første notat.</p>",
     }),
+  ];
+}
+
+/** ISO date `days` from today, local time — keeps the due states (overdue,
+    today, soon, later) stable whenever the harness is opened. */
+function dueIn(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return todayISO(d);
+}
+
+/** Open action items across the demo library — every due state and the
+    unassigned bucket, so Follow-ups, Customer and Home render populated. */
+export function demoOpenItems(now = Date.now()): OpenActionItem[] {
+  const item = (
+    id: string,
+    note_id: string,
+    note_title: string,
+    text: string,
+    owner: string,
+    due: string,
+    client: [string, string] | null,
+    ageDays: number,
+  ): OpenActionItem => ({
+    id,
+    note_id,
+    text,
+    owner,
+    due,
+    done: false,
+    source: "auto",
+    sort_order: 0,
+    created_at: now - ageDays * DAY,
+    updated_at: now - ageDays * DAY,
+    note_title,
+    client_id: client?.[0] ?? null,
+    client_name: client?.[1] ?? null,
+    note_created_at: now - ageDays * DAY,
+  });
+  const nordvik: [string, string] = ["c1", "Nordvik AS"];
+  const svest: [string, string] = ["c2", "Sparebanken Vest"];
+  return [
+    item("a1", "n1", "Nordvik — kickoff for migreringsprosjektet", "Send over dagens felt-mapping", "Kari Nordvik", dueIn(3), nordvik, 0),
+    item("a2", "n1", "Nordvik — kickoff for migreringsprosjektet", "Definere hva som er godkjent kvalitet", "Ola Berg", dueIn(-2), nordvik, 0),
+    item("a3", "n11", "Nordvik — oppfølging etter puljen", "Manuell runde på de 340 dokumentene", "Kari Nordvik", dueIn(0), nordvik, 9),
+    item("a4", "n5", "Sparebanken Vest — demo og innvendinger", "Skriftlig svar til compliance om lagring", "Michael", dueIn(1), svest, 1),
+    item("a5", "n5", "Sparebanken Vest — demo og innvendinger", "Sette opp ny demo med deres egne opptak", "Michael", dueIn(8), svest, 1),
+    item("a6", "n4", "1:1 med Hege", "Gi Hege eierskap til transkripsjonsdelen", "Michael", "", null, 1),
+  ];
+}
+
+/** A triaged inbox spanning all four columns, with a staged draft on one. */
+export function demoTriageCards(): TriageCard[] {
+  const card = (
+    id: string,
+    category: TriageCard["category"],
+    from: string,
+    subject: string,
+    snippet: string,
+    reason: string,
+    items: string[],
+    reply = "",
+    draft: string | null = null,
+  ): TriageCard => ({
+    message: { id, thread_id: `t-${id}`, from, to: "me@chatham.local", subject, date: "", snippet, body: snippet },
+    category,
+    reason,
+    action_items: items.map((text) => ({ text, done: false })),
+    suggested_reply: reply,
+    draft_id: draft,
+  });
+  return [
+    card("m1", "action_needed", "Kari Nordvik <kari@nordvik.no>", "Felt-mapping for pulje 2", "Her er mappingen — kan dere bekrefte saksbehandler-feltet før mandag?", "Asks you to confirm a field before Monday", ["Bekreft saksbehandler-feltet"], "Hei Kari,\n\nTakk! Saksbehandler-feltet ser riktig ut — vi kjører pulje 2 mandag.\n\nMichael"),
+    card("m2", "action_needed", "Compliance <compliance@spvest.no>", "Lagring av lydopptak", "Vi trenger en skriftlig redegjørelse for hvor lyd og transkripsjon lagres.", "Blocking the deal until answered", ["Skriv redegjørelse om lokal lagring", "Legg ved arkitekturskisse"], "Hei,\n\nAll lyd og transkripsjon lagres lokalt på brukerens maskin. Redegjørelse følger vedlagt.\n\nMichael", "d-1"),
+    card("m3", "follow_up", "Ola Berg <ola@nordvik.no>", "Re: kvalitetskriterier", "Har du fått sett på forslaget mitt til godkjenningskriterier?", "You owe Ola a reply", ["Svar Ola på kriteriene"], "Hei Ola,\n\nSer på det i dag og kommer tilbake før lunsj i morgen.\n\nMichael"),
+    card("m4", "fyi", "Hege <hege@chatham.local>", "Diarisering: nye tall", "Nemotron treffer bedre på tre-personers møter nå. Tallene ligger i docs.", "Status update, no action needed", []),
+    card("m5", "noise", "Ollama <news@ollama.com>", "New models this week", "gemma4, qwen3 and more are now available.", "Newsletter", []),
+    card("m6", "noise", "Kvittering <noreply@vy.no>", "Kvittering for reise", "Takk for at du reiste med oss.", "Receipt", []),
   ];
 }
