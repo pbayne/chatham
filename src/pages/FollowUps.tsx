@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { listen } from "@tauri-apps/api/event";
-import { Check, CheckCircle2, Circle, Copy, ListTodo } from "lucide-react";
+import { Check, CheckCircle2, Circle, Copy, ListTodo, X } from "lucide-react";
 import { ipc, type OpenActionItem } from "../lib/ipc";
 import { byDue, dueColorVar, dueLabel, dueState } from "../lib/due";
-import { followupsText } from "../lib/followups";
+import { NO_OWNER, filterFollowups, followupOwners, followupsText, type DueFilter } from "../lib/followups";
+import { Select } from "../components/ui/Select";
 
 // Follow-ups (#followups): one running list of every open action item across
 // all meetings, grouped by customer so "what do I owe Fisher Investments?" is
@@ -35,12 +36,20 @@ export function FollowUps() {
     void ipc.actionItemsUpdate(id, { done: true }).catch(load);
   };
 
+  // Two independent axes over the open list — whose, and how soon. Grouping and
+  // Copy work on what's shown, so a filtered Copy pastes exactly what you see.
+  const [owner, setOwner] = useState("");
+  const [due, setDue] = useState<DueFilter>("all");
+  const owners = useMemo(() => followupOwners(items ?? []), [items]);
+  const shown = useMemo(() => (items ? filterFollowups(items, owner, due) : null), [items, owner, due]);
+  const filtering = owner !== "" || due !== "all";
+
   // Group by customer (client_name), with an "Unassigned" bucket last. Within a
   // group, keep the newest-note-first order the backend already applied.
   const groups = useMemo(() => {
-    if (!items) return [];
+    if (!shown) return [];
     const byClient = new Map<string, { id: string | null; name: string; items: OpenActionItem[] }>();
-    for (const it of items) {
+    for (const it of shown) {
       const key = it.client_id ?? "__none__";
       const name = it.client_name ?? "No customer";
       if (!byClient.has(key)) byClient.set(key, { id: it.client_id, name, items: [] });
@@ -56,7 +65,7 @@ export function FollowUps() {
       return a.name.localeCompare(b.name);
     });
     return arr;
-  }, [items]);
+  }, [shown]);
 
   const total = items?.length ?? 0;
   const overdue = useMemo(
@@ -97,6 +106,50 @@ export function FollowUps() {
           )}
         </p>
 
+        {total > 0 && (
+          <div className="flex flex-wrap items-center gap-2 mb-6 px-1 max-w-3xl">
+            <Select
+              ariaLabel="Owner"
+              value={owner}
+              onChange={setOwner}
+              options={[
+                { value: "", label: "Everyone" },
+                ...owners.map((o) => ({ value: o.value, label: `${o.label} · ${o.count}` })),
+                ...(items?.some((i) => !i.owner.trim()) ? [{ value: NO_OWNER, label: "No owner" }] : []),
+              ]}
+            />
+            <Select
+              ariaLabel="Due"
+              value={due}
+              onChange={(v) => setDue(v as DueFilter)}
+              options={[
+                { value: "all", label: "Any due date" },
+                { value: "overdue", label: "Overdue" },
+                { value: "week", label: "Due this week" },
+                { value: "undated", label: "No due date" },
+              ]}
+            />
+            {filtering && (
+              <button
+                type="button"
+                onClick={() => {
+                  setOwner("");
+                  setDue("all");
+                }}
+                className="inline-flex items-center gap-1 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+              >
+                <X size={13} strokeWidth={1.8} />
+                Clear
+              </button>
+            )}
+            {filtering && shown && (
+              <span className="text-sm text-[var(--color-text-disabled)] tabular-nums ml-auto">
+                {shown.length} of {total}
+              </span>
+            )}
+          </div>
+        )}
+
         {items === null ? (
           <p className="text-sm text-[var(--color-text-muted)]">Loading…</p>
         ) : total === 0 ? (
@@ -106,6 +159,8 @@ export function FollowUps() {
               Nothing to follow up on. Action items from your meetings show up here automatically.
             </p>
           </div>
+        ) : shown && shown.length === 0 ? (
+          <p className="text-sm text-[var(--color-text-muted)] px-1">Nothing matches these filters.</p>
         ) : (
           <div className="flex flex-col gap-7 max-w-3xl px-1">
             {groups.map((g) => (
