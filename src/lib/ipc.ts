@@ -592,6 +592,38 @@ export type InboxStatus = {
   triaged_count: number;
 };
 
+// ─── Feeds (Labs) ───────────────────────────────────────────────────────────
+// Mirrors src-tauri/src/feeds.rs. See docs/design/feeds-labs.md.
+export type Feed = {
+  id: string;
+  url: string;
+  title: string;
+  site_url: string;
+  kind: "rss" | "podcast";
+  image_url: string;
+  last_fetched_at: number;
+  error: string;
+  unread: number;
+};
+
+export type FeedItem = {
+  id: string;
+  feed_id: string;
+  guid: string;
+  title: string;
+  link: string;
+  author: string;
+  published_at: number;
+  /** Sanitized server-side (ammonia): no scripts, handlers or remote images. */
+  content_html: string;
+  enclosure_url: string;
+  enclosure_type: string;
+  enclosure_bytes: number;
+  duration_s: number;
+  read: boolean;
+  note_id: string | null;
+};
+
 export const ipc = {
   listNotes: () => invoke<Note[]>("notes_list"),
   // Batch-compress every past capture's leftover playback.wav → .m4a (#audio-compress).
@@ -732,6 +764,17 @@ export const ipc = {
     invoke<FollowupResult>("generate_followup_email", { noteId }),
 
   // Inbox Triage. See src-tauri/src/commands/inbox.rs.
+  // Feeds (Labs). See src-tauri/src/commands/feeds.rs.
+  feedsList: () => invoke<Feed[]>("feeds_list"),
+  feedsAdd: (url: string) => invoke<Feed>("feeds_add", { url }),
+  feedsRemove: (id: string) => invoke<void>("feeds_remove", { id }),
+  feedsRefresh: (id?: string) => invoke<number>("feeds_refresh", { id: id ?? null }),
+  feedItemsList: (feedId?: string, unreadOnly = false, limit = 200) =>
+    invoke<FeedItem[]>("feed_items_list", { feedId: feedId ?? null, unreadOnly, limit }),
+  feedItemSetRead: (id: string, read: boolean) => invoke<void>("feed_item_set_read", { id, read }),
+  feedItemsMarkAllRead: (feedId?: string) => invoke<void>("feed_items_mark_all_read", { feedId: feedId ?? null }),
+  feedsImportOpml: (path: string) => invoke<{ added: number; failed: string[] }>("feeds_import_opml", { path }),
+  feedsExportOpml: (path: string) => invoke<void>("feeds_export_opml", { path }),
   inboxStatus: () => invoke<InboxStatus>("inbox_status"),
   // Fetch unread, classify the new ones; returns how many were triaged.
   inboxTriageNow: () => invoke<number>("inbox_triage_now"),

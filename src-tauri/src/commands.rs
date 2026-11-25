@@ -40,6 +40,7 @@ mod export;
 // re-export below.
 #[cfg(feature = "cloud")]
 pub mod cloud_worker;
+mod feeds;
 mod folders;
 mod google_export;
 mod inbox;
@@ -67,6 +68,7 @@ pub use copilot::*;
 pub use cloud::*;
 pub use cloud_auth::*;
 pub use export::*;
+pub use feeds::*;
 pub use folders::*;
 pub use google_export::*;
 pub use inbox::*;

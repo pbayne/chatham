@@ -38,6 +38,7 @@ mod silence;
 mod voiceprints;
 mod intelligence;
 mod triage;
+mod feeds;
 // Public so the `chatham-mcp` binary (#172) can drive it. Everything below it —
 // `db`, `html_text` — stays private to the crate.
 pub mod mcp;
@@ -483,6 +484,15 @@ where
             commands::attachment_delete,
             commands::send_to_google_docs,
             commands::generate_followup_email,
+            commands::feeds_list,
+            commands::feeds_add,
+            commands::feeds_remove,
+            commands::feeds_refresh,
+            commands::feed_items_list,
+            commands::feed_item_set_read,
+            commands::feed_items_mark_all_read,
+            commands::feeds_import_opml,
+            commands::feeds_export_opml,
             commands::inbox_status,
             commands::inbox_triage_now,
             commands::inbox_list,
