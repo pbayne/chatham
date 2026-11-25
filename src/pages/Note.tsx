@@ -2869,6 +2869,18 @@ function SuggestTemplateButton({
 // recording so new captures appear live; otherwise loads once.
 function NoteCaptures({ noteId, recording }: { noteId: string; recording: boolean }) {
   const [items, setItems] = useState<Attachment[]>([]);
+  // Path of the image shown enlarged in the lightbox overlay, or null when closed.
+  const [zoomed, setZoomed] = useState<string | null>(null);
+
+  // Close the lightbox on Escape — matches the app's other overlay dismissals.
+  useEffect(() => {
+    if (!zoomed) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setZoomed(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zoomed]);
 
   useEffect(() => {
     let alive = true;
@@ -2906,13 +2918,12 @@ function NoteCaptures({ noteId, recording }: { noteId: string; recording: boolea
       <div className="flex flex-wrap gap-2">
         {items.map((a) =>
           a.kind === "image" ? (
-            <a
+            <button
               key={a.id}
-              href={convertFileSrc(a.path)}
-              target="_blank"
-              rel="noreferrer"
-              className="group relative block"
-              title="Open screenshot"
+              type="button"
+              onClick={() => setZoomed(convertFileSrc(a.path))}
+              className="group relative block cursor-zoom-in"
+              title="Enlarge screenshot"
             >
               <img
                 src={convertFileSrc(a.path)}
@@ -2922,6 +2933,7 @@ function NoteCaptures({ noteId, recording }: { noteId: string; recording: boolea
               <button
                 onClick={(e) => {
                   e.preventDefault();
+                  e.stopPropagation();
                   remove(a.id);
                 }}
                 className="absolute -right-1.5 -top-1.5 hidden h-5 w-5 items-center justify-center rounded-full bg-[var(--color-danger,#c0392b)] text-white text-[11px] group-hover:flex"
@@ -2929,7 +2941,7 @@ function NoteCaptures({ noteId, recording }: { noteId: string; recording: boolea
               >
                 ×
               </button>
-            </a>
+            </button>
           ) : (
             <div
               key={a.id}
@@ -2947,6 +2959,30 @@ function NoteCaptures({ noteId, recording }: { noteId: string; recording: boolea
           ),
         )}
       </div>
+      {zoomed && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 p-6 cursor-zoom-out"
+          onClick={() => setZoomed(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Enlarged screenshot"
+        >
+          <img
+            src={zoomed}
+            alt="enlarged capture"
+            className="max-h-full max-w-full rounded shadow-2xl object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            type="button"
+            onClick={() => setZoomed(null)}
+            className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white text-xl leading-none hover:bg-white/25"
+            title="Close (Esc)"
+          >
+            ×
+          </button>
+        </div>
+      )}
     </div>
   );
 }
