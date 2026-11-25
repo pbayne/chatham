@@ -379,17 +379,23 @@ function Card({ card, onChange }: { card: TriageCard; onChange: () => void }) {
                   if (e.key === "Enter") addItem();
                 }}
                 placeholder="Add an action item…"
-                className="flex-1 text-[12px] bg-[var(--color-canvas)] border border-[var(--color-line-visible)] rounded px-2 py-1"
+                aria-label="New action item"
+                className="flex-1 min-w-0 text-[12px] bg-[var(--color-canvas)] border border-[var(--color-line-visible)] rounded px-2 py-1"
               />
+              {/* Icon-only: a four-column board at 1280px leaves the card ~200px,
+                  and a labelled button pushed itself past the card edge. Enter
+                  adds too, so the button is the secondary path. */}
               <button
                 onClick={addItem}
                 disabled={!newItem.trim()}
+                title="Add action item"
+                aria-label="Add action item"
                 className={cn(
-                  "no-drag nd-navrow px-2 text-[12px]",
+                  "no-drag nd-btn-icon nd-btn-icon-sm shrink-0",
                   !newItem.trim() && "opacity-50 cursor-not-allowed",
                 )}
               >
-                <Plus size={13} /> Add
+                <Plus size={14} strokeWidth={1.8} />
               </button>
             </div>
           </div>
@@ -419,7 +425,8 @@ function Card({ card, onChange }: { card: TriageCard; onChange: () => void }) {
                 className="w-full text-[12px] bg-[var(--color-canvas)] border border-[var(--color-line-visible)] rounded px-2 py-1.5 resize-y"
               />
               {err && <div className="text-[11px] text-[var(--color-danger)] mt-1">{err}</div>}
-              <div className="flex items-center gap-2 mt-2">
+              {/* Wraps as whole buttons, never mid-label, in a narrow column. */}
+              <div className="flex flex-wrap items-center gap-2 mt-2 [&>*]:whitespace-nowrap">
                 {staged && staged !== "done" ? (
                   <a
                     href={staged}
