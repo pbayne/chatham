@@ -7,8 +7,8 @@ import { extractSpeakerLabels, isNamedPerson } from "../lib/speakers";
 import { NoteCard } from "../components/NoteCard";
 import { ipc, type Note, type OpenActionItem } from "../lib/ipc";
 import { dueColorVar, dueLabel, dueState } from "../lib/due";
-import { initials, nameHue, personActivity } from "../lib/person";
-import { SPEAKER_COLORS } from "../components/SpeakerLabels";
+import { personActivity } from "../lib/person";
+import { Avatar } from "../components/Avatar";
 
 // People directory (#people): everyone who's spoken across your meetings builds
 // into a self-organizing contact list. Reuses the speaker labels already in
@@ -213,27 +213,5 @@ export function Person() {
         </section>
       </div>
     </div>
-  );
-}
-
-/** Initials on a soft tint of the person's speaker colour. The colour is keyed
-    on the name (nameHue), so it is the same on People, Person and every page
-    that adopts it — a transcript's per-note order can't give that. */
-function Avatar({ name, size = 32 }: { name: string; size?: number }) {
-  const color = SPEAKER_COLORS[nameHue(name, SPEAKER_COLORS.length)];
-  return (
-    <span
-      aria-hidden
-      className="shrink-0 rounded-full flex items-center justify-center font-semibold tabular-nums select-none"
-      style={{
-        width: size,
-        height: size,
-        fontSize: Math.round(size * 0.38),
-        color,
-        background: `color-mix(in srgb, ${color} 16%, var(--color-surface))`,
-      }}
-    >
-      {initials(name)}
-    </span>
   );
 }

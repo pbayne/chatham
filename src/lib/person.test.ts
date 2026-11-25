@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeNote } from "../test/fixtures";
 import type { OpenActionItem } from "./ipc";
-import { initials, nameHue, ownerMatches, personActivity } from "./person";
+import { clientPeople, initials, nameHue, ownerMatches, personActivity } from "./person";
 
 const item = (id: string, owner: string, due = "", note_id = "a"): OpenActionItem => ({
   id, note_id, text: id, owner, due, done: false, source: "auto", sort_order: 0,
@@ -71,5 +71,19 @@ describe("initials / nameHue", () => {
   it("gives a name the same bucket every time, in range", () => {
     expect(nameHue("Kari Nordvik")).toBe(nameHue("kari nordvik "));
     for (const n of ["Michael", "Hege", "Ola Berg", "Anne Lie"]) expect(nameHue(n)).toBeLessThan(4);
+  });
+});
+
+describe("clientPeople", () => {
+  it("counts each named speaker once per meeting at that customer, skipping placeholders", () => {
+    const notes = [
+      makeNote({ id: "1", client_id: "c1", transcript: "Kari: a\nKari: b\nSpeaker 2: c\nYou: d" }),
+      makeNote({ id: "2", client_id: "c1", transcript: "Kari: a\nOla Berg: b" }),
+      makeNote({ id: "3", client_id: "c2", transcript: "Hege: a" }),
+    ];
+    expect(clientPeople(notes, "c1")).toEqual([
+      { name: "Kari", meetings: 2 },
+      { name: "Ola Berg", meetings: 1 },
+    ]);
   });
 });

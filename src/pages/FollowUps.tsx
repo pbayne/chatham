@@ -42,6 +42,12 @@ export function FollowUps() {
   const [due, setDue] = useState<DueFilter>("all");
   const owners = useMemo(() => followupOwners(items ?? []), [items]);
   const shown = useMemo(() => (items ? filterFollowups(items, owner, due) : null), [items, owner, due]);
+  // Completing someone's last item drops them from the picker; fall back to
+  // Everyone rather than leave the trigger showing an option that's gone.
+  useEffect(() => {
+    if (owner && owner !== NO_OWNER && !owners.some((o) => o.value === owner)) setOwner("");
+    if (owner === NO_OWNER && items && !items.some((i) => !i.owner.trim())) setOwner("");
+  }, [owner, owners, items]);
   const filtering = owner !== "" || due !== "all";
 
   // Group by customer (client_name), with an "Unassigned" bucket last. Within a

@@ -7,6 +7,8 @@ import { followupsText } from "../lib/followups";
 import { useNotesStore } from "../lib/store";
 import { indexById } from "../lib/noteList";
 import { NoteCard } from "../components/NoteCard";
+import { Avatar } from "../components/Avatar";
+import { clientPeople } from "../lib/person";
 
 // Customer view (#customer): everything about one account in one place — the
 // account's open follow-ups up top, then every meeting with them. The daily
@@ -25,6 +27,8 @@ export function Customer() {
   const client = useMemo(() => clients.find((c) => c.id === id), [clients, id]);
   const folderById = useMemo(() => indexById(folders), [folders]);
   const clientById = useMemo(() => indexById(clients), [clients]);
+
+  const people = useMemo(() => (id ? clientPeople(notes, id) : []), [notes, id]);
 
   const notesForClient = useMemo(
     () => notes.filter((n) => n.client_id === id).sort((a, b) => b.created_at - a.created_at),
@@ -72,6 +76,26 @@ export function Customer() {
             {notesForClient.length} {notesForClient.length === 1 ? "meeting" : "meetings"}
           </span>
         </div>
+
+        {/* Who you meet at this account — each links to their Person page. */}
+        {people.length > 0 && (
+          <ul className="flex flex-wrap gap-2 mt-4 px-1" aria-label="People at this customer">
+            {people.map((p) => (
+              <li key={p.name}>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/person/${encodeURIComponent(p.name)}`)}
+                  className="inline-flex items-center gap-2 rounded-full pl-1 pr-3 py-1 text-sm hover:bg-[var(--color-pill-hover)] transition-colors"
+                  title={`${p.meetings} ${p.meetings === 1 ? "meeting" : "meetings"} with ${p.name}`}
+                >
+                  <Avatar name={p.name} size={24} />
+                  <span>{p.name}</span>
+                  <span className="text-xs text-[var(--color-text-disabled)] tabular-nums">{p.meetings}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
 
         {/* Open follow-ups for this account */}
         {open.length > 0 && (

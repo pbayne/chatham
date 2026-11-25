@@ -1,6 +1,6 @@
 import type { Client, Note, OpenActionItem } from "./ipc";
 import { byDue } from "./due";
-import { extractSpeakerLabels } from "./speakers";
+import { extractSpeakerLabels, isNamedPerson } from "./speakers";
 
 // Person intelligence (roadmap Phase D, docs/design/meeting-intelligence-roadmap.md):
 // what one named speaker owes, when you last met, and under which customers —
@@ -82,4 +82,20 @@ export function nameHue(name: string, buckets = 4): number {
   let h = 0;
   for (const ch of name.trim().toLowerCase()) h = (h * 31 + ch.codePointAt(0)!) >>> 0;
   return h % buckets;
+}
+
+/** Named people who spoke in a customer's meetings, most meetings first — the
+    Customer page's "who you meet there", the inverse of PersonActivity.clients. */
+export function clientPeople(notes: Note[], clientId: string): { name: string; meetings: number }[] {
+  const counts = new Map<string, number>();
+  for (const n of notes) {
+    if (n.client_id !== clientId || !n.transcript?.trim()) continue;
+    for (const label of new Set(extractSpeakerLabels(n.transcript).map((l) => l.trim()))) {
+      if (!isNamedPerson(label)) continue;
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .map(([name, meetings]) => ({ name, meetings }))
+    .sort((a, b) => b.meetings - a.meetings || a.name.localeCompare(b.name));
 }
