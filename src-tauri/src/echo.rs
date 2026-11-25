@@ -313,6 +313,10 @@ fn voice_frames(segments: &[&Segment], frames: usize) -> Vec<bool> {
 /// The lag of `mic` behind `sys`, the echo cancelled out of `mic`, and what
 /// the check needs from all three. Both streams as their WAVs hold them.
 pub fn analyze_take(mic: Vec<i16>, sys: Vec<i16>) -> TakeAnalysis {
+    analyze_take_with(mic, sys, &AecConfig::default())
+}
+
+fn analyze_take_with(mic: Vec<i16>, sys: Vec<i16>, aec_cfg: &AecConfig) -> TakeAnalysis {
     let cfg = DelayConfig::default();
     let mut points = delay::lag_track(&mic, &sys, RATE, &cfg);
     keep_agreeing(&mut points, cfg.step_ms);
@@ -326,7 +330,7 @@ pub fn analyze_take(mic: Vec<i16>, sys: Vec<i16>) -> TakeAnalysis {
     };
     let sys_active = at_mic(&sys_activity(&sys), mic.len().div_ceil(FRAME), &map);
     let aec::Cancelled { cleaned, linear_energy, report } =
-        aec::cancel_threaded(&mic, &sys, &map, RATE, &AecConfig::default(), &Threading::default());
+        aec::cancel_threaded(&mic, &sys, &map, RATE, aec_cfg, &Threading::default());
     drop(sys);
     let echo = TakeEcho {
         sys_active,
@@ -336,6 +340,171 @@ pub fn analyze_take(mic: Vec<i16>, sys: Vec<i16>) -> TakeAnalysis {
         cancel: report,
     };
     TakeAnalysis { lag, echo: Some(echo) }
+}
+
+/// The mic with the speakers' echo cancelled out of it, for the playback mix,
+/// or `None` when no echo was found (headphones, muted speakers) and the mic
+/// is best left as captured. The same canceller the diarize input gets: summed
+/// raw, the mic would replay every remote voice a second time, a few hundred
+/// ms behind the system stream's clean copy — the slap-back users hear.
+pub fn cancel_for_playback(mic: Vec<i16>, sys: Vec<i16>) -> Option<Vec<i16>> {
+    let cfg = DelayConfig::default();
+    let mut points = delay::lag_track(&mic, &sys, RATE, &cfg);
+    keep_agreeing(&mut points, cfg.step_ms);
+    let mut lag = delay::summarize(&points, &cfg);
+    if lag.valid == 0 {
+        return None;
+    }
+    delay::refine_steps(&mic, &sys, RATE, &mut lag, &cfg);
+    let map = DelayMap::from_summary(&lag)?;
+    let frames = mic.len().div_ceil(FRAME);
+    let sys_active = at_mic(&sys_activity(&sys), frames, &map);
+    let expected = echo_at_mic(&sys, frames, &map);
+    let aec_cfg = AecConfig { overdrive: PLAYBACK_OVERDRIVE, ..AecConfig::default() };
+    let aec::Cancelled { cleaned, linear_energy, .. } =
+        aec::cancel_threaded(&mic, &sys, &map, RATE, &aec_cfg, &Threading::default());
+    drop(sys);
+    let mic_energy = frame_energy(&mic);
+    drop(mic);
+    let frames = PlaybackFrames { sys_active: &sys_active, mic: &mic_energy, linear: &linear_energy, expected: &expected };
+    Some(gate_residual(&cleaned, &frames, &GATE))
+}
+
+/// Per 10 ms frame of the mic: the energy of the system stream its echo would
+/// come from, per `map` — the echo's level before the room's gain.
+fn echo_at_mic(sys: &[i16], frames: usize, map: &DelayMap) -> Vec<f64> {
+    (0..frames)
+        .map(|f| {
+            let centre_s = (f * FRAME + FRAME / 2) as f64 / RATE as f64;
+            let back = (map.lag_ms_at(centre_s) / 1000.0 * RATE as f64).round() as isize;
+            let start = (f * FRAME) as isize - back;
+            (start..start + FRAME as isize)
+                .filter(|&i| i >= 0 && (i as usize) < sys.len())
+                .map(|i| {
+                    let v = sys[i as usize].f();
+                    v * v
+                })
+                .sum()
+        })
+        .collect()
+}
+
+/// What the playback gate reads, per 10 ms frame of the mic.
+struct PlaybackFrames<'a> {
+    /// The system stream sounds here, once shifted by the take's lag.
+    sys_active: &'a [bool],
+    /// The mic's energy, and the linear canceller's output's.
+    mic: &'a [f64],
+    linear: &'a [f64],
+    /// The system stream's energy where the echo comes from (`echo_at_mic`).
+    expected: &'a [f64],
+}
+
+/// How the playback gate reads a frame: below `open_db` of removal the mic is
+/// the user (or double talk) and passes untouched; from `shut_db` on the frame
+/// was echo alone, so what the canceller left is residual — mostly the
+/// speaker's nonlinear distortion, which no linear filter models — and is
+/// pulled down to `floor`. The mix carries the far end through the system
+/// stream's clean copy, so nothing of it is lost. Gains are smoothed per 10 ms
+/// frame: `attack` opens fast so the user's first syllable isn't clipped,
+/// `release` closes slowly so the gate doesn't chatter between words.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Gate {
+    pub open_db: f64,
+    pub shut_db: f64,
+    /// The mic opens only once it holds this much more than the echo the
+    /// system stream predicts in the frame, fully `excess_ramp_db` above it.
+    /// What tells the user talking over the far end from a loud echo the
+    /// canceller happened to take little of.
+    pub excess_db: f64,
+    pub excess_ramp_db: f64,
+    pub floor: f32,
+    pub attack: f32,
+    pub release: f32,
+}
+
+/// Tuned on two real speaker calls (5 min each, built-in speakers loud).
+/// Removal alone (3 / 10 dB, 8% floor) left echo-only frames 28 dB under the
+/// raw mic; with the excess test as well they reach 33–34 dB. The price is
+/// double talk: the user talking over the far end comes through 2–7 dB
+/// quieter. The user alone is untouched (sys silent always passes).
+pub(crate) const GATE: Gate = Gate {
+    open_db: 2.0,
+    shut_db: 6.0,
+    excess_db: 0.0,
+    excess_ramp_db: 6.0,
+    floor: 0.03,
+    attack: 0.6,
+    release: 0.12,
+};
+
+/// The quantile of mic-over-predicted-echo, across frames that were clearly
+/// echo alone, taken as the room's echo gain. Above the median, so a frame
+/// whose echo the room happens to carry loudly isn't read as the user.
+const ECHO_GAIN_QUANTILE: usize = 75;
+
+/// The playback canceller trusts its residual estimate more than the diarize
+/// input's does (`overdrive` 3 vs 1.5): worth 1.5 dB more echo removed on the
+/// same calls, for 0.1 dB of double talk.
+const PLAYBACK_OVERDRIVE: f64 = 3.0;
+
+/// The playback mic: the cancelled mic pulled down wherever only the far end
+/// was talking — the canceller took most of the frame, and the mic holds no
+/// more than the echo the system stream predicts. Frames where sys is silent
+/// can't hold echo, so they always pass.
+fn gate_residual(cleaned: &[i16], at: &PlaybackFrames, gate: &Gate) -> Vec<i16> {
+    let frames = cleaned.len().div_ceil(FRAME);
+    let removed_db = |f: usize| {
+        let m = at.mic.get(f).copied().unwrap_or(0.0);
+        10.0 * (m / at.linear.get(f).copied().unwrap_or(0.0).max(1e-20)).log10()
+    };
+    let active = |f: usize| at.sys_active.get(f).copied().unwrap_or(false);
+    let echo_gain = {
+        let mut r: Vec<f64> = (0..frames)
+            .filter(|&f| active(f) && at.expected.get(f).is_some_and(|&e| e > 0.0) && removed_db(f) >= 10.0)
+            .map(|f| at.mic[f] / at.expected[f])
+            .collect();
+        r.sort_by(f64::total_cmp);
+        r.get(r.len() * ECHO_GAIN_QUANTILE / 100).copied()
+    };
+    let mut target = vec![1.0f32; frames];
+    for (f, t) in target.iter_mut().enumerate() {
+        let m = at.mic.get(f).copied().unwrap_or(0.0);
+        if !active(f) || m <= 0.0 {
+            continue;
+        }
+        let by_removal = ((gate.shut_db - removed_db(f)) / (gate.shut_db - gate.open_db)).clamp(0.0, 1.0);
+        let predicted = echo_gain.map(|g| g * at.expected.get(f).copied().unwrap_or(0.0)).unwrap_or(0.0);
+        let by_excess = if predicted > 0.0 {
+            let excess = 10.0 * (m / predicted).log10();
+            ((excess - gate.excess_db) / gate.excess_ramp_db).clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+        let open = by_removal.min(by_excess) as f32;
+        *t = gate.floor + (1.0 - gate.floor) * open;
+    }
+    // Smooth frame to frame, then ramp inside each frame so a gain step never
+    // clicks.
+    let mut gains = Vec::with_capacity(frames);
+    let mut g = 1.0f32;
+    for &t in &target {
+        let k = if t > g { gate.attack } else { gate.release };
+        g += (t - g) * k;
+        gains.push(g);
+    }
+    let mut out = Vec::with_capacity(cleaned.len());
+    let mut prev = 1.0f32;
+    for (f, chunk) in cleaned.chunks(FRAME).enumerate() {
+        let next = gains[f];
+        let n = chunk.len() as f32;
+        for (i, &s) in chunk.iter().enumerate() {
+            let gain = prev + (next - prev) * (i as f32 + 1.0) / n;
+            out.push((s as f32 * gain).round().clamp(i16::MIN as f32, i16::MAX as f32) as i16);
+        }
+        prev = next;
+    }
+    out
 }
 
 /// Per 10 ms frame of `sys`: it sounds there.
@@ -391,7 +560,52 @@ fn keep_agreeing(points: &mut [LagPoint], tolerance_ms: f64) {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
     use echo_probe::synth::{masked_energy, scenario, Scenario, ScenarioConfig};
+
+    #[test]
+    fn the_playback_gate_pulls_residual_down_and_leaves_the_user_alone() {
+        // Runs of four kinds of frame, long enough for the smoothing to settle:
+        // echo alone (the canceller took 20 dB, the mic matches the predicted
+        // echo); double talk (took 1 dB, mic 10 dB over the echo); a loud echo
+        // the canceller took little of (1 dB, mic no louder than predicted);
+        // sys silent.
+        let n = 60;
+        let (mut sys_active, mut mic, mut linear, mut expected) = (vec![], vec![], vec![], vec![]);
+        for (active, removed_db, over_db) in [(true, 20.0, 0.0), (true, 1.0, 10.0), (true, 1.0, 0.0), (false, 0.0, 0.0)] {
+            for _ in 0..n {
+                sys_active.push(active);
+                mic.push(1.0);
+                linear.push(10f64.powf(-removed_db / 10.0));
+                expected.push(if active { 10f64.powf(-over_db / 10.0) } else { 0.0 });
+            }
+        }
+        let cleaned = vec![10_000i16; 4 * n * FRAME];
+        let at = PlaybackFrames { sys_active: &sys_active, mic: &mic, linear: &linear, expected: &expected };
+        let out = gate_residual(&cleaned, &at, &GATE);
+        let gain = |run: usize| out[((run + 1) * n - 1) * FRAME + FRAME / 2] as f32 / 10_000.0;
+        assert!(gain(0) < 0.05, "echo alone {}", gain(0));
+        assert!(gain(1) > 0.97, "double talk {}", gain(1));
+        assert!(gain(2) < 0.05, "loud echo the canceller missed {}", gain(2));
+        assert!(gain(3) > 0.97, "sys silent {}", gain(3));
+        assert_eq!(out.len(), cleaned.len());
+    }
+
+    #[test]
+    fn echo_at_mic_reads_sys_where_the_echo_comes_from() {
+        // sys has one loud frame at 1.00 s; with a 200 ms lag the mic hears
+        // it at frame 120.
+        let mut sys = vec![0i16; RATE as usize * 2];
+        for v in &mut sys[RATE as usize..RATE as usize + FRAME] {
+            *v = 10_000;
+        }
+        let mut lag = delay::summarize(&[], &DelayConfig::default());
+        lag.segments.push(delay::Segment { start_s: 0.0, end_s: 2.0, median_ms: 200.0, drift_ppm: None, windows: 1 });
+        let map = DelayMap::from_summary(&lag).expect("one segment");
+        let e = echo_at_mic(&sys, 200, &map);
+        let peak = (0..e.len()).max_by(|&a, &b| e[a].total_cmp(&e[b])).unwrap();
+        assert_eq!(peak, 120);
+    }
 
     /// A synthetic take whose voices are levelled as speech is, since the check
     /// tells the system stream's speech from its silence by energy.

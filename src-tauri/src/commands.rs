@@ -5577,9 +5577,32 @@ async fn build_playback_wav(
 ) -> anyhow::Result<()> {
     match (mic, sys) {
         (Some(m), Some(s)) => {
-            let mic_samples = wav::read_f32_mono_16k(m).await?;
-            let sys_samples = wav::read_f32_mono_16k(s).await?;
-            let mixed = mix_with_mic_ducking(&mic_samples, &sys_samples);
+            let (mic_i16, sys_i16) =
+                tokio::try_join!(wav::read_i16_mono_16k(m), wav::read_i16_mono_16k(s))?;
+            let sys_samples = i16_to_f32(&sys_i16);
+            // Cancel the speakers' echo out of the mic before mixing, with the
+            // same reference-based canceller the diarize input gets (#196).
+            // Off the async runtime: it is seconds of DSP on an hour's take.
+            let cancelled = tokio::task::spawn_blocking(move || {
+                crate::echo::cancel_for_playback(mic_i16, sys_i16)
+            })
+            .await
+            .unwrap_or_else(|e| {
+                eprintln!("playback: echo cancel failed ({e}); mixing the mic as captured");
+                None
+            });
+            let mixed = match cancelled {
+                Some(clean) => {
+                    eprintln!("playback: echo cancelled out of the mic before mixing");
+                    mix_cancelled(&i16_to_f32(&clean), &sys_samples)
+                }
+                // No echo found (headphones), or the canceller couldn't run:
+                // the old duck still keeps a raw mic's echo down.
+                None => {
+                    let mic_samples = wav::read_f32_mono_16k(m).await?;
+                    mix_with_mic_ducking(&mic_samples, &sys_samples)
+                }
+            };
             wav::write_pcm16_mono_16k(out, &mixed).await?;
         }
         (Some(m), None) => {
@@ -5591,6 +5614,20 @@ async fn build_playback_wav(
         (None, None) => {}
     }
     Ok(())
+}
+
+fn i16_to_f32(x: &[i16]) -> Vec<f32> {
+    x.iter().map(|&s| s as f32 / 32768.0).collect()
+}
+
+/// Mix an echo-cancelled mic with the system stream at equal weight. No duck:
+/// the echo is already out of the mic, so ducking would only bury the user's
+/// own voice whenever they talk over the far end.
+fn mix_cancelled(mic: &[f32], sys: &[f32]) -> Vec<f32> {
+    let n = mic.len().max(sys.len());
+    (0..n)
+        .map(|i| (mic.get(i).copied().unwrap_or(0.0) + sys.get(i).copied().unwrap_or(0.0)) * 0.5)
+        .collect()
 }
 
 /// Mix mic + system audio into one mono track, ducking the mic whenever the
@@ -8505,6 +8542,61 @@ mod mic_ducking_tests {
     fn length_is_max_of_both_streams() {
         let mixed = mix_with_mic_ducking(&level(0.3, 100), &level(0.3, 250));
         assert_eq!(mixed.len(), 250);
+    }
+
+    /// A speakers take run end to end through `build_playback_wav`: the mix
+    /// must carry the remote voice once (the system stream's copy), not again
+    /// a few hundred ms later out of the mic.
+    #[tokio::test]
+    async fn playback_mix_cancels_the_speakers_echo() {
+        use echo_probe::synth::{masked_energy, scenario, ScenarioConfig};
+        let s = scenario(&ScenarioConfig {
+            lag_ms: 323.0,
+            polarity: -1.0,
+            levelled: true,
+            ..Default::default()
+        });
+        let pcm = |x: &[f32]| x.iter().map(|&v| echo_probe::sample::pcm16(v)).collect::<Vec<i16>>();
+        let dir = tempfile::tempdir().unwrap();
+        let (mic_p, sys_p, out_p) = (dir.path().join("mic.wav"), dir.path().join("sys.wav"), dir.path().join("out.wav"));
+        wav::write_i16_mono_16k(&mic_p, &pcm(&s.mic)).await.unwrap();
+        wav::write_i16_mono_16k(&sys_p, &pcm(&s.sys)).await.unwrap();
+        build_playback_wav(Some(&mic_p), Some(&sys_p), &out_p).await.unwrap();
+        let out = wav::read_f32_mono_16k(&out_p).await.unwrap();
+        let sys_f = i16_to_f32(&pcm(&s.sys));
+        let mic_f = i16_to_f32(&pcm(&s.mic));
+
+        // Whatever the mix holds beyond half the clean sys copy is the mic's
+        // share. Where only the far end talks, that share is the echo.
+        let mic_share: Vec<f32> = out.iter().zip(&sys_f).map(|(o, y)| o - 0.5 * y).collect();
+        let far: Vec<bool> = s.far_only().into_iter().enumerate().map(|(i, v)| v && i >= 1000).collect();
+        let near: Vec<bool> = s.near_only().into_iter().enumerate().map(|(i, v)| v && i >= 1000).collect();
+        let half_mic: Vec<f32> = mic_f.iter().map(|v| 0.5 * v).collect();
+        let db = |a: f64, b: f64| 10.0 * (a / b).log10();
+        let echo_removed = db(masked_energy(&half_mic, &far), masked_energy(&mic_share, &far));
+        let user_kept = db(masked_energy(&mic_share, &near), masked_energy(&half_mic, &near));
+        assert!(echo_removed > 20.0, "echo removed only {echo_removed:.1} dB");
+        assert!(user_kept.abs() < 1.0, "user's own voice changed {user_kept:+.2} dB");
+    }
+
+    /// Headphones: no echo to find, so the mix falls back to the duck path and
+    /// still plays both sides.
+    #[tokio::test]
+    async fn playback_mix_without_echo_keeps_both_sides() {
+        use echo_probe::synth::{scenario, ScenarioConfig};
+        let s = scenario(&ScenarioConfig { levelled: true, ..Default::default() });
+        let mic: Vec<f32> = s.mic.iter().zip(&s.echo).map(|(m, e)| m - e).collect();
+        let pcm = |x: &[f32]| x.iter().map(|&v| echo_probe::sample::pcm16(v)).collect::<Vec<i16>>();
+        let dir = tempfile::tempdir().unwrap();
+        let (mic_p, sys_p, out_p) = (dir.path().join("mic.wav"), dir.path().join("sys.wav"), dir.path().join("out.wav"));
+        wav::write_i16_mono_16k(&mic_p, &pcm(&mic)).await.unwrap();
+        wav::write_i16_mono_16k(&sys_p, &pcm(&s.sys)).await.unwrap();
+        build_playback_wav(Some(&mic_p), Some(&sys_p), &out_p).await.unwrap();
+        let out = wav::read_f32_mono_16k(&out_p).await.unwrap();
+        let expected = mix_with_mic_ducking(&i16_to_f32(&pcm(&mic)), &i16_to_f32(&pcm(&s.sys)));
+        assert_eq!(out.len(), expected.len());
+        let max_diff = out.iter().zip(&expected).map(|(a, b)| (a - b).abs()).fold(0.0, f32::max);
+        assert!(max_diff < 1e-3, "headphone mix should be the duck mix, diff {max_diff}");
     }
 }
 
