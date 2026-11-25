@@ -1,11 +1,13 @@
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Users, User } from "lucide-react";
+import { Building2, Circle, ListTodo, Users, User } from "lucide-react";
 import { useNotesStore } from "../lib/store";
 import { indexById } from "../lib/noteList";
 import { extractSpeakerLabels, isNamedPerson } from "../lib/speakers";
 import { NoteCard } from "../components/NoteCard";
-import type { Note } from "../lib/ipc";
+import { ipc, type Note, type OpenActionItem } from "../lib/ipc";
+import { dueColorVar, dueLabel, dueState } from "../lib/due";
+import { personActivity } from "../lib/person";
 
 // People directory (#people): everyone who's spoken across your meetings builds
 // into a self-organizing contact list. Reuses the speaker labels already in
@@ -91,13 +93,23 @@ export function Person() {
   const folderById = useMemo(() => indexById(folders), [folders]);
   const clientById = useMemo(() => indexById(clients), [clients]);
 
-  const theirNotes = useMemo(
-    () =>
-      notes
-        .filter((n) => n.transcript?.trim() && extractSpeakerLabels(n.transcript).some((l) => l.trim() === name))
-        .sort((a, b) => b.created_at - a.created_at),
-    [notes, name],
-  );
+  const [open, setOpen] = useState<OpenActionItem[]>([]);
+  const load = useCallback(() => {
+    ipc.actionItemsOpen()
+      .then((rs) => setOpen(Array.isArray(rs) ? rs : []))
+      .catch(() => setOpen([]));
+  }, []);
+  useEffect(load, [load, notes.length]);
+
+  const activity = useMemo(() => personActivity(name, notes, open, clients), [name, notes, open, clients]);
+  const theirNotes = activity.notes;
+
+  // Optimistic, and reloads on failure so a write that didn't land comes back
+  // (the Follow-ups view's rule).
+  const complete = (itemId: string) => {
+    setOpen((cur) => cur.filter((i) => i.id !== itemId));
+    void ipc.actionItemsUpdate(itemId, { done: true }).catch(load);
+  };
 
   return (
     <div className="h-full overflow-y-auto nd-well">
@@ -117,7 +129,73 @@ export function Person() {
           </span>
         </div>
 
+        {/* Who they are to you: last met, and under which customers. */}
+        {(activity.lastSeen !== null || activity.clients.length > 0) && (
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[var(--color-text-muted)] px-1 mt-1">
+            {activity.lastSeen !== null && (
+              <span>Last met {new Date(activity.lastSeen).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}</span>
+            )}
+            {activity.clients.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => navigate(`/client/${c.id}`)}
+                className="inline-flex items-center gap-1 hover:text-[var(--color-interactive)] transition-colors"
+                title={`${c.meetings} ${c.meetings === 1 ? "meeting" : "meetings"} with ${c.name}`}
+              >
+                <Building2 size={13} strokeWidth={1.7} />
+                {c.name}
+              </button>
+            ))}
+          </p>
+        )}
+
+        {/* What they owe — open action items whose owner is this person. */}
+        {activity.commitments.length > 0 && (
+          <section className="mt-6 px-1">
+            <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-2">
+              <ListTodo size={14} strokeWidth={1.7} />
+              Open commitments
+              <span className="font-normal">{activity.commitments.length}</span>
+            </h2>
+            <ul className="flex flex-col max-w-2xl">
+              {activity.commitments.map((it) => (
+                <li
+                  key={it.id}
+                  className="flex items-start gap-3 py-1.5 border-b border-[var(--color-line)] last:border-0"
+                >
+                  <button
+                    type="button"
+                    aria-label="Mark done"
+                    onClick={() => complete(it.id)}
+                    className="mt-0.5 text-[var(--color-text-muted)] hover:text-[var(--color-success)] transition-colors shrink-0"
+                  >
+                    <Circle size={16} strokeWidth={1.6} />
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm leading-snug">{it.text}</p>
+                    <div className="flex flex-wrap items-center gap-x-2.5 text-xs text-[var(--color-text-muted)] mt-0.5">
+                      {it.due && <span style={{ color: dueColorVar(dueState(it.due)) }}>{dueLabel(it.due)}</span>}
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/note/${it.note_id}`)}
+                        className="hover:text-[var(--color-interactive)] hover:underline truncate max-w-[16rem]"
+                        title={it.note_title}
+                      >
+                        {it.due ? "· " : ""}{it.note_title || "Untitled note"}
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         <section className="mt-6 px-1">
+          {activity.commitments.length > 0 && theirNotes.length > 0 && (
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-3">Meetings</h2>
+          )}
           {theirNotes.length === 0 ? (
             <p className="text-sm text-[var(--color-text-muted)]">No meetings with {name}.</p>
           ) : (
