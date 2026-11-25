@@ -493,6 +493,7 @@ where
             commands::feed_items_mark_all_read,
             commands::feeds_import_opml,
             commands::feeds_export_opml,
+            commands::feed_item_transcribe,
             commands::inbox_status,
             commands::inbox_triage_now,
             commands::inbox_list,

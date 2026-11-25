@@ -775,6 +775,11 @@ export const ipc = {
   feedItemsMarkAllRead: (feedId?: string) => invoke<void>("feed_items_mark_all_read", { feedId: feedId ?? null }),
   feedsImportOpml: (path: string) => invoke<{ added: number; failed: string[] }>("feeds_import_opml", { path }),
   feedsExportOpml: (path: string) => invoke<void>("feeds_export_opml", { path }),
+  /** Download an episode and transcribe it into a note in the Podcasts folder.
+   *  Resolves once the import has started; progress arrives as
+   *  `feed_download_progress` events ({ item_id, received, total }). */
+  feedItemTranscribe: (id: string, language: string, expectedSpeakers: number | null) =>
+    invoke<{ note: Note; folder: Folder }>("feed_item_transcribe", { id, language, expectedSpeakers }),
   inboxStatus: () => invoke<InboxStatus>("inbox_status"),
   // Fetch unread, classify the new ones; returns how many were triaged.
   inboxTriageNow: () => invoke<number>("inbox_triage_now"),

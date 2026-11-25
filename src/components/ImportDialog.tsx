@@ -27,10 +27,21 @@ export function ImportDialog({
   path,
   onCancel,
   onConfirm,
+  title = "Import audio",
+  label,
+  confirmLabel = "Import",
+  busyLabel = "Importing…",
 }: {
   path: string;
   onCancel: () => void;
   onConfirm: (language: string, expectedSpeakers: number | null) => Promise<void>;
+  /** Reused by Feeds to transcribe a podcast episode (src/pages/Feeds.tsx). */
+  title?: string;
+  /** Shown in place of the file's basename, e.g. an episode title. */
+  label?: string;
+  confirmLabel?: string;
+  /** Busy text; Feeds passes live download progress here. */
+  busyLabel?: string;
 }) {
   // Preseed language from the global default as a convenience; the user is
   // free to override it — that's the whole point of this dialog.
@@ -67,17 +78,17 @@ export function ImportDialog({
   }
 
   return (
-    <Modal open onClose={busy ? () => {} : onCancel} title="Import audio">
+    <Modal open onClose={busy ? () => {} : onCancel} title={title}>
       <div className="flex flex-col gap-5">
         <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
           <FileAudio size={16} strokeWidth={1.6} className="shrink-0" />
           <span className="truncate" title={path}>
-            {basename(path)}
+            {label ?? basename(path)}
           </span>
         </div>
 
         <p className="text-sm text-[var(--color-text-muted)]">
-          Pick the language spoken in this file. Transcription runs once and
+          Pick the language spoken in this {label ? "episode" : "file"}. Transcription runs once and
           can’t be re-run per language afterward.
         </p>
 
@@ -110,7 +121,7 @@ export function ImportDialog({
             disabled={busy}
             className="text-sm px-3 py-1.5 rounded-md bg-[var(--color-text)] text-[var(--color-canvas)] hover:opacity-90 transition-opacity disabled:opacity-50"
           >
-            {busy ? "Importing…" : "Import"}
+            {busy ? busyLabel : confirmLabel}
           </button>
         </div>
       </div>

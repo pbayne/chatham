@@ -7,7 +7,8 @@ use crate::feeds::{self, Feed, FeedItem};
 use crate::{db, AppState};
 use reqwest::header::{ACCEPT, CONTENT_TYPE, ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED};
 use std::time::Duration;
-use tauri::State;
+use futures_util::StreamExt;
+use tauri::{AppHandle, Emitter, Manager, State};
 
 /// A feed document is small; anything past this is not one.
 const MAX_FEED_BYTES: usize = 20 * 1024 * 1024;
@@ -247,9 +248,206 @@ pub fn feeds_export_opml(state: State<'_, AppState>, path: String) -> Result<(),
     std::fs::write(&path, feeds::opml_export(&list)).map_err(|e| format!("Couldn't write {path}: {e}"))
 }
 
+// ─── Podcast episodes → notes ───────────────────────────────────────────────
+
+/// An episode longer than this is not a podcast; refuse rather than fill the disk.
+const MAX_EPISODE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+/// Cached downloads older than this are swept on the next transcribe. The
+/// import has copied what it needs into the note's recording by then.
+const EPISODE_CACHE_TTL: Duration = Duration::from_secs(24 * 3600);
+pub(crate) const PODCASTS_FOLDER: &str = "Podcasts";
+
+/// File extension the import sidecar (AVFoundation) can decode for this
+/// episode, from its URL first and its declared MIME type second. None means
+/// a format we can't transcribe (Ogg/Opus, mostly).
+pub(crate) fn episode_extension(url: &str, mime: &str) -> Option<&'static str> {
+    const OK: [&str; 9] = ["mp3", "m4a", "m4b", "mp4", "aac", "wav", "caf", "aiff", "aif"];
+    let path_ext = reqwest::Url::parse(url)
+        .ok()
+        .and_then(|u| u.path().rsplit('.').next().map(|e| e.to_ascii_lowercase()))
+        .filter(|e| e.len() <= 4);
+    if let Some(e) = path_ext.as_deref() {
+        if let Some(ok) = OK.iter().find(|o| **o == e) {
+            return Some(ok);
+        }
+        if matches!(e, "ogg" | "oga" | "opus" | "webm" | "flac") {
+            return None;
+        }
+    }
+    let mime = mime.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+    match mime.as_str() {
+        "audio/mpeg" | "audio/mp3" | "audio/mpeg3" | "audio/x-mpeg" => Some("mp3"),
+        "audio/mp4" | "audio/x-m4a" | "audio/m4a" | "audio/x-m4b" => Some("m4a"),
+        "video/mp4" => Some("mp4"),
+        "audio/aac" | "audio/x-aac" | "audio/aacp" => Some("aac"),
+        "audio/wav" | "audio/x-wav" | "audio/wave" => Some("wav"),
+        "audio/aiff" | "audio/x-aiff" => Some("aiff"),
+        // Most podcast hosts send audio/mpeg; an unknown audio type with no
+        // telling extension is still most likely MP3 behind a redirect URL.
+        "" | "application/octet-stream" | "binary/octet-stream" => Some("mp3"),
+        m if m.starts_with("audio/") && !m.contains("ogg") && !m.contains("opus") && !m.contains("flac") => Some("mp3"),
+        _ => None,
+    }
+}
+
+#[derive(Clone, serde::Serialize)]
+struct DownloadProgress {
+    item_id: String,
+    received: u64,
+    total: u64,
+}
+
+fn sweep_episode_cache(dir: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for e in entries.flatten() {
+        let old = e
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age > EPISODE_CACHE_TTL);
+        if old {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
+}
+
+/// Download to `<dest>.part`, then rename, so an interrupted download is never
+/// mistaken for a finished one; a finished file is reused on retry (e.g. when
+/// the first attempt found a recording in progress).
+async fn download_episode(app: &AppHandle, item_id: &str, url: &str, dest: &std::path::Path) -> Result<(), String> {
+    if dest.exists() {
+        return Ok(());
+    }
+    // No total timeout: a long episode on a slow link takes minutes. A stalled
+    // connection is caught by the read timeout instead.
+    let client = reqwest::Client::builder()
+        .user_agent(concat!("Chatham/", env!("CARGO_PKG_VERSION")))
+        .connect_timeout(Duration::from_secs(15))
+        .read_timeout(Duration::from_secs(60))
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .build()
+        .map_err(err)?;
+    let resp = client.get(url).send().await.map_err(|e| format!("Couldn't download the episode: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("The episode host answered {}", resp.status()));
+    }
+    let total = resp.content_length().unwrap_or(0);
+    if total > MAX_EPISODE_BYTES {
+        return Err("That episode is larger than 2 GB — too big to transcribe here".into());
+    }
+    let part = dest.with_extension("part");
+    let mut file = tokio::fs::File::create(&part).await.map_err(err)?;
+    let mut received: u64 = 0;
+    let mut last_emit = std::time::Instant::now() - Duration::from_secs(1);
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("Download interrupted: {e}"))?;
+        received += chunk.len() as u64;
+        if received > MAX_EPISODE_BYTES {
+            drop(file);
+            let _ = tokio::fs::remove_file(&part).await;
+            return Err("That episode is larger than 2 GB — too big to transcribe here".into());
+        }
+        tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await.map_err(err)?;
+        if last_emit.elapsed() >= Duration::from_millis(250) {
+            last_emit = std::time::Instant::now();
+            let _ = app.emit("feed_download_progress", DownloadProgress { item_id: item_id.into(), received, total });
+        }
+    }
+    tokio::io::AsyncWriteExt::flush(&mut file).await.map_err(err)?;
+    drop(file);
+    let _ = app.emit("feed_download_progress", DownloadProgress { item_id: item_id.into(), received, total: total.max(received) });
+    tokio::fs::rename(&part, dest).await.map_err(err)?;
+    Ok(())
+}
+
+/// The workspace's Podcasts folder, created the first time an episode lands.
+pub(crate) fn podcasts_folder(conn: &rusqlite::Connection, workspace: &str) -> anyhow::Result<(db::Folder, bool)> {
+    if let Some(f) = db::list_folders(conn, workspace)?
+        .into_iter()
+        .find(|f| f.name.eq_ignore_ascii_case(PODCASTS_FOLDER))
+    {
+        return Ok((f, false));
+    }
+    Ok((db::create_folder(conn, PODCASTS_FOLDER, workspace)?, true))
+}
+
+#[derive(serde::Serialize)]
+pub struct TranscribedEpisode {
+    pub note: db::Note,
+    pub folder: db::Folder,
+}
+
+/// Download a podcast episode and transcribe it into a regular note, filed in
+/// the Podcasts folder and titled after the episode. Rides the existing audio
+/// import (`import_audio`), so the transcript fills in live, then diarizes and
+/// summarises exactly like an imported recording. Returns once the import has
+/// started; the frontend navigates to the note to watch it fill.
+#[tauri::command]
+pub async fn feed_item_transcribe(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    language: String,
+    expected_speakers: Option<i64>,
+) -> Result<TranscribedEpisode, String> {
+    let item = {
+        let conn = state.db.lock();
+        feeds::ensure_tables(&conn).map_err(err)?;
+        feeds::get_item(&conn, &id).map_err(|_| "That episode is no longer in your feeds".to_string())?
+    };
+    if item.enclosure_url.is_empty() {
+        return Err("This item has no audio to transcribe".into());
+    }
+    let ext = episode_extension(&item.enclosure_url, &item.enclosure_type).ok_or_else(|| {
+        "This episode's audio format (Ogg/Opus/FLAC) can't be transcribed yet".to_string()
+    })?;
+
+    let dir = app.path().app_cache_dir().map_err(err)?.join("podcasts");
+    std::fs::create_dir_all(&dir).map_err(err)?;
+    sweep_episode_cache(&dir);
+    let dest = dir.join(format!("{}.{ext}", item.id));
+    download_episode(&app, &item.id, &item.enclosure_url, &dest).await?;
+
+    let mut note = super::import_audio(
+        app.clone(),
+        state.clone(),
+        dest.to_string_lossy().into_owned(),
+        language,
+        expected_speakers,
+    )
+    .await?;
+
+    let folder = {
+        let conn = state.db.lock();
+        let workspace = super::cloud::active_workspace(&conn);
+        let (folder, created) = podcasts_folder(&conn, &workspace).map_err(err)?;
+        if created {
+            state.sync.folder_upserted(&folder.id);
+        }
+        // The episode title is user-meaningful, so the auto-titler leaves it
+        // alone (`is_replaceable_title` only replaces placeholders).
+        let title = if item.title.trim().is_empty() { "Podcast episode".to_string() } else { item.title.clone() };
+        db::update_note(&conn, &note.id, &db::NotePatch { title: Some(title.clone()), ..Default::default() })
+            .map_err(err)?;
+        if item.published_at > 0 {
+            db::set_note_created_at(&conn, &note.id, item.published_at).map_err(err)?;
+            note.created_at = item.published_at;
+        }
+        db::move_note(&conn, &note.id, Some(&folder.id)).map_err(err)?;
+        feeds::set_item_note(&conn, &item.id, &note.id).map_err(err)?;
+        note.title = title;
+        note.folder_id = Some(folder.id.clone());
+        folder
+    };
+    state.sync.note_upserted(&note.id);
+    Ok(TranscribedEpisode { note, folder })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::normalize_url;
+    use super::{episode_extension, normalize_url, podcasts_folder};
 
     #[test]
     fn normalizes_addresses() {
@@ -258,5 +456,31 @@ mod tests {
         assert!(normalize_url("").is_err());
         assert!(normalize_url("file:///etc/passwd").is_err());
         assert!(normalize_url("javascript:alert(1)").is_err());
+    }
+
+    #[test]
+    fn picks_a_decodable_extension() {
+        assert_eq!(episode_extension("https://cdn.x/ep.mp3?aid=rss", "audio/mpeg"), Some("mp3"));
+        assert_eq!(episode_extension("https://cdn.x/ep.M4A", ""), Some("m4a"));
+        // Tracking-redirect URLs carry no extension; fall back to the MIME type.
+        assert_eq!(episode_extension("https://dts.podtrac.com/redirect/abc", "audio/x-m4a"), Some("m4a"));
+        assert_eq!(episode_extension("https://h/e", "audio/mpeg"), Some("mp3"));
+        assert_eq!(episode_extension("https://h/e", ""), Some("mp3"));
+        assert_eq!(episode_extension("https://h/e.ogg", "audio/mpeg"), None, "the file wins over a wrong MIME");
+        assert_eq!(episode_extension("https://h/e", "audio/ogg"), None);
+        assert_eq!(episode_extension("https://h/e", "audio/opus"), None);
+        assert_eq!(episode_extension("https://h/e", "text/html"), None);
+    }
+
+    #[test]
+    fn podcasts_folder_is_created_once_and_found_case_insensitively() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = crate::db::open(&dir.path().join("podcasts.sqlite")).unwrap();
+        let (a, created) = podcasts_folder(&conn, "").unwrap();
+        assert!(created);
+        assert_eq!(a.name, "Podcasts");
+        let (b, created) = podcasts_folder(&conn, "").unwrap();
+        assert!(!created);
+        assert_eq!(a.id, b.id);
     }
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { Feeds, formatDuration } from "./Feeds";
+import { Feeds, downloadLabel, formatBytes, formatDuration } from "./Feeds";
 import { mockTauri } from "../test/tauri";
 import { demoFeedItems, demoFeeds } from "../test/feeds";
 
@@ -33,6 +33,7 @@ function setup(over: Record<string, (a: unknown) => unknown> = {}, route = "/fee
       <Routes>
         <Route path="/feeds" element={<Feeds />} />
         <Route path="/feeds/:feedId" element={<Feeds />} />
+        <Route path="/note/:id" element={<p>note page</p>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -121,6 +122,69 @@ describe("Feeds page", () => {
     fireEvent.change(within(dialog).getByLabelText("Feed or website address"), { target: { value: "x.com" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Subscribe" }));
     expect(await within(dialog).findByText(/doesn't advertise a feed/)).toBeInTheDocument();
+  });
+});
+
+describe("Transcribing an episode", () => {
+  it("offers Transcribe on an episode, and files it as a note", async () => {
+    const calls = setup({
+      settings_get: () => "en",
+      feed_item_transcribe: () => ({
+        note: { id: "n-42", title: "Episode 42", folder_id: "fo-pod" },
+        folder: { id: "fo-pod", name: "Podcasts", created_at: 0, updated_at: 0, workspace_id: "" },
+      }),
+    });
+    fireEvent.click(await screen.findByText(/Episode 42/));
+    const reader = screen.getByRole("article", { name: "Reader" });
+    expect(reader).toHaveTextContent("57 min · 46 MB");
+    fireEvent.click(within(reader).getByRole("button", { name: /Transcribe episode/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent(/Episode 42: Lakebase in production/);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Download & transcribe" }));
+    expect(await screen.findByText("note page")).toBeInTheDocument();
+    expect(calls).toContainEqual({
+      cmd: "feed_item_transcribe",
+      args: { id: "i2", language: "en", expectedSpeakers: null },
+    });
+  });
+
+  it("an already-transcribed episode links to its note instead", async () => {
+    setup();
+    fireEvent.click(await screen.findByText(/Episode 41/));
+    const reader = screen.getByRole("article", { name: "Reader" });
+    expect(within(reader).queryByRole("button", { name: /Transcribe episode/ })).toBeNull();
+    fireEvent.click(within(reader).getByRole("button", { name: /Open transcript/ }));
+    expect(await screen.findByText("note page")).toBeInTheDocument();
+  });
+
+  it("keeps the dialog open with the error when the recorder is busy", async () => {
+    setup({
+      feed_item_transcribe: () => {
+        throw "already recording or importing";
+      },
+    });
+    fireEvent.click(await screen.findByText(/Episode 42/));
+    fireEvent.click(screen.getByRole("button", { name: /Transcribe episode/ }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Download & transcribe" }));
+    expect(await within(dialog).findByText("already recording or importing")).toBeInTheDocument();
+  });
+
+  it("articles without audio offer no transcribe", async () => {
+    setup();
+    fireEvent.click(await screen.findByText(/Data Modeling/));
+    expect(screen.queryByRole("button", { name: /Transcribe episode/ })).toBeNull();
+  });
+});
+
+describe("download progress label", () => {
+  it("reads naturally at each stage", () => {
+    expect(downloadLabel(null)).toBe("Starting download…");
+    expect(downloadLabel({ received: 25, total: 100 })).toBe("Downloading… 25%");
+    expect(downloadLabel({ received: 5 * 1024 * 1024, total: 0 })).toBe("Downloading… 5 MB");
+    expect(downloadLabel({ received: 100, total: 100 })).toBe("Starting transcription…");
+    expect(formatBytes(48_000_000)).toBe("46 MB");
+    expect(formatBytes(3 * 1024 ** 3)).toBe("3.0 GB");
   });
 });
 

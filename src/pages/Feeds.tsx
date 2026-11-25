@@ -2,8 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
 import {
+  AudioLines,
   CheckCheck,
+  FileText,
   Download,
   ExternalLink,
   Headphones,
@@ -17,6 +20,8 @@ import {
 } from "lucide-react";
 import { ipc, type Feed, type FeedItem } from "../lib/ipc";
 import { cn } from "../lib/cn";
+import { useNotesStore } from "../lib/store";
+import { ImportDialog } from "../components/ImportDialog";
 
 // Feeds (Labs, docs/design/feeds-labs.md): an RSS reader whose podcast
 // episodes download and transcribe into ordinary notes in a Podcasts folder.
@@ -31,6 +36,12 @@ export function formatDuration(s: number): string {
   const h = Math.floor(s / 3600);
   const m = Math.round((s % 3600) / 60);
   return h ? `${h} h ${m} min` : `${Math.max(1, m)} min`;
+}
+
+export function formatBytes(n: number): string {
+  if (n < 1024 * 1024) return `${Math.max(1, Math.round(n / 1024))} KB`;
+  if (n < 1024 * 1024 * 1024) return `${Math.round(n / (1024 * 1024))} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
 function formatWhen(ms: number): string {
@@ -50,6 +61,10 @@ export function Feeds() {
   const [refreshing, setRefreshing] = useState(false);
   const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // The episode whose transcribe dialog is open.
+  const [transcribing, setTranscribing] = useState<FeedItem | null>(null);
+  const upsertLocal = useNotesStore((s) => s.upsertLocal);
+  const upsertFolder = useNotesStore((s) => s.upsertFolder);
 
   const loadFeeds = useCallback(async () => {
     try {
@@ -162,6 +177,18 @@ export function Feeds() {
     }
   };
 
+  // Download + transcribe. Resolves once the import is running; the note then
+  // fills in live, so go there. Errors (busy recording, unsupported format,
+  // download failure) surface inline in the dialog.
+  const confirmTranscribe = async (language: string, expectedSpeakers: number | null) => {
+    if (!transcribing) return;
+    const { note, folder } = await ipc.feedItemTranscribe(transcribing.id, language, expectedSpeakers);
+    upsertFolder(folder);
+    upsertLocal(note);
+    setTranscribing(null);
+    navigate(`/note/${note.id}`);
+  };
+
   const remove = async (f: Feed) => {
     if (!window.confirm(`Unsubscribe from “${f.title || f.url}”? Notes made from its episodes stay.`)) return;
     await run(async () => {
@@ -177,7 +204,7 @@ export function Feeds() {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-      if (e.metaKey || e.ctrlKey || e.altKey || adding || !items?.length) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || adding || transcribing || !items?.length) return;
       const idx = items.findIndex((i) => i.id === selectedId);
       if (e.key === "j" || e.key === "k") {
         const next = items[Math.min(items.length - 1, Math.max(0, idx + (e.key === "j" ? 1 : -1)))] ?? items[0];
@@ -192,7 +219,7 @@ export function Feeds() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [items, selectedId, selected, select, toggleRead, adding]);
+  }, [items, selectedId, selected, select, toggleRead, adding, transcribing]);
 
   const empty = feeds !== null && feeds.length === 0;
 
@@ -357,7 +384,12 @@ export function Feeds() {
           {/* Reader */}
           <article className="min-h-0 overflow-y-auto pl-8" aria-label="Reader">
             {selected ? (
-              <Reader item={selected} feed={feedById.get(selected.feed_id)} />
+              <Reader
+                item={selected}
+                feed={feedById.get(selected.feed_id)}
+                onTranscribe={() => setTranscribing(selected)}
+                onOpenNote={(id) => navigate(`/note/${id}`)}
+              />
             ) : (
               <p className="pt-3 text-sm text-[var(--color-text-disabled)]">
                 Pick an item. <kbd className="nd-kbd">j</kbd> <kbd className="nd-kbd">k</kbd> to move,{" "}
@@ -366,6 +398,10 @@ export function Feeds() {
             )}
           </article>
         </div>
+      )}
+
+      {transcribing && (
+        <TranscribeDialog item={transcribing} onCancel={() => setTranscribing(null)} onConfirm={confirmTranscribe} />
       )}
 
       {adding && (
@@ -432,7 +468,17 @@ function FeedRow({
   );
 }
 
-function Reader({ item, feed }: { item: FeedItem; feed?: Feed }) {
+function Reader({
+  item,
+  feed,
+  onTranscribe,
+  onOpenNote,
+}: {
+  item: FeedItem;
+  feed?: Feed;
+  onTranscribe: () => void;
+  onOpenNote: (noteId: string) => void;
+}) {
   const byline = [feed?.title, item.author, formatWhen(item.published_at)].filter(Boolean).join(" · ");
   return (
     <div className="max-w-[68ch] pt-2 pb-16">
@@ -447,10 +493,23 @@ function Reader({ item, feed }: { item: FeedItem; feed?: Feed }) {
             Open original
           </button>
         )}
+        {item.enclosure_url &&
+          (item.note_id ? (
+            <button type="button" onClick={() => onOpenNote(item.note_id!)} className="nd-btn nd-btn-primary">
+              <FileText size={14} strokeWidth={1.7} />
+              Open transcript
+            </button>
+          ) : (
+            <button type="button" onClick={onTranscribe} className="nd-btn nd-btn-primary">
+              <AudioLines size={14} strokeWidth={1.7} />
+              Transcribe episode
+            </button>
+          ))}
         {item.enclosure_url && (
           <span className="inline-flex items-center gap-1.5 text-sm text-[var(--color-text-muted)]">
             <Headphones size={14} strokeWidth={1.7} />
             Episode{item.duration_s ? ` · ${formatDuration(item.duration_s)}` : ""}
+            {item.enclosure_bytes > 0 ? ` · ${formatBytes(item.enclosure_bytes)}` : ""}
           </span>
         )}
       </div>
@@ -558,4 +617,50 @@ function AddFeed({ onClose, onAdded }: { onClose: () => void; onAdded: (f: Feed)
       </form>
     </div>
   );
+}
+
+/** The audio-import dialog (language + speakers), with live download progress
+ *  as its busy label: a long episode takes a while to fetch before the import
+ *  can start. */
+function TranscribeDialog({
+  item,
+  onCancel,
+  onConfirm,
+}: {
+  item: FeedItem;
+  onCancel: () => void;
+  onConfirm: (language: string, expectedSpeakers: number | null) => Promise<void>;
+}) {
+  const [progress, setProgress] = useState<{ received: number; total: number } | null>(null);
+  useEffect(() => {
+    let off: (() => void) | undefined;
+    let alive = true;
+    listen<{ item_id: string; received: number; total: number }>("feed_download_progress", (e) => {
+      if (e.payload.item_id === item.id) setProgress({ received: e.payload.received, total: e.payload.total });
+    })
+      .then((u) => (alive ? (off = u) : u()))
+      .catch(() => {});
+    return () => {
+      alive = false;
+      off?.();
+    };
+  }, [item.id]);
+  return (
+    <ImportDialog
+      path={item.enclosure_url}
+      label={item.title || "Podcast episode"}
+      title="Transcribe episode"
+      confirmLabel="Download & transcribe"
+      busyLabel={downloadLabel(progress)}
+      onCancel={onCancel}
+      onConfirm={onConfirm}
+    />
+  );
+}
+
+export function downloadLabel(p: { received: number; total: number } | null): string {
+  if (!p) return "Starting download…";
+  if (p.total > 0 && p.received >= p.total) return "Starting transcription…";
+  if (p.total > 0) return `Downloading… ${Math.floor((p.received / p.total) * 100)}%`;
+  return `Downloading… ${formatBytes(p.received)}`;
 }
