@@ -11,6 +11,26 @@ export type Release = {
 
 export const releases: Release[] = [
   {
+    version: "0.78.0",
+    date: "2026-11-25",
+    title: "People, follow-ups and customers, sharpened",
+    summary: "Each person's page now shows what they owe and when you last met, Follow-ups can be filtered by owner and due date, and a customer shows who you meet there.",
+    visual: "speakers",
+    paragraphs: [
+      "A person's page used to be a grid of meetings. It now leads with their open commitments — action items they own, soonest due first, which you can check off right there — followed by when you last met and the customers those meetings are filed under. Every person gets an initials avatar in a colour that's theirs on every page.",
+      "Follow-ups gains two filters: whose items (each owner, or items nobody was assigned) and how soon (overdue, due this week, no due date). Copy pastes exactly what you're looking at, so a filtered list goes straight into a status email.",
+      "A customer's page now lists the people you meet at that account, each linking to their own page. Alongside, a round of polish: the Inbox no longer crashes before its first triage, its card controls stay inside narrow columns, Follow-ups shares the other pages' frame, and a set of borders, hovers and corners that weren't drawing now do.",
+    ],
+    highlights: [
+      "Person pages show open commitments, last met, and their customers.",
+      "Filter Follow-ups by owner and due date; Copy pastes what's shown.",
+      "Customers show who you meet there, linked to each person.",
+      "Initials avatars that keep one colour per person.",
+      "Inbox and page-frame fixes across every theme.",
+    ],
+    issues: [],
+  },
+  {
     version: "0.77.0",
     date: "2026-11-23",
     title: "Detected names now suggest the client too",
