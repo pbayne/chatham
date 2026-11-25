@@ -58,8 +58,10 @@ VERSION="$VERSION_PKG"
 TAG="v$VERSION"
 echo "release: $TAG"
 
-# Refuse to overwrite an existing release.
-if gh release view "$TAG" >/dev/null 2>&1; then
+# Refuse to overwrite an existing release — on the repo we release TO. A bare
+# `gh release view` resolves to the `origin` remote, which is upstream humla:
+# it has its own version numbers, so its v0.78.0 blocked our first 0.78.0.
+if gh release view "$TAG" --repo "${RELEASE_REPO:-pbayne/chatham}" >/dev/null 2>&1; then
   echo "error: release $TAG already exists on GitHub — bump the version first" >&2
   exit 1
 fi
