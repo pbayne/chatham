@@ -11,6 +11,24 @@ export type Release = {
 
 export const releases: Release[] = [
   {
+    version: "0.81.0",
+    date: "2026-11-25",
+    title: "A summary for every article and episode",
+    summary: "Feeds can summarise any article in one click, and transcribed podcast episodes now summarise themselves as an episode digest.",
+    visual: "audio",
+    paragraphs: [
+      "Every article in Feeds now has a Summary card above the text. Summarize gives you a one-line overview, the key points and why it matters, using the same AI provider as your meeting summaries, and keeps it so you can come back to it. When a feed only carries a teaser, Chatham reads the article page itself so the summary covers the whole post.",
+      "Transcribed podcast episodes summarise themselves: once the transcript and speakers are done, the note gets an episode digest — what it's about, the key points by topic, and the people, products and resources mentioned — instead of meeting minutes. The same summary shows in the reader, so you can skim an episode without leaving Feeds. Podcast episode is also a new summary style you can pick for any note.",
+    ],
+    highlights: [
+      "Summarize any article: overview, key points, why it matters.",
+      "Teaser-only feeds are summarised from the full article page.",
+      "Transcribed episodes get an automatic episode digest.",
+      "New \"Podcast episode\" summary style.",
+    ],
+    issues: [],
+  },
+  {
     version: "0.80.0",
     date: "2026-11-25",
     title: "Import Ogg, Opus, FLAC and WebM audio",
