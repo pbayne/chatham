@@ -161,7 +161,27 @@ pub(super) fn resolve_provider(
     note: &Note,
     api_key: Option<String>,
 ) -> anyhow::Result<ResolvedProvider> {
-    let id = summary_provider_id(conn, note)?;
+    resolve_provider_id(conn, summary_provider_id(conn, note)?, api_key)
+}
+
+/// The global summary provider, for text that isn't a note (Feeds articles).
+pub(super) fn global_summary_provider_id(conn: &rusqlite::Connection) -> anyhow::Result<ProviderId> {
+    let provider = db::get_setting(conn, "summary_provider")
+        .ok()
+        .flatten()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "openai".into());
+    ProviderId::parse(&provider)
+        .filter(|p| p.capabilities().summarize)
+        .ok_or_else(|| anyhow::anyhow!("unknown summary provider “{provider}” — pick one in Settings"))
+}
+
+pub(super) fn resolve_provider_id(
+    conn: &rusqlite::Connection,
+    id: ProviderId,
+    api_key: Option<String>,
+) -> anyhow::Result<ResolvedProvider> {
     match id {
         ProviderId::Local => {
             let base_url = db::get_setting(conn, "local_llm_base_url")?
@@ -482,6 +502,65 @@ fn emit_summary_status(app: &AppHandle, note_id: &str, active: bool) {
 
 // Hard directive appended to the summary system prompt. Enforces output
 // language regardless of which language the user wrote their prompt in.
+/// Longest article text sent for summary. A long-read is ~10k words; past
+/// this it is a page dump, and truncating keeps a local model inside its window.
+const ARTICLE_MAX_CHARS: usize = 60_000;
+
+fn article_prompt(language: &str) -> String {
+    format!(
+        "You summarize an article for someone deciding whether to read it in full. \
+         Start with one sentence on what it is about, then 3–6 bullet points with the \
+         substance — claims, numbers, conclusions, what is new — not a list of its \
+         sections. Finish with a line beginning **Why it matters:** if the article \
+         makes that clear. Use Markdown. No preamble.\n\n{}",
+        language_directive(language)
+    )
+}
+
+/// Summarise a Feeds article with the user's summary provider, streaming
+/// deltas on the same `summary_*_delta` channels a note uses, keyed by the
+/// item id. Returns the finished Markdown.
+pub(super) async fn summarize_article(
+    app: &AppHandle,
+    item_id: &str,
+    title: &str,
+    text: &str,
+) -> anyhow::Result<String> {
+    let state: State<AppState> = app.state();
+    let provider_id = {
+        let conn = state.db.lock();
+        global_summary_provider_id(&conn)?
+    };
+    let api_key = match provider_id.keychain_account() {
+        Some(_) => read_provider_api_key(&state, provider_id.as_str()).map_err(|e| anyhow::anyhow!("{e}"))?,
+        None => None,
+    };
+    let (mut provider, language) = {
+        let conn = state.db.lock();
+        let lang = db::get_setting(&conn, "language")?.unwrap_or_else(|| DEFAULT_LANGUAGE.to_string());
+        (resolve_provider_id(&conn, provider_id, api_key)?, lang)
+    };
+    attach_copilot(app, &mut provider).await?;
+    let body: String = text.chars().take(ARTICLE_MAX_CHARS).collect();
+    let user_message = format!("Title: {title}\n\n{body}");
+    let app_for_stream = app.clone();
+    let id = item_id.to_string();
+    let on_chunk = move |chunk: openai::StreamChunk| {
+        if let openai::StreamChunk::Content(c) = chunk {
+            let _ = app_for_stream.emit(
+                "summary_content_delta",
+                StreamDeltaPayload { note_id: id.clone(), delta: c.to_string() },
+            );
+        }
+    };
+    let summary = provider.complete(&article_prompt(&language), &user_message, on_chunk).await?;
+    let summary = summary.trim().to_string();
+    if summary.is_empty() {
+        anyhow::bail!("The model returned an empty summary");
+    }
+    Ok(summary)
+}
+
 pub(super) fn language_directive(lang: &str) -> String {
     // Native imperatives for the common Nordic codes — the model picks up
     // the target language faster from a directive written in that language

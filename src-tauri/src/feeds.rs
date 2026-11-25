@@ -41,6 +41,9 @@ pub struct FeedItem {
     pub read: bool,
     /// The note an episode was transcribed into, once it has been.
     pub note_id: Option<String>,
+    /// AI summary of an article (Markdown), once asked for. Episodes carry
+    /// theirs on the transcribed note instead.
+    pub summary: String,
 }
 
 /// What a fetch found, before it is stored.
@@ -110,6 +113,13 @@ pub fn ensure_tables(conn: &Connection) -> Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_feed_items_feed ON feed_items(feed_id, published_at DESC);",
     )?;
+    // Added in 0.81: tables created by 0.79/0.80 predate it.
+    let has_summary: bool = conn
+        .prepare("SELECT 1 FROM pragma_table_info('feed_items') WHERE name = 'summary'")?
+        .exists([])?;
+    if !has_summary {
+        conn.execute("ALTER TABLE feed_items ADD COLUMN summary TEXT NOT NULL DEFAULT ''", [])?;
+    }
     Ok(())
 }
 
@@ -437,7 +447,7 @@ pub fn list_items(
 ) -> Result<Vec<FeedItem>> {
     let mut stmt = conn.prepare(
         "SELECT id, feed_id, guid, title, link, author, published_at, content_html,
-                enclosure_url, enclosure_type, enclosure_bytes, duration_s, read, note_id
+                enclosure_url, enclosure_type, enclosure_bytes, duration_s, read, note_id, summary
          FROM feed_items
          WHERE (?1 IS NULL OR feed_id = ?1) AND (?2 = 0 OR read = 0)
          ORDER BY published_at DESC, rowid DESC
@@ -452,7 +462,7 @@ pub fn list_items(
 pub fn get_item(conn: &Connection, id: &str) -> Result<FeedItem> {
     Ok(conn.query_row(
         "SELECT id, feed_id, guid, title, link, author, published_at, content_html,
-                enclosure_url, enclosure_type, enclosure_bytes, duration_s, read, note_id
+                enclosure_url, enclosure_type, enclosure_bytes, duration_s, read, note_id, summary
          FROM feed_items WHERE id = ?1",
         [id],
         map_item,
@@ -475,7 +485,48 @@ fn map_item(r: &rusqlite::Row) -> rusqlite::Result<FeedItem> {
         duration_s: r.get(11)?,
         read: r.get::<_, i64>(12)? != 0,
         note_id: r.get(13)?,
+        summary: r.get(14)?,
     })
+}
+
+pub fn set_item_summary(conn: &Connection, id: &str, summary: &str) -> Result<()> {
+    conn.execute("UPDATE feed_items SET summary = ?2 WHERE id = ?1", params![id, summary])?;
+    Ok(())
+}
+
+/// The readable text of an article page: the `<article>` (else `<main>`,
+/// else `<body>`) with scripts, styles, navigation and chrome removed, as
+/// plain text. Crude next to a real readability pass, but enough to give a
+/// model the post when a feed only carries a teaser.
+pub fn article_text_from_page(html: &str) -> String {
+    let lower = html.to_ascii_lowercase();
+    let pick = |tag: &str| -> Option<&str> {
+        let open = lower.find(&format!("<{tag}"))?;
+        let close = lower.rfind(&format!("</{tag}>"))?;
+        (close > open).then(|| &html[open..close])
+    };
+    let region = pick("article").or_else(|| pick("main")).or_else(|| pick("body")).unwrap_or(html);
+    let mut b = ammonia::Builder::default();
+    b.rm_tags(&["img", "picture", "source", "video", "audio", "iframe", "nav", "header", "footer", "aside", "form", "figure"]);
+    b.clean_content_tags(std::collections::HashSet::from(["script", "style", "noscript", "svg", "nav", "header", "footer", "aside", "form", "button"]));
+    let cleaned = b.clean(region).to_string();
+    let text = crate::html_text::html_to_text(&cleaned);
+    // Collapse the blank-line runs stripped chrome leaves behind.
+    let mut out = String::with_capacity(text.len());
+    let mut blank = 0;
+    for line in text.lines().map(str::trim) {
+        if line.is_empty() {
+            blank += 1;
+            if blank == 1 && !out.is_empty() {
+                out.push('\n');
+            }
+        } else {
+            blank = 0;
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out.trim().to_string()
 }
 
 pub fn set_read(conn: &Connection, id: &str, read: bool) -> Result<()> {
@@ -635,6 +686,50 @@ mod tests {
         remove_feed(&c, &id).unwrap();
         assert!(list_feeds(&c).unwrap().is_empty());
         assert_eq!(count_items(&c, &id).unwrap(), 0);
+    }
+
+    #[test]
+    fn summary_persists_across_refetch_and_old_tables_migrate() {
+        let c = db();
+        let id = insert_feed(&c, "u", 1).unwrap();
+        let f = parse(RSS.as_bytes(), "https://e").unwrap();
+        apply_fetch(&c, &id, &f, 1).unwrap();
+        let item = &list_items(&c, None, false, 10).unwrap()[0];
+        assert_eq!(item.summary, "");
+        set_item_summary(&c, &item.id, "- point one").unwrap();
+        apply_fetch(&c, &id, &f, 2).unwrap();
+        assert_eq!(get_item(&c, &item.id).unwrap().summary, "- point one");
+
+        // A 0.79 database: feed_items without the column.
+        let old = Connection::open_in_memory().unwrap();
+        old.execute_batch(
+            "CREATE TABLE feed_items (id TEXT PRIMARY KEY, feed_id TEXT NOT NULL, guid TEXT NOT NULL,
+               title TEXT NOT NULL DEFAULT '', link TEXT NOT NULL DEFAULT '', author TEXT NOT NULL DEFAULT '',
+               published_at INTEGER NOT NULL DEFAULT 0, content_html TEXT NOT NULL DEFAULT '',
+               enclosure_url TEXT NOT NULL DEFAULT '', enclosure_type TEXT NOT NULL DEFAULT '',
+               enclosure_bytes INTEGER NOT NULL DEFAULT 0, duration_s INTEGER NOT NULL DEFAULT 0,
+               read INTEGER NOT NULL DEFAULT 0, note_id TEXT, UNIQUE(feed_id, guid));
+             INSERT INTO feed_items (id, feed_id, guid, title) VALUES ('x', 'f', 'g', 'Old');",
+        )
+        .unwrap();
+        ensure_tables(&old).unwrap();
+        ensure_tables(&old).unwrap(); // idempotent
+        assert_eq!(get_item(&old, "x").unwrap().summary, "");
+    }
+
+    #[test]
+    fn extracts_article_text_without_chrome() {
+        let page = r#"<html><head><style>p{}</style><script>track()</script></head><body>
+            <nav>Home | Blog</nav><header>Site</header>
+            <article><h1>Lakebase in production</h1><p>First paragraph.</p>
+            <script>ads()</script><aside>Related posts</aside><p>Second &amp; last.</p></article>
+            <footer>© 2026</footer></body></html>"#;
+        let t = article_text_from_page(page);
+        assert!(t.contains("Lakebase in production"), "{t}");
+        assert!(t.contains("First paragraph.") && t.contains("Second & last."), "{t}");
+        for junk in ["track()", "ads()", "Related posts", "Home | Blog", "© 2026", "p{}"] {
+            assert!(!t.contains(junk), "leaked {junk:?}: {t}");
+        }
     }
 
     #[test]

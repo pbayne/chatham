@@ -495,6 +495,7 @@ where
             commands::feeds_import_opml,
             commands::feeds_export_opml,
             commands::feed_item_transcribe,
+            commands::feed_item_summarize,
             commands::inbox_status,
             commands::inbox_triage_now,
             commands::inbox_list,

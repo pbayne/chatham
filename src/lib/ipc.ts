@@ -616,6 +616,9 @@ export type FeedItem = {
   published_at: number;
   /** Sanitized server-side (ammonia): no scripts, handlers or remote images. */
   content_html: string;
+  /** AI summary of an article (Markdown); "" until asked. Episodes keep
+   *  theirs on the transcribed note. */
+  summary: string;
   enclosure_url: string;
   enclosure_type: string;
   enclosure_bytes: number;
@@ -778,6 +781,9 @@ export const ipc = {
   /** Download an episode and transcribe it into a note in the Podcasts folder.
    *  Resolves once the import has started; progress arrives as
    *  `feed_download_progress` events ({ item_id, received, total }). */
+  /** Summarise an article (stored on the item) — or, for an episode, its
+   *  transcribed note goes through summarizeNote instead (ItemSummary.tsx). */
+  feedItemSummarize: (id: string) => invoke<string>("feed_item_summarize", { id }),
   feedItemTranscribe: (id: string, language: string, expectedSpeakers: number | null) =>
     invoke<{ note: Note; folder: Folder }>("feed_item_transcribe", { id, language, expectedSpeakers }),
   inboxStatus: () => invoke<InboxStatus>("inbox_status"),

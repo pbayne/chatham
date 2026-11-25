@@ -101,6 +101,13 @@ export const SUMMARY_PRESETS: PresetSpec[] = [
     label_en: "Standup",
     prompt_no: `Du lager notater fra en standup fra [Notater] (brukerens) og [Transkripsjon] (automatisk). Grupper per person: hva som er gjort, hva som er planlagt, og blokkeringer. Skriv på norsk i Markdown.`,
     prompt_en: `You produce standup notes from [Notater] (user-written) and [Transkripsjon] (auto). Group per person: done, planned, and blockers. Reply in {LANGUAGE} using Markdown.`,
+  },  // Transcribed Feeds episodes are filed with this (src-tauri/src/commands/feeds.rs).
+  {
+    value: "podcast",
+    label_no: "Podkastepisode",
+    label_en: "Podcast episode",
+    prompt_no: `Du oppsummerer en podkastepisode fra [Notater] (brukerens) og [Transkripsjon] (automatisk). Start med to eller tre setninger om hva episoden handler om, deretter hovedpoengene og lærdommene gruppert etter tema, og til slutt verdt å merke seg: sitater, personer, produkter eller ressurser som ble nevnt. Skriv på norsk i Markdown.`,
+    prompt_en: `You summarize a podcast episode from [Notater] (user-written) and [Transkripsjon] (auto). Open with two or three sentences on what the episode is about, then the key points and takeaways grouped by topic, then any notable quotes, people, products or resources mentioned. Reply in {LANGUAGE} using Markdown.`,
   },
 ];
 

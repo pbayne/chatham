@@ -432,8 +432,20 @@ pub async fn feed_item_transcribe(
         // The episode title is user-meaningful, so the auto-titler leaves it
         // alone (`is_replaceable_title` only replaces placeholders).
         let title = if item.title.trim().is_empty() { "Podcast episode".to_string() } else { item.title.clone() };
-        db::update_note(&conn, &note.id, &db::NotePatch { title: Some(title.clone()), ..Default::default() })
-            .map_err(err)?;
+        // Podcast preset: the summary that runs once the transcript lands reads
+        // as an episode digest (overview, key points, mentions), not meeting
+        // minutes with action items.
+        db::update_note(
+            &conn,
+            &note.id,
+            &db::NotePatch {
+                title: Some(title.clone()),
+                summary_preset: Some(crate::presets::PODCAST_PRESET.to_string()),
+                ..Default::default()
+            },
+        )
+        .map_err(err)?;
+        note.summary_preset = crate::presets::PODCAST_PRESET.to_string();
         if item.published_at > 0 {
             db::set_note_created_at(&conn, &note.id, item.published_at).map_err(err)?;
             note.created_at = item.published_at;
@@ -446,6 +458,41 @@ pub async fn feed_item_transcribe(
     };
     state.sync.note_upserted(&note.id);
     Ok(TranscribedEpisode { note, folder })
+}
+
+/// Summarise one item. An article is summarised from its text — the feed's
+/// copy, or the page itself when the feed carries only a teaser — and the
+/// result is stored on the item. An episode is summarised from its
+/// transcript, so it needs transcribing first; its summary lives on the note.
+#[tauri::command]
+pub async fn feed_item_summarize(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<String, String> {
+    let item = {
+        let conn = state.db.lock();
+        feeds::ensure_tables(&conn).map_err(err)?;
+        feeds::get_item(&conn, &id).map_err(|_| "That item is no longer in your feeds".to_string())?
+    };
+    if !item.enclosure_url.is_empty() && item.note_id.is_none() {
+        return Err("Transcribe this episode first — its summary is made from the transcript".into());
+    }
+    let mut text = crate::html_text::html_to_text(&item.content_html).trim().to_string();
+    // Many feeds carry only a teaser; under ~120 words, read the page itself.
+    if text.split_whitespace().count() < 120 && !item.link.is_empty() {
+        if let Ok(Fetched::Body { bytes, .. }) = fetch(&http()?, &item.link, "", "").await {
+            let page = feeds::article_text_from_page(&String::from_utf8_lossy(&bytes));
+            if page.split_whitespace().count() > text.split_whitespace().count() {
+                text = page;
+            }
+        }
+    }
+    if text.split_whitespace().count() < 25 {
+        return Err("There isn't enough text in this item to summarize — open the original instead".into());
+    }
+    let summary = super::summary::summarize_article(&app, &item.id, &item.title, &text)
+        .await
+        .map_err(|e| e.to_string())?;
+    let conn = state.db.lock();
+    feeds::set_item_summary(&conn, &item.id, &summary).map_err(err)?;
+    Ok(summary)
 }
 
 #[cfg(test)]

@@ -177,6 +177,66 @@ describe("Transcribing an episode", () => {
   });
 });
 
+describe("Per-item summaries", () => {
+  it("summarizes an article on request and keeps it", async () => {
+    const calls = setup({ feed_item_summarize: () => "**Gist.**\n\n- point one\n- point two" });
+    fireEvent.click(await screen.findByText(/Data Modeling Best Practices/));
+    const panel = screen.getByRole("region", { name: "Summary" });
+    fireEvent.click(within(panel).getByRole("button", { name: /Summarize/ }));
+    expect(await within(panel).findByText("point one")).toBeInTheDocument();
+    expect(calls).toContainEqual({ cmd: "feed_item_summarize", args: { id: "i1" } });
+    // Stored on the item: the list now marks it.
+    expect(screen.getByRole("region", { name: "Items" })).toHaveTextContent("Summarized");
+  });
+
+  it("shows a saved article summary without calling the model", async () => {
+    const calls = setup();
+    fireEvent.click(await screen.findByText(/serverless GPU compute/));
+    const panel = screen.getByRole("region", { name: "Summary" });
+    expect(panel).toHaveTextContent("Per-second billing");
+    expect(calls.some((c) => c.cmd === "feed_item_summarize")).toBe(false);
+  });
+
+  it("surfaces a summary failure inline", async () => {
+    setup({
+      feed_item_summarize: () => {
+        throw "OpenAI API key not set";
+      },
+    });
+    fireEvent.click(await screen.findByText(/Data Modeling Best Practices/));
+    fireEvent.click(screen.getByRole("button", { name: /^Summarize$/ }));
+    expect(await screen.findByText("OpenAI API key not set")).toBeInTheDocument();
+  });
+
+  it("an untranscribed episode has no summary panel yet", async () => {
+    setup();
+    fireEvent.click(await screen.findByText(/Episode 42/));
+    expect(screen.queryByRole("region", { name: "Summary" })).toBeNull();
+  });
+
+  it("a transcribed episode shows its note's summary", async () => {
+    setup({
+      notes_get: () => ({ id: "n-ep41", summary: "## Overview\n\nEvals beat vibes.", transcript: "x", body: "" }),
+    });
+    fireEvent.click(await screen.findByText(/Episode 41/));
+    const panel = await screen.findByRole("region", { name: "Summary" });
+    expect(panel).toHaveTextContent("Episode summary");
+    expect(await within(panel).findByText("Evals beat vibes.")).toBeInTheDocument();
+  });
+
+  it("a transcribed episode still waiting on its summary offers Summarize now", async () => {
+    const calls = setup({
+      notes_get: () => ({ id: "n-ep41", summary: "", transcript: "x", body: "" }),
+      summarize_note: () => null,
+    });
+    fireEvent.click(await screen.findByText(/Episode 41/));
+    const panel = await screen.findByRole("region", { name: "Summary" });
+    expect(await within(panel).findByText(/once the transcript and speakers are done/)).toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole("button", { name: "Summarize now" }));
+    await waitFor(() => expect(calls).toContainEqual({ cmd: "summarize_note", args: { noteId: "n-ep41" } }));
+  });
+});
+
 describe("download progress label", () => {
   it("reads naturally at each stage", () => {
     expect(downloadLabel(null)).toBe("Starting download…");

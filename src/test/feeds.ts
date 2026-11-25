@@ -54,6 +54,7 @@ const item = (p: Partial<FeedItem> & Pick<FeedItem, "id" | "feed_id" | "title">)
   duration_s: 0,
   read: false,
   note_id: null,
+  summary: "",
   ...p,
 });
 
@@ -88,6 +89,12 @@ export const demoFeedItems: FeedItem[] = [
     id: "i3",
     feed_id: "f-blog",
     title: "Announcing serverless GPU compute for notebooks",
+    summary:
+      "Databricks notebooks can now attach GPUs on demand, with no cluster to configure.\n\n" +
+      "- Per-second billing; GPUs release when the notebook goes idle\n" +
+      "- A10G and H100 available at launch, more regions to follow\n" +
+      "- Works with existing ML runtimes and Unity Catalog permissions\n\n" +
+      "**Why it matters:** it removes the cluster-sizing step that slows ad hoc GPU work.",
     published_at: NOW - 3 * DAY,
     content_html: "<p>GPUs on demand, billed by the second, with no cluster to size.</p>",
   }),

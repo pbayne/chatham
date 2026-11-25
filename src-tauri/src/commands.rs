@@ -3491,6 +3491,25 @@ async fn post_stop_chain_inner(
     )
     .await;
     clock.record(|t| t.finalize_session_ms = ms_since(t_finalize));
+    // A transcribed Feeds episode summarises itself: nobody presses Summarize
+    // on a podcast they queued from the reader, and the digest is the point.
+    // After diarize, so the summary sees speaker labels; spawned so the rest
+    // of the chain (and the Idle that frees the recorder) doesn't wait on it.
+    let auto_summary = {
+        let state: State<AppState> = app.state();
+        let conn = state.db.lock();
+        db::get_note(&conn, &note_id).is_ok_and(|n| {
+            n.summary_preset == crate::presets::PODCAST_PRESET && n.summary.trim().is_empty() && !n.transcript.trim().is_empty()
+        })
+    };
+    if auto_summary {
+        let (app, id) = (app.clone(), note_id.clone());
+        tauri::async_runtime::spawn(async move {
+            if let Err(e) = summary::summarize_note(app.clone(), id.clone()).await {
+                emit_error(&app, Some(&id), &format!("Couldn't summarize the episode: {e}"));
+            }
+        });
+    }
     // Cross-session speaker unification (#17): once the note has two or more
     // takes with retained source audio + chunk timings, re-cluster the
     // concatenated audio so one voice carries one label across takes —

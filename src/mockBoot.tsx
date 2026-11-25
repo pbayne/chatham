@@ -1356,6 +1356,16 @@ function intelligenceCases(): Record<string, Scenario> {
       return demoFeedItems.filter((i) => (!feedId || i.feed_id === feedId) && (!unreadOnly || !i.read));
     },
     feed_item_set_read: () => null,
+    notes_get: () => ({
+      id: "n-ep41",
+      title: "Episode 41: Evaluating agents without vibes",
+      summary:
+        "A conversation on measuring agent quality with evals instead of intuition.\n\n" +
+        "## Key points\n- Start from 20 real failures, not a benchmark\n- Judge with rubrics a model can apply\n" +
+        "- Track regressions per release\n\n## Mentioned\n- MLflow evaluation, Agent Bricks",
+      transcript: "Speaker 1: …",
+      body: "",
+    }),
   };
   const at = (route: string, ipc: Record<string, Handler> = library): Scenario => ({
     route,

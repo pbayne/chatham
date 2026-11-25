@@ -22,6 +22,7 @@ import { ipc, type Feed, type FeedItem } from "../lib/ipc";
 import { cn } from "../lib/cn";
 import { useNotesStore } from "../lib/store";
 import { ImportDialog } from "../components/ImportDialog";
+import { ItemSummary } from "../components/ItemSummary";
 
 // Feeds (Labs, docs/design/feeds-labs.md): an RSS reader whose podcast
 // episodes download and transcribe into ordinary notes in a Podcasts folder.
@@ -331,6 +332,7 @@ export function Feeds() {
                     formatWhen(it.published_at),
                     formatDuration(it.duration_s),
                     it.note_id && "Transcribed",
+                    !it.note_id && it.summary && "Summarized",
                   ]
                     .filter(Boolean)
                     .join(" · ");
@@ -389,6 +391,9 @@ export function Feeds() {
                 feed={feedById.get(selected.feed_id)}
                 onTranscribe={() => setTranscribing(selected)}
                 onOpenNote={(id) => navigate(`/note/${id}`)}
+                onSummary={(id, summary) =>
+                  setItems((cur) => cur?.map((i) => (i.id === id ? { ...i, summary } : i)) ?? cur)
+                }
               />
             ) : (
               <p className="pt-3 text-sm text-[var(--color-text-disabled)]">
@@ -473,11 +478,13 @@ function Reader({
   feed,
   onTranscribe,
   onOpenNote,
+  onSummary,
 }: {
   item: FeedItem;
   feed?: Feed;
   onTranscribe: () => void;
   onOpenNote: (noteId: string) => void;
+  onSummary: (itemId: string, summary: string) => void;
 }) {
   const byline = [feed?.title, item.author, formatWhen(item.published_at)].filter(Boolean).join(" · ");
   return (
@@ -513,6 +520,7 @@ function Reader({
           </span>
         )}
       </div>
+      <ItemSummary item={item} onSummary={onSummary} />
       {item.content_html ? (
         // Sanitized in Rust (feeds::sanitize_html): no scripts, event handlers,
         // iframes or images; links rel=noopener. Clicks on links open the

@@ -12,6 +12,9 @@ use crate::languages;
 /// `the_default_preset_is_the_first_entry`.
 pub const DEFAULT_SUMMARY_PRESET: &str = "meeting";
 
+/// What transcribed Feeds episodes are summarised as.
+pub const PODCAST_PRESET: &str = "podcast";
+
 pub fn prompt(preset: &str, lang: &str) -> String {
     let entry = ALL.iter().find(|p| p.value == preset).unwrap_or(&ALL[0]);
     if lang == "no" {
@@ -53,6 +56,7 @@ pub fn label_for(preset: &str) -> String {
         "technical_review" => "Technical review",
         "qbr" => "Quarterly business review",
         "standup" => "Standup",
+        "podcast" => "Podcast episode",
         other => {
             // custom:<id> or an unknown value → a readable fallback.
             let base = other.strip_prefix("custom:").unwrap_or(other);
@@ -151,6 +155,11 @@ const ALL: &[Preset] = &[
         value: "standup",
         no: "Du lager notater fra en standup fra [Notater] (brukerens) og [Transkripsjon] (automatisk). Grupper per person: hva som er gjort, hva som er planlagt, og blokkeringer. Skriv på norsk i Markdown.",
         en: "You produce standup notes from [Notater] (user-written) and [Transkripsjon] (auto). Group per person: done, planned, and blockers. Reply in {LANGUAGE} using Markdown.",
+    },    // Transcribed Feeds episodes (commands/feeds.rs) are filed with this.
+    Preset {
+        value: "podcast",
+        no: "Du oppsummerer en podkastepisode fra [Notater] (brukerens) og [Transkripsjon] (automatisk). Start med to eller tre setninger om hva episoden handler om, deretter hovedpoengene og lærdommene gruppert etter tema, og til slutt verdt å merke seg: sitater, personer, produkter eller ressurser som ble nevnt. Skriv på norsk i Markdown.",
+        en: "You summarize a podcast episode from [Notater] (user-written) and [Transkripsjon] (auto). Open with two or three sentences on what the episode is about, then the key points and takeaways grouped by topic, then any notable quotes, people, products or resources mentioned. Reply in {LANGUAGE} using Markdown.",
     },
 ];
 
