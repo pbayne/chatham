@@ -158,6 +158,8 @@ export type WebhookEndpointInput = {
 
 export type SettingsKey =
   | "language"
+  // Labs (src/lib/labs.ts): hidden features switched on in Settings → General.
+  | "labs_feeds"
   | "default_summary_preset"
   | "diarize_model"
   | "community1_threshold"

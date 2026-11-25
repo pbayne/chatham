@@ -3,6 +3,8 @@ import { PALETTE_REGISTRY, usePaletteStore } from "../../../lib/palette";
 import { useTimeFormatStore, type TimeFormat } from "../../../lib/timeFormat";
 import { Row, Section } from "../components/Section";
 import { Segmented } from "../components/Segmented";
+import { Toggle } from "../components/Toggle";
+import { useLabsStore } from "../../../lib/labs";
 import { PALETTES, THEMES } from "../types";
 
 const TIME_FORMATS: { value: TimeFormat; label: string }[] = [
@@ -19,6 +21,8 @@ export function GeneralTab() {
   const setPalettePref = usePaletteStore((p) => p.setPalette);
   const timeFormat = useTimeFormatStore((t) => t.format);
   const setTimeFormat = useTimeFormatStore((t) => t.setFormat);
+  const feedsOn = useLabsStore((s) => s.flags.labs_feeds);
+  const setLab = useLabsStore((s) => s.set);
 
   // The description is the selected design's own, so the row explains what is
   // actually on screen instead of describing the picker.
@@ -69,6 +73,18 @@ export function GeneralTab() {
               onChange={(v) => void setTimeFormat(v)}
               options={TIME_FORMATS}
             />
+          }
+        />
+      </Section>
+
+      {/* Labs: features that ship hidden. Off by default; each one adds its
+          own entry to the sidebar when switched on. */}
+      <Section title="Labs">
+        <Row
+          label="Feeds"
+          description="An RSS and podcast reader in the sidebar. Podcast episodes can be downloaded and transcribed into notes in a Podcasts folder. Early — expect rough edges."
+          control={
+            <Toggle checked={feedsOn} onChange={(next) => void setLab("labs_feeds", next)} label="Enable Feeds" />
           }
         />
       </Section>

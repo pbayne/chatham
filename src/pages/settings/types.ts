@@ -33,6 +33,8 @@ export type EditableKey = Exclude<
   | "time_format"
   // Owned by Home's offer card (src/lib/nemotronOffer.ts).
   | "nemotron_offer"
+  // Owned by the Labs store (src/lib/labs.ts), like time_format.
+  | "labs_feeds"
 >;
 
 export type { Provider } from "../../lib/providers";

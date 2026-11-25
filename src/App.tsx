@@ -15,6 +15,7 @@ import { Customer } from "./pages/Customer";
 import { People, Person } from "./pages/People";
 import { Chat, FolderChat } from "./pages/Chat";
 import { Inbox } from "./pages/Inbox";
+import { Feeds } from "./pages/Feeds";
 import { Note } from "./pages/Note";
 import { Folder } from "./pages/Folder";
 import { Trash } from "./pages/Trash";
@@ -29,6 +30,7 @@ import { useThemeBoot } from "./lib/theme";
 import { usePaletteBoot } from "./lib/palette";
 import { useZoomBoot } from "./lib/zoom";
 import { useTimeFormatBoot } from "./lib/timeFormat";
+import { useLabsBoot } from "./lib/labs";
 
 export default function App() {
   useGlobalShortcuts();
@@ -36,6 +38,7 @@ export default function App() {
   usePaletteBoot();
   useZoomBoot();
   useTimeFormatBoot();
+  useLabsBoot();
   const refresh = useNotesStore((s) => s.refresh);
   const refreshCloud = useCloudStore((s) => s.refresh);
 
@@ -139,6 +142,8 @@ function AppRoutes() {
           {/* Library-level destination, same tier as "All notes" (#95). */}
           <Route path="/chat" element={<Chat />} />
           <Route path="/inbox" element={<Inbox />} />
+          <Route path="/feeds" element={<Feeds />} />
+          <Route path="/feeds/:feedId" element={<Feeds />} />
           <Route path="/note/:id" element={<Note />} />
           <Route path="/folder/:id" element={<Folder />} />
           {/* The same front door, narrowed to one folder (#110). Nested under the

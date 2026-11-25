@@ -1358,6 +1358,11 @@ function intelligenceCases(): Record<string, Scenario> {
     "person": at(`/person/${encodeURIComponent("Kari Nordvik")}`),
     "inbox": at("/inbox"),
     "inbox-empty": at("/inbox", empty),
+    // Labs → Feeds switched on, so its sidebar entry and page render.
+    "feeds-empty": at("/feeds", {
+      ...library,
+      settings_get: (a) => ((a as { key?: string } | undefined)?.key === "labs_feeds" ? "true" : null),
+    }),
   };
 }
 

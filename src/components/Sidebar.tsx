@@ -11,6 +11,7 @@ import {
   ListTodo,
   MessageCircle,
   Plus,
+  Rss,
   Search,
   Users,
   Settings as SettingsIcon,
@@ -27,6 +28,7 @@ import { SetupNag } from "./SetupNag";
 import { ImportDialog } from "./ImportDialog";
 import { ChatConversations } from "./ChatConversations";
 import { useCloudStore } from "../lib/cloud";
+import { useLabs } from "../lib/labs";
 import { trafficLightSpacerCssPx, useZoomStore } from "../lib/zoom";
 
 // Chatham mark — the concentric "C" sound-ripple matching the app icon
@@ -54,6 +56,8 @@ function ChathamMark({ size = 18 }: { size?: number }) {
 export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
   const navigate = useNavigate();
   const location = useLocation();
+  // Labs: Feeds is hidden until switched on in Settings → General.
+  const feedsOn = useLabs("labs_feeds");
   const notes = useNotesStore((s) => s.notes);
   const folders = useNotesStore((s) => s.folders);
   const removeLocal = useNotesStore((s) => s.removeLocal);
@@ -259,6 +263,14 @@ export function Sidebar({ onCollapse }: { onCollapse: () => void }) {
             label="People"
             active={location.pathname === "/people" || location.pathname.startsWith("/person/")}
           />
+          {feedsOn && (
+            <NavItem
+              to="/feeds"
+              icon={Rss}
+              label="Feeds"
+              active={location.pathname === "/feeds" || location.pathname.startsWith("/feeds/")}
+            />
+          )}
           <button
             type="button"
             onClick={importAudio}
