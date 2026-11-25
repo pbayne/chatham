@@ -108,6 +108,13 @@ let isImport = importPath != nil
 // releases it on any exit path, SIGKILL included. Taken once a stream actually
 // captures, so a denied mic doesn't hold the machine awake for nothing.
 let keepAwake = !isImport && args.contains("--keep-awake")
+
+// Apple's voice processing on the mic (opt-in, Settings → Recording). The same
+// echo canceller FaceTime uses: it subtracts what the Mac is playing from the
+// mic live, tuned for the Mac's own speakers and mics. It takes over the audio
+// device in both directions and by default ducks other audio — the call — so
+// it is enabled with the minimum ducking level macOS 14 offers.
+let voiceProcessingRequested = !isImport && args.contains("--voice-processing")
 let sleepAssertionLock = NSLock()
 var sleepAssertion: IOPMAssertionID = 0
 
@@ -822,14 +829,38 @@ func installMicTap(_ input: AVAudioInputNode, format inFormat: AVAudioFormat) {
     }
 }
 
+/// Turn on Apple's voice processing for the mic, ducking other audio as little
+/// as macOS allows. Best-effort: on failure the mic is captured raw, as it is
+/// with the setting off, and the post-stop echo pass still runs.
+func enableVoiceProcessing(_ input: AVAudioInputNode) {
+    do {
+        try input.setVoiceProcessingEnabled(true)
+    } catch {
+        emitError("Voice processing unavailable (\(error.localizedDescription)); recording the mic without it.")
+        return
+    }
+    if #available(macOS 14.0, *) {
+        input.voiceProcessingOtherAudioDuckingConfiguration =
+            AVAudioVoiceProcessingOtherAudioDuckingConfiguration(enableAdvancedDucking: false, duckingLevel: .min)
+    }
+    // AGC rides the user's level up and down; the diarizer and the echo pass
+    // both read levels, so leave the gain alone.
+    input.isVoiceProcessingAGCEnabled = false
+    FileHandle.standardError.write(Data("mic: voice processing on (ducking min)\n".utf8))
+    emit(["event": "diagnostic", "message": "Voice processing on: Apple's echo cancellation is cleaning the microphone."])
+}
+
 if !isImport {
 do {
     let input = engine.inputNode
-    // NOTE: do NOT call `input.setVoiceProcessingEnabled(true)`. It enables
-    // hardware AEC, but the voice-processing IO unit takes over the audio
-    // device for *both* directions, which ducks the system output (you
-    // can't hear the other person on a call). Echo-cancel the mic in a
-    // post-stop dedup pass instead — see commands.rs.
+    // Voice processing is off unless asked for: the voice-processing IO unit
+    // takes over the audio device for *both* directions and by default ducks
+    // the system output (you can't hear the other person on a call). The
+    // post-stop echo pass (echo.rs) cleans the mic either way. Asked for, it
+    // is enabled with ducking at its minimum (macOS 14+).
+    if voiceProcessingRequested {
+        enableVoiceProcessing(input)
+    }
     let inFormat = input.inputFormat(forBus: 0)
     if inFormat.sampleRate == 0 || inFormat.channelCount == 0 {
         emitError("Microphone input format invalid (sampleRate=\(inFormat.sampleRate), channels=\(inFormat.channelCount)). Dev binaries without an Info.plist may be silently denied audio. Try running 'pnpm tauri build --debug' and launching the .app instead of 'pnpm tauri dev'.")

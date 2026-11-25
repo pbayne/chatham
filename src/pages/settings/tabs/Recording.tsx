@@ -19,6 +19,7 @@ export function RecordingSection({
   const manualTranscription = s.transcribe_manually === "true";
   const closeToTray = s.close_to_tray === "true";
   const keepAwake = s.keep_awake !== "false";
+  const voiceProcessing = s.voice_processing === "true";
   const captureShots = s.capture_screenshots_enabled === "true";
   const captureClip = s.capture_clipboard_enabled === "true";
   return (
@@ -75,6 +76,26 @@ export function RecordingSection({
         <StoredAudioCleanup />
         <AudioQualityRow s={s} update={update} />
         <PastCaptureCompress />
+      </Section>
+
+      <Section title="Echo">
+        <Row
+          label="Apple echo cancellation"
+          description={
+            voiceProcessing
+              ? "Cleans your mic live with the same echo cancellation FaceTime uses, for calls on your Mac's speakers. Call audio may play slightly quieter while recording. Applies from the next recording."
+              : "Off: speaker echo is removed from your mic after the recording stops. Turn on for live cleanup on your Mac's speakers. Applies from the next recording."
+          }
+          control={
+            <Toggle
+              label="Apple echo cancellation"
+              checked={voiceProcessing}
+              onChange={(on) =>
+                update("voice_processing", on ? "true" : "false")
+              }
+            />
+          }
+        />
       </Section>
 
       <Section title="Power">

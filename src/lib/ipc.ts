@@ -172,6 +172,9 @@ export type SettingsKey =
   | "transcribe_manually"
   // Hold a system-sleep power assertion while a capture runs (#180).
   | "keep_awake"
+  // Apple's voice processing (live echo cancellation) on the mic while
+  // recording. Opt-in; only "true" enables.
+  | "voice_processing"
   // Meeting captures (#captures): auto-attach screenshots / clipboard copies
   // taken while recording. Both default off; only "true" enables.
   | "capture_screenshots_enabled"

@@ -2400,6 +2400,13 @@ pub(crate) fn keep_awake_enabled(app: &AppHandle) -> bool {
     sessions::keep_awake(raw_setting(app, "keep_awake").as_deref())
 }
 
+/// Apple's voice processing on the mic while recording. Off unless the setting
+/// is the string "true": it changes how the Mac's audio device behaves for the
+/// whole system while a recording runs, so it is opt-in.
+pub(crate) fn voice_processing_enabled(app: &AppHandle) -> bool {
+    raw_setting(app, "voice_processing").as_deref() == Some("true")
+}
+
 /// Whether a recording starting now should defer transcription (#146). Reads
 /// both halves of the decision — see [`sessions::defer_transcription`] for why
 /// `keep_audio` gates it.
@@ -2664,6 +2671,9 @@ pub async fn recording_start(
     cmd.arg("--out").arg(&temp_dir);
     if keep_awake_enabled(&app) {
         cmd.arg("--keep-awake");
+    }
+    if voice_processing_enabled(&app) {
+        cmd.arg("--voice-processing");
     }
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());

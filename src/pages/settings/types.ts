@@ -45,6 +45,7 @@ export const DEFAULTS: Record<EditableKey, string> = {
   keep_audio: "false",
   transcribe_manually: "false",
   keep_awake: "true",
+  voice_processing: "false",
   capture_screenshots_enabled: "false",
   capture_clipboard_enabled: "false",
   audio_quality: "standard",
