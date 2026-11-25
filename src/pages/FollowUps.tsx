@@ -76,13 +76,19 @@ export function FollowUps() {
   };
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto">
-      <div className="max-w-3xl mx-auto px-6 py-8">
-        <div className="flex items-center gap-2.5 mb-1">
-          <ListTodo size={20} strokeWidth={1.6} className="text-[var(--color-interactive)]" />
-          <h1 className="text-xl font-semibold">Follow-ups</h1>
+    <div className="h-full overflow-y-auto nd-well">
+      {/* Same page frame as Customer / People / All notes: the 1180px column and
+          the display heading, so moving between the intelligence pages doesn't
+          jump the title. The list itself keeps a reading width. */}
+      <div className="max-w-[1180px] mx-auto w-full px-8 pt-14 pb-24">
+        <div className="flex items-center gap-2.5 mb-1 px-1">
+          <ListTodo size={22} strokeWidth={1.6} className="text-[var(--color-interactive)]" />
+          <h1 className="nd-heading truncate">Follow-ups</h1>
+          {total > 0 && (
+            <span className="text-[14px] text-[var(--color-text-disabled)] tabular-nums shrink-0">{total}</span>
+          )}
         </div>
-        <p className="text-sm text-[var(--color-text-muted)] mb-6">
+        <p className="text-sm text-[var(--color-text-muted)] mb-6 px-1">
           {total === 0
             ? "You're all caught up — no open action items."
             : `${total} open item${total === 1 ? "" : "s"} across your meetings, by customer.`}
@@ -101,7 +107,7 @@ export function FollowUps() {
             </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-7">
+          <div className="flex flex-col gap-7 max-w-3xl px-1">
             {groups.map((g) => (
               <div key={g.name}>
                 <h2 className="flex items-center text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-2.5">
