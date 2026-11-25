@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeNote } from "../test/fixtures";
 import type { OpenActionItem } from "./ipc";
-import { ownerMatches, personActivity } from "./person";
+import { initials, nameHue, ownerMatches, personActivity } from "./person";
 
 const item = (id: string, owner: string, due = "", note_id = "a"): OpenActionItem => ({
   id, note_id, text: id, owner, due, done: false, source: "auto", sort_order: 0,
@@ -57,5 +57,19 @@ describe("personActivity", () => {
   it("is empty for someone who never spoke", () => {
     const a = personActivity("Nobody", notes, [], clients);
     expect(a).toEqual({ notes: [], commitments: [], lastSeen: null, clients: [] });
+  });
+});
+
+describe("initials / nameHue", () => {
+  it("takes the first and last word's first letter", () => {
+    expect(initials("Kari Nordvik")).toBe("KN");
+    expect(initials("Hege")).toBe("H");
+    expect(initials("  ola  van  berg ")).toBe("OB");
+    expect(initials("Åse Øien")).toBe("ÅØ");
+    expect(initials("")).toBe("?");
+  });
+  it("gives a name the same bucket every time, in range", () => {
+    expect(nameHue("Kari Nordvik")).toBe(nameHue("kari nordvik "));
+    for (const n of ["Michael", "Hege", "Ola Berg", "Anne Lie"]) expect(nameHue(n)).toBeLessThan(4);
   });
 });

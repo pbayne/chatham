@@ -527,6 +527,39 @@ input::placeholder, textarea::placeholder {
     box-shadow: var(--shadow-card), 0 8px 20px -16px rgba(0, 0, 0, 0.4);
   }
 
+  /* Smaller cards for the intelligence pages (a person in the People
+     directory, a panel on the Home dashboard). The note card's language — the
+     theme's surface, radius and shadow on the recessed well, edge by tone not
+     border — so these don't read as a second, wireframe design beside it. */
+  .nd-personcard,
+  .nd-panelcard {
+    border-radius: var(--radius-card);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-card);
+  }
+  /* Home is not a well: it sits on the bare canvas, and graphite declares
+     canvas and surface both #ffffff — tone alone leaves no edge at all. A Home
+     panel therefore keeps a hairline; a person card, which sits on the well,
+     doesn't need one. */
+  .nd-panelcard {
+    border: 1px solid var(--color-line);
+  }
+  .nd-personcard {
+    transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms ease-out;
+  }
+  .nd-personcard:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-card), 0 10px 22px -18px rgba(0, 0, 0, 0.45);
+  }
+  .nd-personcard:active { transform: scale(0.99); transition-duration: 90ms; }
+  .nd-personcard:focus-visible {
+    outline: 2px solid var(--color-accent-text);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .nd-personcard, .nd-personcard:hover, .nd-personcard:active { transform: none; }
+  }
+
   /* A short entrance stagger over the first row or two, written out because
      CSS cannot count siblings into a delay. */
   .nd-notegrid > :nth-child(2) { animation-delay: 20ms; }
@@ -548,11 +581,14 @@ input::placeholder, textarea::placeholder {
      preference asks us to stop doing. Give it a real border instead. */
   @media (prefers-contrast: more) {
     .nd-well { background: var(--color-canvas); }
-    .nd-notecard {
+    .nd-notecard,
+    .nd-personcard,
+    .nd-panelcard {
       border: 1px solid var(--color-line-visible);
       box-shadow: none;
     }
-    .nd-notecard:hover { box-shadow: none; }
+    .nd-notecard:hover,
+    .nd-personcard:hover { box-shadow: none; }
     .nd-notecard[data-selected="true"] {
       border-color: var(--color-accent-text);
       box-shadow: 0 0 0 1px var(--color-accent-text);

@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Building2, Circle, ListTodo, Users, User } from "lucide-react";
+import { Building2, Circle, ListTodo, Users } from "lucide-react";
 import { useNotesStore } from "../lib/store";
 import { indexById } from "../lib/noteList";
 import { extractSpeakerLabels, isNamedPerson } from "../lib/speakers";
 import { NoteCard } from "../components/NoteCard";
 import { ipc, type Note, type OpenActionItem } from "../lib/ipc";
 import { dueColorVar, dueLabel, dueState } from "../lib/due";
-import { personActivity } from "../lib/person";
+import { initials, nameHue, personActivity } from "../lib/person";
+import { SPEAKER_COLORS } from "../components/SpeakerLabels";
 
 // People directory (#people): everyone who's spoken across your meetings builds
 // into a self-organizing contact list. Reuses the speaker labels already in
@@ -61,11 +62,9 @@ export function People() {
                 <button
                   type="button"
                   onClick={() => navigate(`/person/${encodeURIComponent(p.name)}`)}
-                  className="w-full flex items-center gap-3 rounded-[var(--radius)] border border-[var(--color-line)] p-3 text-left hover:bg-[var(--color-pill-hover)] transition-colors"
+                  className="nd-personcard w-full flex items-center gap-3 p-3 text-left"
                 >
-                  <span className="shrink-0 w-8 h-8 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-[var(--color-text-muted)]">
-                    <User size={16} strokeWidth={1.7} />
-                  </span>
+                  <Avatar name={p.name} />
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium truncate">{p.name}</span>
                     <span className="block text-xs text-[var(--color-text-muted)] tabular-nums">
@@ -118,10 +117,10 @@ export function Person() {
           <button
             type="button"
             onClick={() => navigate("/people")}
-            className="shrink-0 w-9 h-9 rounded-full bg-[var(--color-surface-2)] flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-interactive)] transition-colors"
+            className="shrink-0 rounded-full hover:opacity-80 transition-opacity"
             title="All people"
           >
-            <User size={18} strokeWidth={1.7} />
+            <Avatar name={name} size={36} />
           </button>
           <h1 className="nd-heading truncate">{name}</h1>
           <span className="text-[14px] text-[var(--color-text-disabled)] tabular-nums shrink-0">
@@ -214,5 +213,27 @@ export function Person() {
         </section>
       </div>
     </div>
+  );
+}
+
+/** Initials on a soft tint of the person's speaker colour. The colour is keyed
+    on the name (nameHue), so it is the same on People, Person and every page
+    that adopts it — a transcript's per-note order can't give that. */
+function Avatar({ name, size = 32 }: { name: string; size?: number }) {
+  const color = SPEAKER_COLORS[nameHue(name, SPEAKER_COLORS.length)];
+  return (
+    <span
+      aria-hidden
+      className="shrink-0 rounded-full flex items-center justify-center font-semibold tabular-nums select-none"
+      style={{
+        width: size,
+        height: size,
+        fontSize: Math.round(size * 0.38),
+        color,
+        background: `color-mix(in srgb, ${color} 16%, var(--color-surface))`,
+      }}
+    >
+      {initials(name)}
+    </span>
   );
 }

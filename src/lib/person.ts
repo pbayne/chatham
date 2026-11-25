@@ -65,3 +65,21 @@ export function personActivity(
       .sort((a, b) => b.meetings - a.meetings || a.name.localeCompare(b.name)),
   };
 }
+
+/** "Kari Nordvik" → "KN", "Hege" → "H", "anne-lie berg" → "AB". At most two
+    letters: first and last word. */
+export function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "?";
+  const pick = (w: string) => [...w][0]?.toUpperCase() ?? "";
+  return words.length === 1 ? pick(words[0]) : pick(words[0]) + pick(words[words.length - 1]);
+}
+
+/** A stable index into the four speaker colours for a name, so a person keeps
+    the same tint on every page regardless of list order (a transcript's
+    speakerColorMap assigns by order of appearance, which is per-note). */
+export function nameHue(name: string, buckets = 4): number {
+  let h = 0;
+  for (const ch of name.trim().toLowerCase()) h = (h * 31 + ch.codePointAt(0)!) >>> 0;
+  return h % buckets;
+}

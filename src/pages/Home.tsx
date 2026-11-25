@@ -97,7 +97,7 @@ export function Home() {
         {(recent.length > 0 || open.length > 0) && (
           <div className="w-full max-w-2xl mx-auto mt-8 grid grid-cols-1 sm:grid-cols-2 gap-5">
             {/* Recent meetings */}
-            <section className="rounded-[var(--radius)] border border-[var(--color-line)] p-4">
+            <section className="nd-panelcard p-4">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-2.5">
                 Recent
               </h2>
@@ -118,7 +118,7 @@ export function Home() {
             </section>
 
             {/* Follow-ups summary */}
-            <section className="rounded-[var(--radius)] border border-[var(--color-line)] p-4">
+            <section className="nd-panelcard p-4">
               <div className="flex items-center justify-between mb-2.5">
                 <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
                   Follow-ups
