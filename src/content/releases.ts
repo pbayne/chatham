@@ -11,6 +11,24 @@ export type Release = {
 
 export const releases: Release[] = [
   {
+    version: "0.82.0",
+    date: "2026-11-25",
+    title: "Discover: 87 feeds and podcasts to follow",
+    summary: "Feeds now suggests popular blogs, news and podcasts — AI, data, federal, security and more — each one click to follow.",
+    visual: "audio",
+    paragraphs: [
+      "Feeds has a Discover page, and an empty Feeds page now opens with it: 87 hand-picked feeds across AI & ML, data and cloud, government and federal technology, security, tech news, developer releases, and podcasts. Search them or filter by category, follow one with a click, or follow a whole category at once. Feeds you already follow show a check.",
+      "The podcast list includes 28 active data, AI and Python shows from DataTalks.Club's awesome-data-podcasts — DataTalks.Club, Data Skeptic, Machine Learning Street Talk, Talk Python to Me and more — so you can transcribe and summarise them like any episode. Every suggestion is checked against its live feed before it ships. This release also fixes feeds from servers that compress their response unasked, such as Google DeepMind's blog.",
+    ],
+    highlights: [
+      "Discover: 87 suggested feeds and podcasts in 9 categories.",
+      "Follow one, or a whole category, in a click.",
+      "28 data, AI and Python podcasts from awesome-data-podcasts.",
+      "Fix: feeds with unrequested gzip bodies now load reliably.",
+    ],
+    issues: [],
+  },
+  {
     version: "0.81.0",
     date: "2026-11-25",
     title: "A summary for every article and episode",
