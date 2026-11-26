@@ -1,0 +1,581 @@
+{
+  "version": 1,
+  "categories": [
+    {
+      "name": "AI & ML",
+      "blurb": "Labs, researchers and the best independent AI writing.",
+      "feeds": [
+        {
+          "name": "OpenAI",
+          "url": "https://openai.com/news/rss.xml",
+          "blurb": "Model and product announcements",
+          "kind": "rss"
+        },
+        {
+          "name": "Google DeepMind",
+          "url": "https://deepmind.google/blog/rss.xml",
+          "blurb": "Research and model releases",
+          "kind": "rss"
+        },
+        {
+          "name": "Google Research",
+          "url": "https://research.google/blog/rss/",
+          "blurb": "Research blog",
+          "kind": "rss"
+        },
+        {
+          "name": "Hugging Face",
+          "url": "https://huggingface.co/blog/feed.xml",
+          "blurb": "Open models, libraries and tutorials",
+          "kind": "rss"
+        },
+        {
+          "name": "Simon Willison",
+          "url": "https://simonwillison.net/atom/everything/",
+          "blurb": "Daily, hands-on LLM notes",
+          "kind": "rss"
+        },
+        {
+          "name": "Import AI",
+          "url": "https://importai.substack.com/feed",
+          "blurb": "Jack Clark's weekly AI newsletter",
+          "kind": "rss"
+        },
+        {
+          "name": "Interconnects",
+          "url": "https://www.interconnects.ai/feed",
+          "blurb": "Nathan Lambert on models and training",
+          "kind": "rss"
+        },
+        {
+          "name": "Latent Space",
+          "url": "https://www.latent.space/feed",
+          "blurb": "AI engineering essays and interviews",
+          "kind": "rss"
+        },
+        {
+          "name": "Lilian Weng",
+          "url": "https://lilianweng.github.io/index.xml",
+          "blurb": "Long-form ML explainers",
+          "kind": "rss"
+        },
+        {
+          "name": "arXiv cs.AI",
+          "url": "https://rss.arxiv.org/rss/cs.AI",
+          "blurb": "New AI papers, daily (high volume)",
+          "kind": "rss"
+        },
+        {
+          "name": "arXiv cs.CL",
+          "url": "https://rss.arxiv.org/rss/cs.CL",
+          "blurb": "New NLP / LLM papers, daily (high volume)",
+          "kind": "rss"
+        }
+      ]
+    },
+    {
+      "name": "Data & Cloud",
+      "blurb": "Data platforms, cloud launches and systems engineering.",
+      "feeds": [
+        {
+          "name": "Databricks Blog",
+          "url": "https://www.databricks.com/feed",
+          "blurb": "Product, engineering and customer posts",
+          "kind": "rss"
+        },
+        {
+          "name": "AWS Big Data Blog",
+          "url": "https://aws.amazon.com/blogs/big-data/feed/",
+          "blurb": "Analytics and data engineering on AWS",
+          "kind": "rss"
+        },
+        {
+          "name": "AWS News Blog",
+          "url": "https://aws.amazon.com/blogs/aws/feed/",
+          "blurb": "New AWS launches",
+          "kind": "rss"
+        },
+        {
+          "name": "dbt Labs",
+          "url": "https://www.getdbt.com/blog/rss.xml",
+          "blurb": "Analytics engineering",
+          "kind": "rss"
+        },
+        {
+          "name": "Cloudflare Blog",
+          "url": "https://blog.cloudflare.com/rss/",
+          "blurb": "Deep infrastructure write-ups",
+          "kind": "rss"
+        },
+        {
+          "name": "Netflix Tech Blog",
+          "url": "https://netflixtechblog.com/feed",
+          "blurb": "Data platform and systems engineering",
+          "kind": "rss"
+        },
+        {
+          "name": "ByteByteGo",
+          "url": "https://blog.bytebytego.com/feed",
+          "blurb": "System design explained",
+          "kind": "rss"
+        },
+        {
+          "name": "The Pragmatic Engineer",
+          "url": "https://newsletter.pragmaticengineer.com/feed",
+          "blurb": "Engineering industry deep dives",
+          "kind": "rss"
+        }
+      ]
+    },
+    {
+      "name": "Government & Federal",
+      "blurb": "Federal IT, defense tech, policy and standards.",
+      "feeds": [
+        {
+          "name": "FedScoop",
+          "url": "https://fedscoop.com/feed/",
+          "blurb": "Federal IT and AI policy",
+          "kind": "rss"
+        },
+        {
+          "name": "Nextgov/FCW",
+          "url": "https://www.nextgov.com/rss/all/",
+          "blurb": "Federal technology news",
+          "kind": "rss"
+        },
+        {
+          "name": "Federal News Network",
+          "url": "https://federalnewsnetwork.com/feed/",
+          "blurb": "Federal workforce, IT and acquisition",
+          "kind": "rss"
+        },
+        {
+          "name": "DefenseScoop",
+          "url": "https://defensescoop.com/feed/",
+          "blurb": "DoD technology",
+          "kind": "rss"
+        },
+        {
+          "name": "GovExec",
+          "url": "https://www.govexec.com/rss/all/",
+          "blurb": "Government management and policy",
+          "kind": "rss"
+        },
+        {
+          "name": "NIST News",
+          "url": "https://www.nist.gov/news-events/news/rss.xml",
+          "blurb": "Standards, AI RMF, cybersecurity frameworks",
+          "kind": "rss"
+        }
+      ]
+    },
+    {
+      "name": "Security",
+      "blurb": "Advisories, investigations and daily security news.",
+      "feeds": [
+        {
+          "name": "CISA News",
+          "url": "https://www.cisa.gov/news.xml",
+          "blurb": "Advisories and announcements",
+          "kind": "rss"
+        },
+        {
+          "name": "Krebs on Security",
+          "url": "https://krebsonsecurity.com/feed/",
+          "blurb": "Investigative security reporting",
+          "kind": "rss"
+        },
+        {
+          "name": "Schneier on Security",
+          "url": "https://www.schneier.com/feed/",
+          "blurb": "Security commentary",
+          "kind": "rss"
+        },
+        {
+          "name": "The Hacker News",
+          "url": "https://feeds.feedburner.com/TheHackersNews",
+          "blurb": "Daily security news",
+          "kind": "rss"
+        },
+        {
+          "name": "Google Security Blog",
+          "url": "https://security.googleblog.com/atom.xml",
+          "blurb": "Google security engineering",
+          "kind": "rss"
+        }
+      ]
+    },
+    {
+      "name": "Tech News",
+      "blurb": "The wider industry, as it happens.",
+      "feeds": [
+        {
+          "name": "Hacker News",
+          "url": "https://hnrss.org/frontpage",
+          "blurb": "Front page, as it happens",
+          "kind": "rss"
+        },
+        {
+          "name": "Ars Technica",
+          "url": "https://feeds.arstechnica.com/arstechnica/index",
+          "blurb": "Tech, science and policy",
+          "kind": "rss"
+        },
+        {
+          "name": "The Verge",
+          "url": "https://www.theverge.com/rss/index.xml",
+          "blurb": "Consumer tech",
+          "kind": "rss"
+        },
+        {
+          "name": "MIT Technology Review",
+          "url": "https://www.technologyreview.com/feed/",
+          "blurb": "Emerging tech, AI and policy",
+          "kind": "rss"
+        },
+        {
+          "name": "TechCrunch",
+          "url": "https://techcrunch.com/feed/",
+          "blurb": "Startups and funding",
+          "kind": "rss"
+        },
+        {
+          "name": "Stratechery",
+          "url": "https://stratechery.com/feed/",
+          "blurb": "Ben Thompson on tech strategy (free posts)",
+          "kind": "rss"
+        }
+      ]
+    },
+    {
+      "name": "Developer",
+      "blurb": "Language releases and the tools you build with.",
+      "feeds": [
+        {
+          "name": "GitHub Changelog",
+          "url": "https://github.blog/changelog/feed/",
+          "blurb": "Every GitHub feature change",
+          "kind": "rss"
+        },
+        {
+          "name": "Rust Blog",
+          "url": "https://blog.rust-lang.org/feed.xml",
+          "blurb": "Rust releases and news",
+          "kind": "rss"
+        },
+        {
+          "name": "React Blog",
+          "url": "https://react.dev/rss.xml",
+          "blurb": "React releases",
+          "kind": "rss"
+        },
+        {
+          "name": "Python Insider",
+          "url": "https://blog.python.org/feeds/posts/default",
+          "blurb": "Python releases",
+          "kind": "rss"
+        },
+        {
+          "name": "Claude Code releases",
+          "url": "https://github.com/anthropics/claude-code/releases.atom",
+          "blurb": "New Claude Code versions",
+          "kind": "rss"
+        },
+        {
+          "name": "OpenAI Codex releases",
+          "url": "https://github.com/openai/codex/releases.atom",
+          "blurb": "New Codex CLI versions",
+          "kind": "rss"
+        },
+        {
+          "name": "MCP spec releases",
+          "url": "https://github.com/modelcontextprotocol/specification/releases.atom",
+          "blurb": "Model Context Protocol versions",
+          "kind": "rss"
+        }
+      ]
+    },
+    {
+      "name": "Podcasts",
+      "blurb": "Episodes Chatham can transcribe and summarise.",
+      "feeds": [
+        {
+          "name": "The Daily",
+          "url": "https://feeds.simplecast.com/54nAGcIl",
+          "blurb": "NYT news, 20–30 min daily",
+          "kind": "podcast"
+        },
+        {
+          "name": "Hard Fork",
+          "url": "https://feeds.simplecast.com/l2i9YnTd",
+          "blurb": "NYT on tech, weekly",
+          "kind": "podcast"
+        },
+        {
+          "name": "Decoder",
+          "url": "https://feeds.megaphone.fm/recodedecode",
+          "blurb": "Nilay Patel interviews tech leaders",
+          "kind": "podcast"
+        },
+        {
+          "name": "Lex Fridman",
+          "url": "https://lexfridman.com/feed/podcast/",
+          "blurb": "Long-form interviews",
+          "kind": "podcast"
+        },
+        {
+          "name": "Dwarkesh Podcast",
+          "url": "https://api.substack.com/feed/podcast/69345.rss",
+          "blurb": "Deep AI and history interviews",
+          "kind": "podcast"
+        },
+        {
+          "name": "Latent Space (podcast)",
+          "url": "https://api.substack.com/feed/podcast/1084089.rss",
+          "blurb": "AI engineering interviews",
+          "kind": "podcast"
+        },
+        {
+          "name": "Practical AI",
+          "url": "https://changelog.com/practicalai/feed",
+          "blurb": "Applied AI, weekly",
+          "kind": "podcast"
+        },
+        {
+          "name": "The Changelog",
+          "url": "https://changelog.com/podcast/feed",
+          "blurb": "Software and open source",
+          "kind": "podcast"
+        },
+        {
+          "name": "TWIML AI",
+          "url": "https://feeds.megaphone.fm/MLN2155636147",
+          "blurb": "ML research interviews",
+          "kind": "podcast"
+        },
+        {
+          "name": "No Priors",
+          "url": "https://feeds.megaphone.fm/nopriors",
+          "blurb": "AI founders and researchers",
+          "kind": "podcast"
+        },
+        {
+          "name": "Acquired",
+          "url": "https://feeds.transistor.fm/acquired",
+          "blurb": "Company histories, long-form",
+          "kind": "podcast"
+        },
+        {
+          "name": "Software Engineering Daily",
+          "url": "https://softwareengineeringdaily.com/feed/podcast/",
+          "blurb": "Engineering interviews",
+          "kind": "podcast"
+        },
+        {
+          "name": "Darknet Diaries",
+          "url": "https://feeds.megaphone.fm/darknetdiaries",
+          "blurb": "True stories from the security world",
+          "kind": "podcast"
+        },
+        {
+          "name": "Risky Business",
+          "url": "https://risky.biz/feeds/risky-business/",
+          "blurb": "Weekly security news",
+          "kind": "podcast"
+        },
+        {
+          "name": "Planet Money",
+          "url": "https://feeds.npr.org/510289/podcast.xml",
+          "blurb": "NPR economics",
+          "kind": "podcast"
+        },
+        {
+          "name": "Up First",
+          "url": "https://feeds.npr.org/510318/podcast.xml",
+          "blurb": "NPR's morning news, 15 min",
+          "kind": "podcast"
+        }
+      ]
+    },
+    {
+      "name": "Data & AI podcasts",
+      "blurb": "Data science, ML and data engineering shows, from DataTalks.Club's awesome-data-podcasts.",
+      "feeds": [
+        {
+          "name": "DataTalks.Club",
+          "url": "https://anchor.fm/s/41286f68/podcast/rss",
+          "blurb": "Data careers and practice, from the DataTalks.Club community",
+          "kind": "podcast"
+        },
+        {
+          "name": "MLOps.community",
+          "url": "https://anchor.fm/s/174cb1b8/podcast/rss",
+          "blurb": "Agents and MLOps in production",
+          "kind": "podcast"
+        },
+        {
+          "name": "SuperDataScience",
+          "url": "https://feeds.megaphone.fm/SUPERDATASCIENCEPTYLTD9836501887",
+          "blurb": "Jon Krohn on ML and AI, twice weekly",
+          "kind": "podcast"
+        },
+        {
+          "name": "Data Skeptic",
+          "url": "https://rss.libsyn.com/shows/54799/destinations/201630.xml",
+          "blurb": "Data science, statistics and ML, explained",
+          "kind": "podcast"
+        },
+        {
+          "name": "AI in Business",
+          "url": "https://rss.libsyn.com/shows/45920/destinations/151434.xml",
+          "blurb": "How enterprises are adopting AI",
+          "kind": "podcast"
+        },
+        {
+          "name": "Data Science at Home",
+          "url": "https://feed.podbean.com/datascienceathome/feed.xml",
+          "blurb": "ML, AI and data science, technical",
+          "kind": "podcast"
+        },
+        {
+          "name": "Machine Learning Street Talk",
+          "url": "https://anchor.fm/s/1e4a0eac/podcast/rss",
+          "blurb": "Deep technical AI research conversations",
+          "kind": "podcast"
+        },
+        {
+          "name": "Gradient Dissent",
+          "url": "https://feeds.captivate.fm/gradient-dissent/",
+          "blurb": "Weights & Biases on building ML in practice",
+          "kind": "podcast"
+        },
+        {
+          "name": "Machine Learning Guide",
+          "url": "https://rss.libsyn.com/shows/100505/destinations/529035.xml",
+          "blurb": "Structured ML fundamentals course",
+          "kind": "podcast"
+        },
+        {
+          "name": "Learning Bayesian Statistics",
+          "url": "https://api.riverside.fm/hosting/iA4hgdZC.rss/",
+          "blurb": "Bayesian methods and probabilistic programming",
+          "kind": "podcast"
+        },
+        {
+          "name": "Casual Inference",
+          "url": "https://anchor.fm/s/10d217dd0/podcast/rss",
+          "blurb": "Causal inference and epidemiology",
+          "kind": "podcast"
+        },
+        {
+          "name": "The Data Exchange",
+          "url": "https://rss.buzzsprout.com/682433.rss",
+          "blurb": "Ben Lorica on data, ML and AI infrastructure",
+          "kind": "podcast"
+        },
+        {
+          "name": "More or Less",
+          "url": "https://podcasts.files.bbci.co.uk/b006qshd.rss",
+          "blurb": "BBC on the numbers in the news",
+          "kind": "podcast"
+        },
+        {
+          "name": "Making Data Simple",
+          "url": "https://rss.buzzsprout.com/214745.rss",
+          "blurb": "IBM on data and AI leadership",
+          "kind": "podcast"
+        },
+        {
+          "name": "DataFramed",
+          "url": "https://feeds.captivate.fm/dataframed/",
+          "blurb": "DataCamp on data and AI in business",
+          "kind": "podcast"
+        },
+        {
+          "name": "Storytelling with Data",
+          "url": "https://anchor.fm/s/fe838bec/podcast/rss",
+          "blurb": "Cole Nussbaumer Knaflic on data communication",
+          "kind": "podcast"
+        },
+        {
+          "name": "The PolicyViz Podcast",
+          "url": "https://feeds.zencastr.com/f/-k6yUlMb.rss",
+          "blurb": "Data visualization and public policy",
+          "kind": "podcast"
+        },
+        {
+          "name": "Plumbers of Data Science",
+          "url": "https://anchor.fm/s/18e1434/podcast/rss",
+          "blurb": "Data engineering, hands-on",
+          "kind": "podcast"
+        },
+        {
+          "name": "The Data Stack Show",
+          "url": "https://feeds.simplecast.com/m3Tr79ut",
+          "blurb": "Data infrastructure and the modern data stack",
+          "kind": "podcast"
+        },
+        {
+          "name": "Weaviate Podcast",
+          "url": "https://anchor.fm/s/cffc3468/podcast/rss",
+          "blurb": "Vector search and RAG",
+          "kind": "podcast"
+        },
+        {
+          "name": "Chain of Thought",
+          "url": "https://feeds.transistor.fm/chain-of-thought",
+          "blurb": "AI agents, infra and dev tools",
+          "kind": "podcast"
+        },
+        {
+          "name": "How I AI",
+          "url": "https://anchor.fm/s/1035b1568/podcast/rss",
+          "blurb": "Leaders show how they actually use AI",
+          "kind": "podcast"
+        }
+      ]
+    },
+    {
+      "name": "Python & engineering podcasts",
+      "blurb": "Python and software-career shows, from the same list.",
+      "feeds": [
+        {
+          "name": "Talk Python to Me",
+          "url": "https://talkpython.fm/episodes/rss",
+          "blurb": "The weekly Python interview show",
+          "kind": "podcast"
+        },
+        {
+          "name": "Python Bytes",
+          "url": "https://pythonbytes.fm/episodes/rss",
+          "blurb": "Python news, in short weekly episodes",
+          "kind": "podcast"
+        },
+        {
+          "name": "The Real Python Podcast",
+          "url": "https://realpython.com/podcasts/rpp/feed",
+          "blurb": "Python tutorials and interviews",
+          "kind": "podcast"
+        },
+        {
+          "name": "Teaching Python",
+          "url": "https://feeds.fireside.fm/teachingpython/rss",
+          "blurb": "Teaching and learning Python",
+          "kind": "podcast"
+        },
+        {
+          "name": "Soft Skills Engineering",
+          "url": "https://softskills.audio/feed.xml",
+          "blurb": "Career and workplace questions for engineers",
+          "kind": "podcast"
+        },
+        {
+          "name": "Freakonomics Radio",
+          "url": "https://feeds.simplecast.com/Y8lFbOT4",
+          "blurb": "Economics of everyday life",
+          "kind": "podcast"
+        }
+      ]
+    }
+  ]
+}

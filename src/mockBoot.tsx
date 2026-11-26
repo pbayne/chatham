@@ -1384,6 +1384,7 @@ function intelligenceCases(): Record<string, Scenario> {
     // Labs → Feeds switched on, so its sidebar entry and page render.
     "feeds-empty": at("/feeds", { ...library, ...labsOn, feeds_list: () => [], feed_items_list: () => [] }),
     feeds: at("/feeds", { ...library, ...labsOn, ...feedsIpc }),
+    "feeds-discover": at("/feeds/discover", { ...library, ...labsOn, ...feedsIpc }),
     "feeds-reading": at("/feeds", { ...library, ...labsOn, ...feedsIpc }),
   };
 }

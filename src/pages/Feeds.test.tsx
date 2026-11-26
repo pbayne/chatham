@@ -237,6 +237,68 @@ describe("Per-item summaries", () => {
   });
 });
 
+describe("Discover", () => {
+  it("an empty Feeds page offers the suggestion catalog", async () => {
+    setup({ feeds_list: () => [] });
+    expect(await screen.findByText("Follow blogs and podcasts")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Data & AI podcasts" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Follow Talk Python to Me" })).toBeInTheDocument();
+  });
+
+  it("follows a suggestion with one click and marks it followed", async () => {
+    const calls = setup(
+      {
+        feeds_add: (a) => ({ ...demoFeeds[0], id: "new", url: (a as { url: string }).url, title: "Simon Willison" }),
+      },
+      "/feeds/discover",
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Follow Simon Willison" }));
+    expect(await screen.findByRole("button", { name: "Following Simon Willison" })).toBeDisabled();
+    expect(calls).toContainEqual({ cmd: "feeds_add", args: { url: "https://simonwillison.net/atom/everything/" } });
+  });
+
+  it("already-subscribed feeds show as followed, ignoring scheme and trailing slash", async () => {
+    setup({}, "/feeds/discover");
+    // demoFeeds has https://www.databricks.com/feed
+    expect(await screen.findByRole("button", { name: "Following Databricks Blog" })).toBeDisabled();
+  });
+
+  it("filters by category and search", async () => {
+    setup({}, "/feeds/discover");
+    await screen.findByRole("region", { name: "Security" });
+    fireEvent.click(screen.getByRole("tab", { name: "Podcasts" }));
+    expect(screen.queryByRole("region", { name: "Security" })).toBeNull();
+    expect(screen.getByRole("region", { name: "Podcasts" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "All" }));
+    fireEvent.change(screen.getByLabelText("Search suggested feeds"), { target: { value: "bayesian" } });
+    expect(screen.getByText("Learning Bayesian Statistics")).toBeInTheDocument();
+    expect(screen.queryByText("Talk Python to Me")).toBeNull();
+  });
+
+  it("Follow all subscribes to every unfollowed feed in a category", async () => {
+    const calls = setup(
+      { feeds_add: (a) => ({ ...demoFeeds[0], id: (a as { url: string }).url, url: (a as { url: string }).url }) },
+      "/feeds/discover",
+    );
+    const sec = await screen.findByRole("region", { name: "Government & Federal" });
+    fireEvent.click(within(sec).getByRole("button", { name: /Follow all 6/ }));
+    await waitFor(() => expect(calls.filter((c) => c.cmd === "feeds_add")).toHaveLength(6));
+  });
+});
+
+describe("catalog", () => {
+  it("has unique URLs, a blurb and a kind for every entry", async () => {
+    const { CATALOG } = await import("../components/FeedDiscover");
+    const urls = CATALOG.flatMap((c) => c.feeds.map((f) => f.url));
+    expect(new Set(urls).size).toBe(urls.length);
+    for (const f of CATALOG.flatMap((c) => c.feeds)) {
+      expect(f.url).toMatch(/^https:\/\//);
+      expect(f.blurb.length).toBeGreaterThan(5);
+      expect(["rss", "podcast"]).toContain(f.kind);
+    }
+  });
+});
+
 describe("download progress label", () => {
   it("reads naturally at each stage", () => {
     expect(downloadLabel(null)).toBe("Starting download…");

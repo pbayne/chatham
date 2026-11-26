@@ -7,6 +7,7 @@
 
 use anyhow::{anyhow, Result};
 use rusqlite::{params, Connection, OptionalExtension};
+use std::io::Read as _;
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -128,6 +129,19 @@ pub fn ensure_tables(conn: &Connection) -> Result<()> {
 /// Parse any RSS 0.9–2.0 / Atom / JSON Feed document (with iTunes podcast
 /// extensions) into the shape we store. `base_url` resolves relative links.
 pub fn parse(bytes: &[u8], base_url: &str) -> Result<ParsedFeed> {
+    // Some CDNs (deepmind.google, measured) gzip the body whether or not the
+    // client asked, and our HTTP client doesn't decompress what it didn't
+    // negotiate. Sniff the gzip magic and inflate before parsing.
+    let inflated;
+    let bytes = if bytes.starts_with(&[0x1f, 0x8b]) {
+        let mut out = Vec::new();
+        std::io::Read::read_to_end(&mut flate2::read::MultiGzDecoder::new(bytes).take(64 * 1024 * 1024), &mut out)
+            .map_err(|e| anyhow!("not a feed: bad gzip body: {e}"))?;
+        inflated = out;
+        &inflated[..]
+    } else {
+        bytes
+    };
     let feed = feed_rs::parser::Builder::new()
         .base_uri(Some(base_url))
         .build()
@@ -637,6 +651,16 @@ mod tests {
         assert_eq!(e.link, "https://blog.example/posts/hello");
         assert_eq!(e.author, "Ada");
         assert!(e.content_html.contains("<p>Hi</p>"));
+    }
+
+    #[test]
+    fn parses_a_gzipped_body_sent_without_negotiation() {
+        use std::io::Write;
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        gz.write_all(RSS.as_bytes()).unwrap();
+        let f = parse(&gz.finish().unwrap(), "https://example.com/feed").unwrap();
+        assert_eq!(f.title, "Data Talk & More");
+        assert_eq!(f.items.len(), 2);
     }
 
     #[test]

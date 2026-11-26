@@ -6,6 +6,7 @@ import { listen } from "@tauri-apps/api/event";
 import {
   AudioLines,
   CheckCheck,
+  Compass,
   FileText,
   Download,
   ExternalLink,
@@ -23,6 +24,7 @@ import { cn } from "../lib/cn";
 import { useNotesStore } from "../lib/store";
 import { ImportDialog } from "../components/ImportDialog";
 import { ItemSummary } from "../components/ItemSummary";
+import { Discover } from "../components/FeedDiscover";
 
 // Feeds (Labs, docs/design/feeds-labs.md): an RSS reader whose podcast
 // episodes download and transcribe into ordinary notes in a Podcasts folder.
@@ -31,6 +33,8 @@ import { ItemSummary } from "../components/ItemSummary";
 
 /** "All feeds" is the absent feedId route param. */
 const ALL = "";
+/** /feeds/discover shows the suggestion catalog instead of a feed. */
+const DISCOVER = "discover";
 
 export function formatDuration(s: number): string {
   if (!s) return "";
@@ -78,6 +82,7 @@ export function Feeds() {
 
   const loadItems = useCallback(async () => {
     try {
+      if (feedId === DISCOVER) return setItems([]);
       const is = await ipc.feedItemsList(feedId || undefined, unreadOnly);
       setItems(Array.isArray(is) ? is : []);
     } catch {
@@ -95,6 +100,7 @@ export function Feeds() {
 
   const feedById = useMemo(() => new Map((feeds ?? []).map((f) => [f.id, f])), [feeds]);
   const current = feedId ? feedById.get(feedId) : undefined;
+  const discovering = feedId === DISCOVER;
   const selected = items?.find((i) => i.id === selectedId) ?? null;
   const totalUnread = (feeds ?? []).reduce((n, f) => n + f.unread, 0);
 
@@ -230,9 +236,9 @@ export function Feeds() {
         <div className="w-full px-8 pt-14 pb-4">
           <div className="flex items-center gap-2.5 px-1 min-w-0">
             <Rss size={22} strokeWidth={1.6} className="shrink-0 text-[var(--color-interactive)]" />
-            <h1 className="nd-heading truncate">{current?.title || "Feeds"}</h1>
+            <h1 className="nd-heading truncate">{discovering ? "Discover" : current?.title || "Feeds"}</h1>
             <span className="nd-chip shrink-0">Labs</span>
-            {totalUnread > 0 && !current && (
+            {totalUnread > 0 && !current && !discovering && (
               <span className="text-[14px] text-[var(--color-text-disabled)] tabular-nums shrink-0">{totalUnread} unread</span>
             )}
             <div className="flex-1" />
@@ -241,7 +247,7 @@ export function Feeds() {
                 {notice}
               </span>
             )}
-            {!empty && (
+            {!empty && !discovering && (
               <>
                 <button
                   type="button"
@@ -280,8 +286,20 @@ export function Feeds() {
         </div>
       </div>
 
-      {empty ? (
-        <EmptyState onAdd={() => setAdding(true)} onImport={importOpml} />
+      {discovering || empty ? (
+        <div className="flex-1 min-h-0 flex flex-col">
+          {empty && !discovering && (
+            <EmptyState onAdd={() => setAdding(true)} onImport={importOpml} compact />
+          )}
+          {discovering && feeds && feeds.length > 0 && (
+            <div className="px-8 pb-2">
+              <button type="button" onClick={() => navigate("/feeds")} className="nd-btn">
+                ← Back to your feeds
+              </button>
+            </div>
+          )}
+          <Discover subscribed={feeds ?? []} onSubscribed={() => loadFeeds()} />
+        </div>
       ) : (
         <div className="flex-1 min-h-0 grid grid-cols-[200px_minmax(260px,340px)_minmax(0,1fr)] px-8 pb-6 pt-1">
           {/* Feeds */}
@@ -306,6 +324,9 @@ export function Feeds() {
               />
             ))}
             <div className="mt-3 flex flex-col border-t border-[var(--color-line)] pt-3">
+              <button type="button" onClick={() => navigate("/feeds/discover")} className="nd-navrow w-full text-[13px]">
+                <Compass size={14} strokeWidth={1.7} /> Discover feeds…
+              </button>
               <button type="button" onClick={importOpml} className="nd-navrow w-full text-[13px]">
                 <Upload size={14} strokeWidth={1.7} /> Import OPML…
               </button>
@@ -545,14 +566,19 @@ function Reader({
   );
 }
 
-function EmptyState({ onAdd, onImport }: { onAdd: () => void; onImport: () => void }) {
+function EmptyState({ onAdd, onImport, compact = false }: { onAdd: () => void; onImport: () => void; compact?: boolean }) {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center text-center px-8 pb-24">
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center text-center px-8",
+        compact ? "pt-2 pb-8 shrink-0" : "flex-1 pb-24",
+      )}
+    >
       <Rss size={40} strokeWidth={1.3} className="text-[var(--color-text-disabled)] mb-3" />
       <p className="text-[15px] font-medium">Follow blogs and podcasts</p>
       <p className="text-sm text-[var(--color-text-muted)] mt-1 max-w-[46ch]">
-        Paste a feed or a website address. A podcast episode can be transcribed into a note, where search, chat and
-        summaries work on it like any meeting.
+        Paste a feed or a website address, or follow some of the suggestions below. A podcast episode can be
+        transcribed into a note, where search, chat and summaries work on it like any meeting.
       </p>
       <div className="flex items-center gap-2 mt-5">
         <button type="button" onClick={onAdd} className="nd-btn nd-btn-primary">
